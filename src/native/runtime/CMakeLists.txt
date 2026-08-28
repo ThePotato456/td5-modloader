@@ -5,6 +5,7 @@ add_library(
         active_profile.cpp
         compatibility.cpp
         frame_hook.cpp
+        game_object.cpp
         hook_transaction.cpp
         lua_mod.cpp
         mod_manifest.cpp

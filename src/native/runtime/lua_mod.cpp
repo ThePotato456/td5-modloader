@@ -2,10 +2,12 @@
 #include "lua_mod.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <limits>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 
 #include <nlohmann/json.hpp>
@@ -21,6 +23,23 @@ namespace {
 
 constexpr int kInstructionHookInterval = 1'000;
 constexpr std::uintmax_t kMaximumResourceBytes = 1024U * 1024U;
+constexpr char kGameObjectMetatable[] = "btd5.game_object.v1";
+constexpr std::array<std::string_view, 24> kEventNames{
+    "match.starting", "match.started", "match.ending", "match.ended",
+    "round.starting", "round.started", "round.ending", "round.ended",
+    "cash.changing", "cash.changed", "lives.changing", "lives.changed",
+    "tower.placing", "tower.placed", "tower.upgrading", "tower.upgraded",
+    "tower.selling", "tower.sold", "bloon.spawning", "bloon.spawned",
+    "bloon.popping", "bloon.popped", "bloon.leaking", "bloon.leaked"};
+
+struct LuaGameObject final {
+    GameObjectRegistry* registry{};
+    GameObjectHandle handle;
+};
+
+bool known_event(const std::string_view name) {
+    return std::find(kEventNames.begin(), kEventNames.end(), name) != kEventNames.end();
+}
 
 void set_nil(lua_State* state, const char* name) {
     lua_pushnil(state);
@@ -38,7 +57,8 @@ void set_api_function(lua_State* state, LuaMod* mod, const char* name, lua_CFunc
 LuaMod::LuaMod(LuaModOptions options) : options_(std::move(options)) {
     memory_.limit = options_.memory_limit_bytes;
     if (options_.mod_id.empty() || memory_.limit == 0 || options_.instruction_budget == 0 ||
-        options_.callback_time_limit.count() <= 0 || options_.callback_recursion_limit == 0) {
+        options_.callback_time_limit.count() <= 0 || options_.callback_recursion_limit == 0 ||
+        options_.event_recursion_limit == 0 || options_.maximum_event_handlers == 0) {
         last_error_ = "invalid Lua mod options";
         return;
     }
@@ -123,6 +143,98 @@ void LuaMod::advance_timers(const std::uint64_t ticks) {
         (void)execute_at_stack_top("timer");
         luaL_unref(state_, LUA_REGISTRYINDEX, timer.function_reference);
     }
+}
+
+LuaEventDispatchResult LuaMod::dispatch_event(
+    const std::string_view event_name,
+    const LuaEventFields& fields,
+    const bool cancellable) {
+    LuaEventDispatchResult result;
+    if (state_ == nullptr || !known_event(event_name)) {
+        report_error("event", "unknown event: " + std::string(event_name));
+        return result;
+    }
+    if (event_dispatch_depth_ >= options_.event_recursion_limit) {
+        report_error("event." + std::string(event_name), "event recursion limit exceeded");
+        return result;
+    }
+    for (const auto& [name, value] : fields) {
+        if (name.empty() || name == "name" || name == "cancelled" ||
+            (std::holds_alternative<GameObjectHandle>(value) &&
+             (options_.object_registry == nullptr ||
+              options_.object_registry->resolve(
+                  std::get<GameObjectHandle>(value),
+                  std::get<GameObjectHandle>(value).kind) == nullptr))) {
+            report_error("event." + std::string(event_name), "event payload is invalid or stale");
+            return result;
+        }
+    }
+
+    ++event_dispatch_depth_;
+    lua_newtable(state_);
+    lua_pushlstring(state_, event_name.data(), event_name.size());
+    lua_setfield(state_, -2, "name");
+    lua_pushboolean(state_, 0);
+    lua_setfield(state_, -2, "cancelled");
+    for (const auto& [name, value] : fields) {
+        if (!push_event_value(value)) {
+            lua_pop(state_, 1);
+            --event_dispatch_depth_;
+            report_error("event." + std::string(event_name), "event payload could not be encoded");
+            return result;
+        }
+        lua_setfield(state_, -2, name.c_str());
+    }
+    const int event_reference = luaL_ref(state_, LUA_REGISTRYINDEX);
+
+    std::vector<std::uint64_t> snapshot;
+    for (const auto& handler : event_handlers_) {
+        if (handler.enabled && handler.event_name == event_name) {
+            snapshot.push_back(handler.token);
+        }
+    }
+    result.succeeded = true;
+    for (const std::uint64_t token : snapshot) {
+        const auto handler = std::find_if(
+            event_handlers_.begin(),
+            event_handlers_.end(),
+            [token](const EventHandler& candidate) {
+                return candidate.enabled && candidate.token == token;
+            });
+        if (handler == event_handlers_.end()) {
+            continue;
+        }
+        const int function_reference = handler->function_reference;
+        lua_rawgeti(state_, LUA_REGISTRYINDEX, function_reference);
+        lua_rawgeti(state_, LUA_REGISTRYINDEX, event_reference);
+        ++result.handlers_invoked;
+        if (!execute_at_stack_top(
+                "event." + std::string(event_name) + "#" + std::to_string(token), 1)) {
+            result.succeeded = false;
+            const auto failed = std::find_if(
+                event_handlers_.begin(),
+                event_handlers_.end(),
+                [token](const EventHandler& candidate) { return candidate.token == token; });
+            if (failed != event_handlers_.end() && failed->enabled) {
+                failed->enabled = false;
+                luaL_unref(state_, LUA_REGISTRYINDEX, failed->function_reference);
+            }
+        }
+    }
+
+    lua_rawgeti(state_, LUA_REGISTRYINDEX, event_reference);
+    lua_getfield(state_, -1, "cancelled");
+    result.cancelled = cancellable && lua_isboolean(state_, -1) && lua_toboolean(state_, -1) != 0;
+    lua_pop(state_, 2);
+    luaL_unref(state_, LUA_REGISTRYINDEX, event_reference);
+    --event_dispatch_depth_;
+    event_handlers_.erase(
+        std::remove_if(
+            event_handlers_.begin(),
+            event_handlers_.end(),
+            [](const EventHandler& handler) { return !handler.enabled; }),
+        event_handlers_.end());
+    return result;
 }
 
 bool LuaMod::callback_disabled(const std::string_view callback) const {
@@ -283,6 +395,85 @@ int LuaMod::api_timer_after(lua_State* state) {
     return 0;
 }
 
+int LuaMod::api_event_on(lua_State* state) {
+    LuaMod* mod = from_upvalue(state);
+    const char* event_name = luaL_checkstring(state, 1);
+    luaL_checktype(state, 2, LUA_TFUNCTION);
+    if (!known_event(event_name)) {
+        return luaL_error(state, "unknown event name");
+    }
+    const auto active_handlers = std::count_if(
+        mod->event_handlers_.begin(),
+        mod->event_handlers_.end(),
+        [](const EventHandler& handler) { return handler.enabled; });
+    if (static_cast<std::size_t>(active_handlers) >= mod->options_.maximum_event_handlers ||
+        mod->next_event_token_ == 0 ||
+        mod->next_event_token_ > static_cast<std::uint64_t>((std::numeric_limits<lua_Integer>::max)())) {
+        return luaL_error(state, "event handler limit reached");
+    }
+    lua_pushvalue(state, 2);
+    const int reference = luaL_ref(state, LUA_REGISTRYINDEX);
+    const std::uint64_t token = mod->next_event_token_++;
+    mod->event_handlers_.push_back({token, event_name, reference, true});
+    lua_pushinteger(state, static_cast<lua_Integer>(token));
+    return 1;
+}
+
+int LuaMod::api_event_off(lua_State* state) {
+    LuaMod* mod = from_upvalue(state);
+    const lua_Integer requested = luaL_checkinteger(state, 1);
+    const auto handler = requested <= 0
+                             ? mod->event_handlers_.end()
+                             : std::find_if(
+                                   mod->event_handlers_.begin(),
+                                   mod->event_handlers_.end(),
+                                   [requested](const EventHandler& candidate) {
+                                       return candidate.enabled &&
+                                              candidate.token == static_cast<std::uint64_t>(requested);
+                                   });
+    if (handler == mod->event_handlers_.end()) {
+        lua_pushboolean(state, 0);
+        return 1;
+    }
+    handler->enabled = false;
+    luaL_unref(state, LUA_REGISTRYINDEX, handler->function_reference);
+    lua_pushboolean(state, 1);
+    return 1;
+}
+
+int LuaMod::api_game_object_is_valid(lua_State* state) {
+    const auto* object = static_cast<LuaGameObject*>(
+        luaL_checkudata(state, 1, kGameObjectMetatable));
+    lua_pushboolean(
+        state,
+        object->registry != nullptr &&
+            object->registry->resolve(object->handle, object->handle.kind) != nullptr);
+    return 1;
+}
+
+int LuaMod::api_game_object_id(lua_State* state) {
+    const auto* object = static_cast<LuaGameObject*>(
+        luaL_checkudata(state, 1, kGameObjectMetatable));
+    if (object->registry == nullptr ||
+        object->registry->resolve(object->handle, object->handle.kind) == nullptr) {
+        return luaL_error(state, "game object is stale");
+    }
+    lua_pushinteger(state, static_cast<lua_Integer>(object->handle.id));
+    return 1;
+}
+
+int LuaMod::api_game_object_kind(lua_State* state) {
+    const auto* object = static_cast<LuaGameObject*>(
+        luaL_checkudata(state, 1, kGameObjectMetatable));
+    if (object->registry == nullptr ||
+        object->registry->resolve(object->handle, object->handle.kind) == nullptr) {
+        return luaL_error(state, "game object is stale");
+    }
+    const std::string_view kind = game_object_kind_name(object->handle.kind);
+    lua_pushlstring(state, kind.data(), kind.size());
+    return 1;
+}
+
 LuaMod* LuaMod::from_upvalue(lua_State* state) {
     return static_cast<LuaMod*>(lua_touserdata(state, lua_upvalueindex(1)));
 }
@@ -308,6 +499,20 @@ void LuaMod::open_sandbox() {
 }
 
 void LuaMod::register_api() {
+    if (luaL_newmetatable(state_, kGameObjectMetatable) != 0) {
+        lua_newtable(state_);
+        lua_pushcfunction(state_, &LuaMod::api_game_object_is_valid);
+        lua_setfield(state_, -2, "is_valid");
+        lua_pushcfunction(state_, &LuaMod::api_game_object_id);
+        lua_setfield(state_, -2, "id");
+        lua_pushcfunction(state_, &LuaMod::api_game_object_kind);
+        lua_setfield(state_, -2, "kind");
+        lua_setfield(state_, -2, "__index");
+        lua_pushliteral(state_, "BTD5 game object v1");
+        lua_setfield(state_, -2, "__metatable");
+    }
+    lua_pop(state_, 1);
+
     lua_newtable(state_);
     set_api_function(state_, this, "log", &LuaMod::api_log);
 
@@ -331,6 +536,11 @@ void LuaMod::register_api() {
     lua_newtable(state_);
     set_api_function(state_, this, "after", &LuaMod::api_timer_after);
     lua_setfield(state_, -2, "timer");
+
+    lua_newtable(state_);
+    set_api_function(state_, this, "on", &LuaMod::api_event_on);
+    set_api_function(state_, this, "off", &LuaMod::api_event_off);
+    lua_setfield(state_, -2, "events");
 
     lua_setglobal(state_, "btd5");
 }
@@ -370,9 +580,11 @@ bool LuaMod::save_storage() {
     return output.good();
 }
 
-bool LuaMod::execute_at_stack_top(const std::string_view callback) {
+bool LuaMod::execute_at_stack_top(
+    const std::string_view callback,
+    const int argument_count) {
     if (callback_depth_ >= options_.callback_recursion_limit) {
-        lua_pop(state_, 1);
+        lua_pop(state_, argument_count + 1);
         report_error(callback, "callback recursion limit exceeded");
         return false;
     }
@@ -380,7 +592,7 @@ bool LuaMod::execute_at_stack_top(const std::string_view callback) {
     instructions_remaining_ = options_.instruction_budget;
     deadline_ = std::chrono::steady_clock::now() + options_.callback_time_limit;
     lua_sethook(state_, &LuaMod::instruction_hook, LUA_MASKCOUNT, kInstructionHookInterval);
-    const int result = lua_pcall(state_, 0, 0, 0);
+    const int result = lua_pcall(state_, argument_count, 0, 0);
     lua_sethook(state_, nullptr, 0, 0);
     --callback_depth_;
     if (result != LUA_OK) {
@@ -390,6 +602,35 @@ bool LuaMod::execute_at_stack_top(const std::string_view callback) {
         return false;
     }
     return true;
+}
+
+bool LuaMod::push_event_value(const LuaEventValue& value) {
+    return std::visit(
+        [this](const auto& typed) {
+            using Value = std::decay_t<decltype(typed)>;
+            if constexpr (std::is_same_v<Value, bool>) {
+                lua_pushboolean(state_, typed);
+            } else if constexpr (std::is_same_v<Value, std::int64_t>) {
+                lua_pushinteger(state_, static_cast<lua_Integer>(typed));
+            } else if constexpr (std::is_same_v<Value, double>) {
+                lua_pushnumber(state_, typed);
+            } else if constexpr (std::is_same_v<Value, std::string>) {
+                lua_pushlstring(state_, typed.data(), typed.size());
+            } else if constexpr (std::is_same_v<Value, GameObjectHandle>) {
+                push_game_object(typed);
+            } else {
+                return false;
+            }
+            return true;
+        },
+        value);
+}
+
+void LuaMod::push_game_object(const GameObjectHandle& handle) {
+    auto* object = static_cast<LuaGameObject*>(lua_newuserdatauv(state_, sizeof(LuaGameObject), 0));
+    object->registry = options_.object_registry;
+    object->handle = handle;
+    luaL_setmetatable(state_, kGameObjectMetatable);
 }
 
 void LuaMod::report_error(const std::string_view callback, const std::string_view message) {

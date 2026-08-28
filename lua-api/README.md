@@ -24,6 +24,24 @@ infer that the game scene is ready from `on_load()`.
 - `btd5.timer.after(ticks, callback)` schedules a deterministic one-shot timer.
   In the current live host, one tick is one rendered frame rather than one game
   simulation step.
+- `btd5.events.on(name, callback)` subscribes and returns an integer token.
+- `btd5.events.off(token)` removes a subscription and reports whether it existed.
+
+## Gameplay events and object wrappers
+
+The v1 event names and wrapper lifetime rules are specified in the
+[gameplay event contract](../docs/gameplay-events.md). Handlers run in mod load
+order and then subscription order. A handler added during dispatch begins with
+the next event; removing a handler takes effect immediately. A failing handler
+is disabled without stopping later handlers.
+
+Game objects are opaque userdata. `object:is_valid()` is the only operation
+allowed on a stale object. `object:id()` and `object:kind()` reject handles whose
+native object was destroyed, reused, or belonged to an earlier scene.
+
+The event bus and wrappers are mock-host validated but are not yet populated by
+live match/gameplay hooks. Mods must not treat subscription availability as
+evidence that gameplay events currently fire in BTD5.
 
 Resource paths must use `/`, remain relative, and contain no `.` or `..`
 components. Mods never receive a general filesystem path.

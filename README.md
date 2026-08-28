@@ -144,6 +144,7 @@ custom-tower examples will be added when their implementation gates pass.
 | [Implementation action plan](ACTIONPLAN.md) | Ordered roadmap, progress markers, and phase gates |
 | [Build guide](docs/building.md) | Prerequisites, build commands, tests, analysis, and symbol inspection |
 | [Lua API](lua-api/README.md) | Available sandboxed Lua functions and lifecycle behavior |
+| [Gameplay event contract](docs/gameplay-events.md) | Event names, ordering, containment, and object lifetime rules |
 | [Mod package format](docs/mod-packages.md) | Archive layout, validation limits, and deterministic ordering |
 | [Manager storage and ownership](docs/manager-storage.md) | Safe installation, repair, uninstall, and local state rules |
 | [Supported build validation](docs/validation-steam-win32-4.8.md) | Fingerprints and manual compatibility evidence |

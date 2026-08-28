@@ -31,6 +31,7 @@ std::filesystem::path g_game_directory;
 std::filesystem::path g_session_directory;
 std::vector<std::unique_ptr<btd5loader::runtime::LuaMod>> g_mods;
 std::mutex g_mods_mutex;
+btd5loader::runtime::GameObjectRegistry g_game_objects;
 btd5loader::runtime::FrameHook g_frame_hook;
 btd5loader::runtime::HookTransaction g_hooks;
 
@@ -229,6 +230,7 @@ bool load_active_mods(const std::string& build_id) {
         options.storage_directory = root / L"storage" / path_from_utf8(requested.id);
         options.resource_directory = resource_directory;
         options.configuration = requested.configuration;
+        options.object_registry = &g_game_objects;
         if (!load_localization(resource_directory, options.localization, error)) {
             g_logger.error("mods", requested.id + ":" + error);
             return rollback();
@@ -371,6 +373,7 @@ extern "C" btd5loader::runtime::State WINAPI BTD5Loader_GetState() {
 extern "C" void WINAPI BTD5Loader_Shutdown() {
     using btd5loader::runtime::State;
     g_hooks.rollback();
+    g_game_objects.begin_scene();
     {
         std::scoped_lock lock(g_mods_mutex);
         for (auto iterator = g_mods.rbegin(); iterator != g_mods.rend(); ++iterator) {

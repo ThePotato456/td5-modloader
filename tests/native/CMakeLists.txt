@@ -3,6 +3,7 @@ add_executable(
     foundation_tests.cpp
     ../../src/native/runtime/active_profile.cpp
     ../../src/native/runtime/compatibility.cpp
+    ../../src/native/runtime/game_object.cpp
     ../../src/native/runtime/hook_transaction.cpp
     ../../src/native/runtime/lua_mod.cpp
     ../../src/native/runtime/mod_manifest.cpp

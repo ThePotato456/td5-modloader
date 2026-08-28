@@ -160,6 +160,188 @@ TEST_CASE("invalid patterns fail with a diagnostic", "[symbols]") {
     REQUIRE_FALSE(error.empty());
 }
 
+TEST_CASE("game object handles reject invalidation, reuse, and scene changes", "[objects]") {
+    using btd5loader::runtime::GameObjectKind;
+    btd5loader::runtime::GameObjectRegistry registry;
+    std::array<int, 7> objects{};
+    const std::array kinds{
+        GameObjectKind::Match,
+        GameObjectKind::Round,
+        GameObjectKind::Player,
+        GameObjectKind::Tower,
+        GameObjectKind::Attack,
+        GameObjectKind::Projectile,
+        GameObjectKind::Bloon};
+    std::vector<btd5loader::runtime::GameObjectHandle> handles;
+    for (std::size_t index = 0; index < kinds.size(); ++index) {
+        const auto handle = registry.add(kinds[index], &objects[index]);
+        REQUIRE(handle.id != 0);
+        REQUIRE(registry.resolve(handle, kinds[index]) == &objects[index]);
+        REQUIRE(registry.resolve(handle, GameObjectKind::Match) ==
+                (kinds[index] == GameObjectKind::Match ? &objects[index] : nullptr));
+        handles.push_back(handle);
+    }
+
+    const auto stale = handles[3];
+    REQUIRE(registry.invalidate(stale));
+    REQUIRE_FALSE(registry.invalidate(stale));
+    REQUIRE(registry.resolve(stale, GameObjectKind::Tower) == nullptr);
+    int replacement = 0;
+    const auto reused = registry.add(GameObjectKind::Tower, &replacement);
+    REQUIRE(reused.id == stale.id);
+    REQUIRE(reused.generation != stale.generation);
+    REQUIRE(registry.resolve(reused, GameObjectKind::Tower) == &replacement);
+
+    registry.begin_scene();
+    for (const auto& handle : handles) {
+        REQUIRE(registry.resolve(handle, handle.kind) == nullptr);
+    }
+    REQUIRE(registry.resolve(reused, GameObjectKind::Tower) == nullptr);
+}
+
+TEST_CASE("Lua events are ordered, mutable, cancellable, and unsubscribable", "[lua][events]") {
+    std::vector<std::string> logs;
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.events";
+    options.log = [&logs](const std::string_view, const std::string_view message) {
+        logs.emplace_back(message);
+    };
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        local late
+        local first = btd5.events.on("match.starting", function(event)
+            btd5.log("info", "first:" .. event.value)
+            event.value = event.value + 1
+            if late == nil then
+                late = btd5.events.on("match.starting", function(e)
+                    btd5.log("info", "late:" .. e.value)
+                end)
+            end
+        end)
+        btd5.events.on("match.starting", function(event)
+            btd5.log("info", "second:" .. event.value)
+            event.cancelled = true
+        end)
+        local removed = btd5.events.on("match.starting", function()
+            error("removed handler ran")
+        end)
+        assert(btd5.events.off(removed))
+        assert(not btd5.events.off(removed))
+        assert(not pcall(btd5.events.on, "unknown.event", function() end))
+    )lua", "events.lua"));
+
+    const btd5loader::runtime::LuaEventFields fields{{"value", std::int64_t{4}}};
+    const auto first = mod.dispatch_event("match.starting", fields, true);
+    REQUIRE(first.succeeded);
+    REQUIRE(first.cancelled);
+    REQUIRE(first.handlers_invoked == 2);
+    REQUIRE(logs == std::vector<std::string>{"first:4", "second:5"});
+
+    logs.clear();
+    const auto second = mod.dispatch_event("match.starting", fields, false);
+    REQUIRE(second.succeeded);
+    REQUIRE_FALSE(second.cancelled);
+    REQUIRE(second.handlers_invoked == 3);
+    REQUIRE(logs == std::vector<std::string>{"first:4", "second:5", "late:5"});
+}
+
+TEST_CASE("documented v1 Lua event names are accepted", "[lua][events]") {
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.event-catalog";
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        local names = {
+            "match.starting", "match.started", "match.ending", "match.ended",
+            "round.starting", "round.started", "round.ending", "round.ended",
+            "cash.changing", "cash.changed", "lives.changing", "lives.changed",
+            "tower.placing", "tower.placed", "tower.upgrading", "tower.upgraded",
+            "tower.selling", "tower.sold", "bloon.spawning", "bloon.spawned",
+            "bloon.popping", "bloon.popped", "bloon.leaking", "bloon.leaked"
+        }
+        for _, name in ipairs(names) do
+            btd5.events.on(name, function() end)
+        end
+    )lua", "event-catalog.lua"));
+    REQUIRE(mod.dispatch_event("match.starting").handlers_invoked == 1);
+    REQUIRE(mod.dispatch_event("round.ended").handlers_invoked == 1);
+    REQUIRE(mod.dispatch_event("cash.changing").handlers_invoked == 1);
+    REQUIRE(mod.dispatch_event("lives.changed").handlers_invoked == 1);
+    REQUIRE(mod.dispatch_event("tower.upgraded").handlers_invoked == 1);
+    REQUIRE(mod.dispatch_event("bloon.leaked").handlers_invoked == 1);
+}
+
+TEST_CASE("failing and recursive Lua event handlers are contained", "[lua][events]") {
+    std::vector<std::string> logs;
+    btd5loader::runtime::LuaMod* active = nullptr;
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.event-errors";
+    options.event_recursion_limit = 2;
+    options.log = [&logs, &active](const std::string_view level, const std::string_view message) {
+        logs.emplace_back(std::string(level) + ":" + std::string(message));
+        if (message == "recurse" && active != nullptr) {
+            (void)active->dispatch_event("round.started");
+        }
+    };
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    active = &mod;
+    REQUIRE(mod.load_script(R"lua(
+        btd5.events.on("match.started", function() error("contained") end)
+        btd5.events.on("match.started", function() btd5.log("info", "healthy") end)
+        btd5.events.on("round.started", function() btd5.log("info", "recurse") end)
+    )lua", "event-errors.lua"));
+
+    const auto first = mod.dispatch_event("match.started");
+    REQUIRE_FALSE(first.succeeded);
+    REQUIRE(first.handlers_invoked == 2);
+    REQUIRE(std::find(logs.begin(), logs.end(), "info:healthy") != logs.end());
+    logs.clear();
+    const auto second = mod.dispatch_event("match.started");
+    REQUIRE(second.succeeded);
+    REQUIRE(second.handlers_invoked == 1);
+
+    const auto recursive = mod.dispatch_event("round.started");
+    REQUIRE(recursive.succeeded);
+    REQUIRE(mod.last_error().find("event recursion limit") != std::string_view::npos);
+}
+
+TEST_CASE("Lua game object userdata rejects stale host objects", "[lua][objects]") {
+    using btd5loader::runtime::GameObjectKind;
+    btd5loader::runtime::GameObjectRegistry registry;
+    int tower = 0;
+    const auto handle = registry.add(GameObjectKind::Tower, &tower);
+    std::vector<std::string> logs;
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.objects";
+    options.object_registry = &registry;
+    options.log = [&logs](const std::string_view, const std::string_view message) {
+        logs.emplace_back(message);
+    };
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        local saved
+        btd5.events.on("tower.placed", function(event)
+            saved = event.tower
+            assert(saved:is_valid())
+            assert(saved:kind() == "tower")
+            btd5.log("info", "tower:" .. saved:id())
+        end)
+        btd5.events.on("tower.upgraded", function()
+            assert(not saved:is_valid())
+            saved:id()
+        end)
+    )lua", "objects.lua"));
+
+    const auto placed = mod.dispatch_event(
+        "tower.placed",
+        {{"tower", handle}});
+    REQUIRE(placed.succeeded);
+    REQUIRE(logs == std::vector<std::string>{"tower:" + std::to_string(handle.id)});
+    REQUIRE(registry.invalidate(handle));
+    const auto stale = mod.dispatch_event("tower.upgraded");
+    REQUIRE_FALSE(stale.succeeded);
+    REQUIRE(mod.last_error().find("game object is stale") != std::string_view::npos);
+}
+
 TEST_CASE("SHA-256 fingerprints are stable", "[compatibility]") {
     const auto test_root = std::filesystem::temp_directory_path() /
                            (L"btd5ml-hash-test-" + std::to_wstring(GetCurrentProcessId()));
