@@ -86,23 +86,23 @@ Initial supported build fingerprints:
 
 ## Phase 4 — Lua host, sandbox, and mod package contract
 
-- [ ] Embed Lua 5.4 in the runtime and create one isolated Lua state per enabled mod.
-- [ ] Expose lifecycle callbacks for `on_load`, `on_ready`, and `on_shutdown`.
-- [ ] Remove unrestricted `io`, `os`, `package`, `debug`, `loadfile`, `dofile`, native-library loading, process launch, and networking from mod environments.
-- [ ] Provide sandboxed APIs for logging, configuration, deterministic timers, mod-owned storage, localization, and packaged-resource lookup.
-- [ ] Enforce CPU instruction budgets, callback time limits, memory limits, and recursion limits per mod.
-- [ ] Catch Lua errors at every host boundary, annotate them with mod ID and callback, and disable only the failing callback when continuing is safe.
-- [ ] Define `.btd5mod` as a ZIP package with `mod.json`, Lua entry points, assets, localization, configuration defaults, and optional documentation.
-- [ ] Require manifests to declare stable ID, name, author, semantic version, entry point, loader API version, supported game builds, dependencies, load-order constraints, and capabilities.
-- [ ] Reject path traversal, duplicate IDs, malformed archives, unsupported API versions, dependency cycles, and files outside package limits.
-- [ ] Dispatch mods deterministically by dependency order, explicit ordering rules, profile order, and finally mod ID.
+- [x] Embed Lua 5.4 in the runtime and create one isolated Lua state per enabled mod.
+- [x] Expose lifecycle callbacks for `on_load`, `on_ready`, and `on_shutdown`.
+- [x] Remove unrestricted `io`, `os`, `package`, `debug`, `loadfile`, `dofile`, native-library loading, process launch, and networking from mod environments.
+- [x] Provide sandboxed APIs for logging, configuration, deterministic timers, mod-owned storage, localization, and packaged-resource lookup.
+- [x] Enforce CPU instruction budgets, callback time limits, memory limits, and recursion limits per mod.
+- [x] Catch Lua errors at every host boundary, annotate them with mod ID and callback, and disable only the failing callback when continuing is safe.
+- [x] Define `.btd5mod` as a ZIP package with `mod.json`, Lua entry points, assets, localization, configuration defaults, and optional documentation.
+- [x] Require manifests to declare stable ID, name, author, semantic version, entry point, loader API version, supported game builds, dependencies, load-order constraints, and capabilities.
+- [x] Reject path traversal, duplicate IDs, malformed archives, unsupported API versions, dependency cycles, and files outside package limits.
+- [x] Dispatch mods deterministically by dependency order, explicit ordering rules, profile order, and finally mod ID.
 
 ### Phase 4 implementation gate
 
-- [ ] A sample Lua mod loads, logs, stores configuration, receives lifecycle callbacks, and shuts down cleanly.
-- [ ] Sandbox tests prove that a Lua mod cannot access arbitrary files, processes, networking, Windows APIs, native DLLs, or another mod's storage.
-- [ ] Malformed packages and dependency cycles are rejected without starting the game runtime.
-- [ ] A deliberately failing or runaway Lua callback is contained without corrupting another Lua state.
+- [x] A sample Lua mod loads, logs, stores configuration, receives lifecycle callbacks, and shuts down cleanly.
+- [x] Sandbox tests prove that a Lua mod cannot access arbitrary files, processes, networking, Windows APIs, native DLLs, or another mod's storage.
+- [x] Malformed packages and dependency cycles are rejected without starting the game runtime.
+- [x] A deliberately failing or runaway Lua callback is contained without corrupting another Lua state.
 
 ---
 

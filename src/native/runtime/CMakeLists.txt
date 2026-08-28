@@ -4,6 +4,9 @@ add_library(
         logger.cpp
         compatibility.cpp
         hook_transaction.cpp
+        lua_mod.cpp
+        mod_manifest.cpp
+        mod_package.cpp
         pattern.cpp
         symbol_resolver.cpp
         runtime.cpp
@@ -11,7 +14,10 @@ add_library(
         runtime_state.cpp
 )
 target_include_directories(btd5loader_runtime PUBLIC ../include)
-target_link_libraries(btd5loader_runtime PRIVATE bcrypt nlohmann_json::nlohmann_json)
+target_link_libraries(
+    btd5loader_runtime
+    PRIVATE bcrypt btd5ml_lua miniz nlohmann_json::nlohmann_json
+)
 set_target_properties(btd5loader_runtime PROPERTIES PREFIX "")
 add_custom_command(
     TARGET btd5loader_runtime

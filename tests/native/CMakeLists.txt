@@ -3,6 +3,9 @@ add_executable(
     foundation_tests.cpp
     ../../src/native/runtime/compatibility.cpp
     ../../src/native/runtime/hook_transaction.cpp
+    ../../src/native/runtime/lua_mod.cpp
+    ../../src/native/runtime/mod_manifest.cpp
+    ../../src/native/runtime/mod_package.cpp
     ../../src/native/runtime/pattern.cpp
     ../../src/native/runtime/symbol_resolver.cpp
     ../../src/native/runtime/runtime_state.cpp
@@ -12,6 +15,8 @@ target_link_libraries(
     PRIVATE
         Catch2::Catch2WithMain
         bcrypt
+        btd5ml_lua
+        miniz
         nlohmann_json::nlohmann_json
 )
 target_include_directories(btd5loader_native_tests PRIVATE ../../src/native/include)

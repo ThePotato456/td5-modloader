@@ -1,5 +1,5 @@
 # Samples
 
-Phase 4 will add a minimal lifecycle mod. Later phases will add an event mod and
-a complete custom tower using only publishable, original assets.
-
+`lifecycle-mod` is the minimal Lua 5.4 package source used by the Phase 4 gate.
+Later phases will add an event mod and a complete custom tower using only
+publishable, original assets.
