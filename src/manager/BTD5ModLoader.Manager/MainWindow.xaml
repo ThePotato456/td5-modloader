@@ -4,19 +4,65 @@
         x:ClassModifier="internal"
         Title="BTD5 Mod Loader"
         Width="900"
-        Height="600"
+        Height="620"
         MinWidth="700"
-        MinHeight="450"
+        MinHeight="500"
         WindowStartupLocation="CenterScreen">
     <Grid Margin="32">
-        <StackPanel VerticalAlignment="Center">
-            <TextBlock FontSize="32"
-                       FontWeight="SemiBold"
-                       Text="BTD5 Mod Loader" />
-            <TextBlock Margin="0,12,0,0"
-                       FontSize="16"
-                       Foreground="#666666"
-                       Text="Project foundation is ready. Game discovery arrives in Phase 5." />
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock FontSize="32" FontWeight="SemiBold" Text="BTD5 Mod Loader" />
+            <TextBlock Margin="0,8,0,0" FontSize="15" Foreground="#666666"
+                       Text="Install a local Lua mod package after reviewing what it requests." />
         </StackPanel>
+        <Border Grid.Row="1" Margin="0,24,0,20" Padding="24" AllowDrop="True"
+                BorderBrush="#8A8A8A" BorderThickness="1" CornerRadius="6"
+                DragOver="PackageDropArea_DragOver" Drop="PackageDropArea_Drop">
+            <StackPanel HorizontalAlignment="Center">
+                <TextBlock HorizontalAlignment="Center" FontSize="17" FontWeight="SemiBold"
+                           Text="Drop a .btd5mod package here" />
+                <Button Margin="0,14,0,0" Padding="18,7" Click="ChoosePackage_Click"
+                        Content="Choose package…" />
+            </StackPanel>
+        </Border>
+        <Border Grid.Row="2" Padding="20" Background="#F5F5F5" CornerRadius="6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock FontWeight="SemiBold" Text="Package" />
+                <TextBlock x:Name="PackageNameText" Grid.Column="1" Text="No package selected" />
+                <TextBlock Grid.Row="1" Margin="0,10,0,0" FontWeight="SemiBold" Text="Author / version" />
+                <TextBlock x:Name="AuthorVersionText" Grid.Row="1" Grid.Column="1" Margin="0,10,0,0" Text="—" />
+                <TextBlock Grid.Row="2" Margin="0,10,0,0" FontWeight="SemiBold" Text="Mod ID" />
+                <TextBlock x:Name="ModIdText" Grid.Row="2" Grid.Column="1" Margin="0,10,0,0" Text="—" />
+                <TextBlock Grid.Row="3" Margin="0,10,0,0" FontWeight="SemiBold" Text="Permissions" />
+                <TextBlock x:Name="CapabilitiesText" Grid.Row="3" Grid.Column="1" Margin="0,10,0,0" Text="—" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="4" Margin="0,10,0,0" FontWeight="SemiBold" Text="Dependencies" />
+                <TextBlock x:Name="DependenciesText" Grid.Row="4" Grid.Column="1" Margin="0,10,0,0" Text="—" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="5" Margin="0,10,0,0" FontWeight="SemiBold" Text="Validation" />
+                <TextBlock x:Name="ValidationText" Grid.Row="5" Grid.Column="1" Margin="0,10,0,0"
+                           Text="Choose a package to validate it." TextWrapping="Wrap" />
+            </Grid>
+        </Border>
+        <DockPanel Grid.Row="3" Margin="0,20,0,0">
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="#555555" Text="Ready" />
+            <Button x:Name="InstallPackageButton" Padding="22,8" HorizontalAlignment="Right"
+                    IsEnabled="False" Click="InstallPackage_Click" Content="Install package" />
+        </DockPanel>
     </Grid>
 </Window>

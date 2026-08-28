@@ -108,13 +108,13 @@ Initial supported build fingerprints:
 
 ## Phase 5 — Manager, installation, profiles, and package workflow
 
-- [ ] Discover Steam libraries and validate candidate BTD5 installations by executable metadata and hashes.
-- [ ] Implement loader install, verify, repair, and uninstall using a manager-owned installation manifest.
-- [ ] Never overwrite a pre-existing proxy DLL silently; identify conflicts and provide a non-destructive recovery path.
-- [ ] Implement drag-and-drop and file-picker installation for local `.btd5mod` packages.
-- [ ] Show package identity, version, dependencies, capabilities, supported game builds, and validation errors.
-- [ ] Implement named profiles with enabled mods, deterministic load order, configuration, and launch history.
-- [ ] Add enable, disable, reorder, upgrade, downgrade, and uninstall operations with dependency checks.
+- [x] Discover Steam libraries and validate candidate BTD5 installations by executable metadata and hashes.
+- [x] Implement loader install, verify, repair, and uninstall using a manager-owned installation manifest.
+- [x] Never overwrite a pre-existing proxy DLL silently; identify conflicts and provide a non-destructive recovery path.
+- [x] Implement drag-and-drop and file-picker installation for local `.btd5mod` packages.
+- [x] Show package identity, version, dependencies, capabilities, supported game builds, and validation errors.
+- [x] Implement named profiles with enabled mods, deterministic load order, configuration, and launch history.
+- [~] Add enable, disable, reorder, upgrade, downgrade, and uninstall operations with dependency checks.
 - [ ] Add modded launch, vanilla launch, log viewing, diagnostics export, and loader status views.
 - [ ] Keep installed packages and manager state under `%LocalAppData%\BTD5ModLoader`, not in the repository.
 
