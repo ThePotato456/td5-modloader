@@ -13,6 +13,7 @@
 /.nuget/
 
 # Local integration settings and game-owned data
+/.local/
 /config/local.json
 /config/*.local.json
 /installed-mods/
@@ -27,4 +28,3 @@
 *.VC.VC.opendb
 .DS_Store
 Thumbs.db
-
