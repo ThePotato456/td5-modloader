@@ -25,6 +25,17 @@ to the ignored `config/local.json` and adjust the path.
 Release builds use `-Configuration Release`. Native output is always Win32/x86
 because it loads into the 32-bit game; the WPF manager is architecture-neutral.
 
+After a successful build, assemble a runnable manager bundle and the lifecycle
+sample package:
+
+```powershell
+./scripts/stage.ps1 -Configuration Debug
+```
+
+The result is written to `out/stage/debug`. The manager, proxy, runtime, symbol
+maps, and sample package are colocated there so installation does not require
+manually collecting build outputs.
+
 ## Read-only game compatibility check
 
 After building, inspect a legally obtained installation without launching or

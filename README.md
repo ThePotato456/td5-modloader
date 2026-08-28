@@ -43,10 +43,12 @@ The repository currently includes:
 - validated symbol maps and transactional hook rollback;
 - an embedded Lua 5.4.9 host with isolated mod states and sandbox limits;
 - validated `.btd5mod` ZIP packages and deterministic dependency ordering;
-- a WPF manager foundation with Steam discovery, safe loader
-  install/verify/repair/uninstall, package inspection, and package installation;
+- a WPF manager with Steam discovery, safe loader install/verify/repair/uninstall,
+  package inspection, profiles, launch controls, logs, and diagnostics export;
 - named profile persistence, per-mod configuration, deterministic profile order,
-  and bounded launch history;
+  dependency-safe operations, and bounded launch history;
+- a validated manager-to-runtime handoff that loads packages and invokes Lua
+  `on_load` inside the game process while waiting for the Phase 6 game-ready hook;
 - native and managed integration tests that do not redistribute game files.
 
 Detailed progress and mandatory implementation gates are maintained in the

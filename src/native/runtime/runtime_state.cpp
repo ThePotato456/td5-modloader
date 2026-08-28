@@ -26,6 +26,10 @@ bool StateMachine::is_valid_transition(const State current, const State next) no
     if (next == State::Failed && current != State::ShuttingDown) {
         return true;
     }
+    if (next == State::ShuttingDown && current != State::NotStarted &&
+        current != State::ShuttingDown) {
+        return true;
+    }
 
     switch (current) {
     case State::NotStarted:
@@ -39,7 +43,7 @@ bool StateMachine::is_valid_transition(const State current, const State next) no
     case State::ModsLoading:
         return next == State::GameReady;
     case State::GameReady:
-        return next == State::ShuttingDown;
+        return false;
     case State::Failed:
         return next == State::ShuttingDown;
     case State::ShuttingDown:
@@ -49,4 +53,3 @@ bool StateMachine::is_valid_transition(const State current, const State next) no
 }
 
 }  // namespace btd5loader::runtime
-

@@ -2,6 +2,7 @@
 #include <btd5loader/runtime_api.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <miniz.h>
+#include <nlohmann/json.hpp>
 
 #include <Windows.h>
 
@@ -15,6 +16,7 @@
 #include <vector>
 
 #include "../../src/native/runtime/compatibility.hpp"
+#include "../../src/native/runtime/active_profile.hpp"
 #include "../../src/native/runtime/hook_transaction.hpp"
 #include "../../src/native/runtime/lua_mod.hpp"
 #include "../../src/native/runtime/mod_manifest.hpp"
@@ -64,6 +66,43 @@ TEST_CASE("product metadata is available", "[foundation]") {
     REQUIRE_FALSE(btd5loader::kVersion.empty());
 }
 
+TEST_CASE("active profile handoff requires absolute unique package paths", "[profiles]") {
+    const auto root = std::filesystem::temp_directory_path() /
+                      (L"btd5ml-active-profile-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+                       std::to_wstring(GetTickCount64()));
+    std::filesystem::create_directories(root);
+    const auto handoff = root / L"active-profile.json";
+    const auto archive = root / L"sample.btd5mod";
+    const nlohmann::json document{
+        {"schemaVersion", 1},
+        {"profile", "Testing"},
+        {"buildId", "fixture-build"},
+        {"mods",
+         {{{"id", "sample.lifecycle"},
+           {"version", "1.0.0"},
+           {"archivePath", archive.string()},
+           {"configuration", {{"greeting", "hello"}}}}}}};
+    {
+        std::ofstream output(handoff, std::ios::binary);
+        output << document.dump();
+    }
+    std::string error;
+    const auto profile = btd5loader::runtime::load_active_profile(handoff, error);
+    REQUIRE(profile.has_value());
+    REQUIRE(profile->name == "Testing");
+    REQUIRE(profile->mods.size() == 1);
+    REQUIRE(profile->mods.front().configuration.at("greeting") == "hello");
+
+    auto unsafe = document;
+    unsafe["mods"][0]["archivePath"] = "relative.btd5mod";
+    {
+        std::ofstream output(handoff, std::ios::binary | std::ios::trunc);
+        output << unsafe.dump();
+    }
+    REQUIRE_FALSE(btd5loader::runtime::load_active_profile(handoff, error).has_value());
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("native targets are built for the 32-bit game", "[foundation]") {
     STATIC_REQUIRE(sizeof(void*) == 4);
 }
@@ -89,6 +128,17 @@ TEST_CASE("runtime lifecycle can fail closed", "[runtime]") {
 
     REQUIRE(state.transition_to(State::Failed));
     REQUIRE(state.current() == State::Failed);
+    REQUIRE(state.transition_to(State::ShuttingDown));
+}
+
+TEST_CASE("runtime can shut down while waiting for the game-ready hook", "[runtime]") {
+    using btd5loader::runtime::State;
+    btd5loader::runtime::StateMachine state;
+
+    REQUIRE(state.transition_to(State::Bootstrap));
+    REQUIRE(state.transition_to(State::CompatibilityCheck));
+    REQUIRE(state.transition_to(State::HooksReady));
+    REQUIRE(state.transition_to(State::ModsLoading));
     REQUIRE(state.transition_to(State::ShuttingDown));
 }
 

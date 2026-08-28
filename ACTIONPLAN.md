@@ -114,9 +114,9 @@ Initial supported build fingerprints:
 - [x] Implement drag-and-drop and file-picker installation for local `.btd5mod` packages.
 - [x] Show package identity, version, dependencies, capabilities, supported game builds, and validation errors.
 - [x] Implement named profiles with enabled mods, deterministic load order, configuration, and launch history.
-- [~] Add enable, disable, reorder, upgrade, downgrade, and uninstall operations with dependency checks.
-- [ ] Add modded launch, vanilla launch, log viewing, diagnostics export, and loader status views.
-- [ ] Keep installed packages and manager state under `%LocalAppData%\BTD5ModLoader`, not in the repository.
+- [x] Add enable, disable, reorder, upgrade, downgrade, and uninstall operations with dependency checks.
+- [x] Add modded launch, vanilla launch, log viewing, diagnostics export, and loader status views.
+- [x] Keep installed packages and manager state under `%LocalAppData%\BTD5ModLoader`, not in the repository.
 
 ### Phase 5 implementation gate
 

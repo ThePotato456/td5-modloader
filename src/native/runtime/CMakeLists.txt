@@ -2,6 +2,7 @@ add_library(
     btd5loader_runtime
     SHARED
         logger.cpp
+        active_profile.cpp
         compatibility.cpp
         hook_transaction.cpp
         lua_mod.cpp

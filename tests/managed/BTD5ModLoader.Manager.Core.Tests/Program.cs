@@ -159,6 +159,132 @@ try
         () => profileService.CreateAsync("testing"),
         "Case-insensitive duplicate profile name was accepted.");
 
+    var operationsStateRoot = Path.Combine(testRoot, "operations-state");
+    var libraryPackage = Path.Combine(testRoot, "library.btd5mod");
+    var applicationV1Package = Path.Combine(testRoot, "application-v1.btd5mod");
+    var applicationV11Package = Path.Combine(testRoot, "application-v11.btd5mod");
+    var applicationV2Package = Path.Combine(testRoot, "application-v2.btd5mod");
+    CreatePackage(libraryPackage, BuildManifest("sample.library", "1.0.0"),
+        ("lua/main.lua", "return {}"));
+    CreatePackage(applicationV1Package,
+        BuildManifest("sample.application", "1.0.0", "sample.library", "^1.0.0"),
+        ("lua/main.lua", "return {}"));
+    CreatePackage(applicationV11Package,
+        BuildManifest("sample.application", "1.1.0", "sample.library", "^1.0.0"),
+        ("lua/main.lua", "return {}"));
+    CreatePackage(applicationV2Package,
+        BuildManifest("sample.application", "2.0.0", "sample.library", "^2.0.0"),
+        ("lua/main.lua", "return {}"));
+    foreach (var operationPackage in new[]
+             {
+                 libraryPackage, applicationV1Package, applicationV11Package, applicationV2Package
+             })
+    {
+        Assert((await ModPackageService.InstallAsync(
+            operationPackage, operationsStateRoot, "fixture-build")).Success,
+            "Operation test package installation failed.");
+    }
+
+    var operationsProfiles = new ProfileService(operationsStateRoot);
+    await operationsProfiles.CreateAsync("Operations");
+    var operations = new ProfileModService(operationsStateRoot, "fixture-build");
+    var missingDependency = await operations.EnableAsync(
+        "Operations", "sample.application", "1.0.0");
+    Assert(!missingDependency.Success && missingDependency.Validation.Errors.Any(error =>
+        error.Contains("requires enabled dependency", StringComparison.Ordinal)),
+        "Enabling a mod with a missing dependency was accepted.");
+    Assert((await operations.EnableAsync("Operations", "sample.library", "1.0.0")).Success,
+        "Dependency package could not be enabled.");
+    Assert((await operations.EnableAsync("Operations", "sample.application", "1.0.0")).Success,
+        "Mod could not be enabled after its dependency.");
+    var dependencyOrder = await operations.ValidateAsync("Operations");
+    Assert(dependencyOrder.Valid && dependencyOrder.OrderedPackages.Select(package => package.Id)
+        .SequenceEqual(new[] { "sample.library", "sample.application" }),
+        "Dependency-safe load order was not resolved.");
+    Assert((await operations.MoveAsync("Operations", "sample.application", 0)).Success &&
+        (await operations.ValidateAsync("Operations")).OrderedPackages.Select(package => package.Id)
+        .SequenceEqual(new[] { "sample.library", "sample.application" }),
+        "Profile reordering overrode a mandatory dependency edge.");
+    var blockedDisable = await operations.DisableAsync("Operations", "sample.library");
+    Assert(!blockedDisable.Success && blockedDisable.Validation.Errors.Any(error =>
+        error.Contains("requires enabled dependency", StringComparison.Ordinal)),
+        "Disabling a required dependency was accepted.");
+    Assert((await operations.ChangeVersionAsync(
+        "Operations", "sample.application", "1.1.0")).Success,
+        "Compatible mod upgrade failed.");
+    var incompatibleUpgrade = await operations.ChangeVersionAsync(
+        "Operations", "sample.application", "2.0.0");
+    Assert(!incompatibleUpgrade.Success && incompatibleUpgrade.Validation.Errors.Any(error =>
+        error.Contains("but 1.0.0 is selected", StringComparison.Ordinal)),
+        "An upgrade with an incompatible dependency was accepted.");
+    Assert((await operations.ChangeVersionAsync(
+        "Operations", "sample.application", "1.0.0")).Success,
+        "Compatible mod downgrade failed.");
+    var referencedUninstall = await operations.UninstallPackageAsync("sample.application", "1.0.0");
+    Assert(!referencedUninstall.Success && referencedUninstall.BlockingProfiles.SequenceEqual(
+        new[] { "Operations" }), "A profile-referenced package was uninstalled.");
+    Assert((await operations.RemoveAsync("Operations", "sample.application")).Success,
+        "A dependency-safe profile removal failed.");
+    Assert((await operations.UninstallPackageAsync("sample.application", "1.0.0")).Success,
+        "An unreferenced package could not be uninstalled.");
+
+    Assert((await new LoaderInstallationService(operationsStateRoot, builds)
+        .InstallAsync(gameDirectory, artifactDirectory)).Success,
+        "Launch test loader installation failed.");
+    Directory.CreateDirectory(Path.Combine(operationsStateRoot, "logs"));
+    await File.WriteAllTextAsync(
+        Path.Combine(operationsStateRoot, "logs", "runtime.jsonl"),
+        "{\"component\":\"runtime\",\"message\":\"hooks_ready_no_hooks_registered\"}\n");
+    var recordingLauncher = new RecordingGameProcessLauncher();
+    var launches = new GameLaunchService(operationsStateRoot, builds, recordingLauncher);
+    var launchStatus = await launches.GetStatusAsync(gameDirectory, "Operations");
+    Assert(launchStatus is
+    {
+        GameSupported: true,
+        LoaderVerified: true,
+        ProfileValid: true,
+        RuntimeState: "hooks_ready_no_hooks_registered"
+    }, "Launch readiness status was incorrect.");
+    Assert(!(await launches.LaunchModdedAsync(gameDirectory, "Operations", false)).Success &&
+        recordingLauncher.Requests.Count == 0,
+        "Modded launch did not require the offline-risk acknowledgement.");
+    var moddedLaunch = await launches.LaunchModdedAsync(gameDirectory, "Operations", true);
+    Assert(moddedLaunch.Success && recordingLauncher.Requests is
+        [{ UseShellExecute: false }], "Validated modded launch was not handed to the process launcher.");
+    var moddedRequest = recordingLauncher.Requests[0];
+    Assert(moddedRequest.Environment.TryGetValue("BTD5ML_ACTIVE_PROFILE", out var handoffPath) &&
+        File.Exists(handoffPath) &&
+        (await File.ReadAllTextAsync(handoffPath)).Contains("sample.library", StringComparison.Ordinal),
+        "Modded launch did not write and pass the active-profile handoff.");
+    Assert((await launches.LaunchVanillaAsync("Operations")).Success &&
+        recordingLauncher.Requests is [_, { FileName: "steam://run/306020", UseShellExecute: true }],
+        "Vanilla launch was not handed to Steam.");
+    var launchedProfile = await operationsProfiles.LoadAsync("Operations");
+    Assert(launchedProfile?.LaunchHistory.Select(entry => entry.Mode)
+        .SequenceEqual(new[] { "modded", "vanilla" }) == true,
+        "Profile launch history did not record modded and vanilla launches.");
+    await File.AppendAllTextAsync(
+        Path.Combine(operationsStateRoot, "logs", "runtime.jsonl"),
+        $"{{\"component\":\"test\",\"message\":\"{gameDirectory} {operationsStateRoot}\"}}\n");
+    var diagnosticsPath = Path.Combine(testRoot, "diagnostics.zip");
+    var diagnostics = await new DiagnosticsService(operationsStateRoot, builds)
+        .ExportAsync(diagnosticsPath, gameDirectory, "Operations");
+    Assert(diagnostics.Success && File.Exists(diagnosticsPath), "Diagnostics export failed.");
+    using (var diagnosticsArchive = await ZipFile.OpenReadAsync(diagnosticsPath))
+    {
+        Assert(diagnosticsArchive.GetEntry("summary.json") is not null &&
+            diagnosticsArchive.GetEntry("runtime.jsonl") is not null &&
+            diagnosticsArchive.GetEntry("README.txt") is not null,
+            "Diagnostics export omitted required reports.");
+        using var reader = new StreamReader(
+            await diagnosticsArchive.GetEntry("runtime.jsonl")!.OpenAsync());
+        var exportedLog = await reader.ReadToEndAsync();
+        Assert(!exportedLog.Contains(gameDirectory, StringComparison.OrdinalIgnoreCase) &&
+            !exportedLog.Contains(operationsStateRoot, StringComparison.OrdinalIgnoreCase) &&
+            exportedLog.Contains("[GAME_DIRECTORY]", StringComparison.Ordinal),
+            "Diagnostics export did not redact machine-specific paths.");
+    }
+
     Console.WriteLine("Manager core integration tests passed.");
     return 0;
 }
@@ -223,4 +349,40 @@ static async Task AssertThrowsAsync<TException>(Func<Task> action, string messag
         return;
     }
     throw new InvalidOperationException(message);
+}
+
+static string BuildManifest(
+    string id,
+    string version,
+    string? dependencyId = null,
+    string? dependencyVersion = null)
+{
+    var dependencies = dependencyId is null
+        ? "[]"
+        : $"[{{\"id\":\"{dependencyId}\",\"version\":\"{dependencyVersion}\"}}]";
+    return $$"""
+        {
+          "id": "{{id}}",
+          "name": "{{id}}",
+          "author": "Test Author",
+          "version": "{{version}}",
+          "entry_point": "lua/main.lua",
+          "loader_api": 1,
+          "supported_game_builds": ["fixture-build"],
+          "dependencies": {{dependencies}},
+          "load_order": {"before":[],"after":[]},
+          "capabilities": []
+        }
+        """;
+}
+
+sealed class RecordingGameProcessLauncher : IGameProcessLauncher
+{
+    public List<GameProcessRequest> Requests { get; } = [];
+
+    public int Start(GameProcessRequest request)
+    {
+        Requests.Add(request);
+        return 1000 + Requests.Count;
+    }
 }

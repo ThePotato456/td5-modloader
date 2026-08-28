@@ -17,6 +17,8 @@ public sealed record ModPackageInfo(
     uint? LoaderApi,
     IReadOnlyList<string> SupportedGameBuilds,
     IReadOnlyList<ModDependencyInfo> Dependencies,
+    IReadOnlyList<string> LoadBefore,
+    IReadOnlyList<string> LoadAfter,
     IReadOnlyList<string> Capabilities,
     IReadOnlyList<string> Errors);
 
@@ -181,6 +183,42 @@ public static partial class ModPackageService
         return new(true, "Mod package installed successfully.", destination, package);
     }
 
+    public static async Task<IReadOnlyList<ModPackageInfo>> ListInstalledAsync(
+        string managerStateRoot,
+        string? selectedBuildId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(managerStateRoot);
+        var packagesRoot = Path.Combine(Path.GetFullPath(managerStateRoot), "packages");
+        if (!Directory.Exists(packagesRoot))
+        {
+            return [];
+        }
+
+        var packages = new List<ModPackageInfo>();
+        foreach (var path in Directory.EnumerateFiles(
+                     packagesRoot, "package.btd5mod", SearchOption.AllDirectories)
+                     .Order(StringComparer.OrdinalIgnoreCase))
+        {
+            var package = await InspectAsync(path, selectedBuildId, cancellationToken)
+                .ConfigureAwait(false);
+            var versionDirectory = Path.GetDirectoryName(path);
+            var idDirectory = versionDirectory is null ? null : Path.GetDirectoryName(versionDirectory);
+            if (package.Id is not null && package.Version is not null &&
+                (!string.Equals(Path.GetFileName(idDirectory), package.Id, StringComparison.Ordinal) ||
+                 !string.Equals(Path.GetFileName(versionDirectory), package.Version, StringComparison.Ordinal)))
+            {
+                package = package with
+                {
+                    Valid = false,
+                    Errors = [.. package.Errors, "The installed package path does not match its identity."]
+                };
+            }
+            packages.Add(package);
+        }
+        return packages;
+    }
+
     private static ModPackageInfo ParseManifest(
         string packagePath,
         byte[] manifestBytes,
@@ -195,6 +233,8 @@ public static partial class ModPackageService
         uint? loaderApi = null;
         var builds = new List<string>();
         var dependencies = new List<ModDependencyInfo>();
+        var loadBefore = new List<string>();
+        var loadAfter = new List<string>();
         var capabilities = new List<string>();
         try
         {
@@ -267,7 +307,16 @@ public static partial class ModPackageService
                 }
             }
             ReadDependencies(root, dependencies, errors);
-            ValidateLoadOrder(root, errors);
+            if (id is not null && dependencies.Any(value => value.Id == id))
+            {
+                errors.Add("A mod cannot depend on itself.");
+            }
+            ReadLoadOrder(root, loadBefore, loadAfter, errors);
+            if (id is not null && (loadBefore.Contains(id, StringComparer.Ordinal) ||
+                loadAfter.Contains(id, StringComparer.Ordinal)))
+            {
+                errors.Add("A mod cannot order itself before or after itself.");
+            }
         }
         catch (Exception exception) when (exception is JsonException or DecoderFallbackException)
         {
@@ -285,6 +334,8 @@ public static partial class ModPackageService
             loaderApi,
             builds,
             dependencies,
+            loadBefore,
+            loadAfter,
             capabilities,
             errors);
     }
@@ -324,7 +375,11 @@ public static partial class ModPackageService
         }
     }
 
-    private static void ValidateLoadOrder(JsonElement root, List<string> errors)
+    private static void ReadLoadOrder(
+        JsonElement root,
+        List<string> loadBefore,
+        List<string> loadAfter,
+        List<string> errors)
     {
         if (!root.TryGetProperty("load_order", out var loadOrder) ||
             loadOrder.ValueKind != JsonValueKind.Object)
@@ -332,10 +387,15 @@ public static partial class ModPackageService
             errors.Add("load_order must be an object.");
             return;
         }
-        var values = new List<string>();
-        ReadStringArray(loadOrder, "before", values, errors);
-        values.Clear();
-        ReadStringArray(loadOrder, "after", values, errors);
+        ReadStringArray(loadOrder, "before", loadBefore, errors);
+        ReadStringArray(loadOrder, "after", loadAfter, errors);
+        foreach (var id in loadBefore.Concat(loadAfter))
+        {
+            if (!ModIdPattern().IsMatch(id))
+            {
+                errors.Add("load_order contains an invalid mod ID.");
+            }
+        }
     }
 
     private static string? ReadString(JsonElement root, string name, List<string> errors)
@@ -412,7 +472,7 @@ public static partial class ModPackageService
     }
 
     private static ModPackageInfo EmptyResult(string packagePath, IReadOnlyList<string> errors) =>
-        new(packagePath, false, null, null, null, null, null, [], [], [], errors);
+        new(packagePath, false, null, null, null, null, null, [], [], [], [], [], errors);
 
     private static void CopyAtomically(string source, string destination)
     {

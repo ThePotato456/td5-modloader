@@ -25,3 +25,23 @@ tests. The manager shows package identity, version, dependencies, requested
 capabilities, build compatibility, and validation errors before installation.
 Archive traversal, symbolic links, duplicate paths, invalid layouts, excessive
 sizes, malformed manifests, and unsupported loader APIs or builds are rejected.
+
+## Runtime handoff and launch
+
+Before modded launch, the manager validates the selected game, loader
+installation, profile, package versions, dependencies, and deterministic order.
+It writes an atomic active-profile handoff under `runtime/active-profile.json`
+and passes that location to the copied game process. The native runtime treats
+the handoff as untrusted: it checks the build ID, confines archives to the
+manager-owned package directory, revalidates every archive, and extracts each
+mod into a unique per-process session directory before creating its Lua state.
+
+The current bridge invokes `on_load` inside the real game process. It does not
+invoke `on_ready` yet because that callback requires the verified game-ready
+hook planned for Phase 6. Modded launch requires an explicit warning
+acknowledgement until Phase 9 network enforcement is complete. Vanilla launch
+uses Steam App ID 306020 and does not pass a mod profile.
+
+Diagnostics exports contain build hashes, loader/profile validation, resolved
+package identities, and the runtime log. They exclude game files, saves, package
+contents, configuration values, and local filesystem paths.

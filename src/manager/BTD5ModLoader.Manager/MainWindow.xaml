@@ -3,12 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:ClassModifier="internal"
         Title="BTD5 Mod Loader"
-        Width="900"
-        Height="620"
-        MinWidth="700"
-        MinHeight="500"
-        WindowStartupLocation="CenterScreen">
-    <Grid Margin="32">
+        Width="1000"
+        Height="720"
+        MinWidth="820"
+        MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Loaded="Window_Loaded">
+    <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -16,53 +17,166 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <StackPanel>
-            <TextBlock FontSize="32" FontWeight="SemiBold" Text="BTD5 Mod Loader" />
-            <TextBlock Margin="0,8,0,0" FontSize="15" Foreground="#666666"
-                       Text="Install a local Lua mod package after reviewing what it requests." />
+            <TextBlock FontSize="30" FontWeight="SemiBold" Text="BTD5 Mod Loader" />
+            <TextBlock Margin="0,6,0,0" Foreground="#666666"
+                       Text="Manage a reversible loader, local Lua packages, profiles, and launches." />
         </StackPanel>
-        <Border Grid.Row="1" Margin="0,24,0,20" Padding="24" AllowDrop="True"
-                BorderBrush="#8A8A8A" BorderThickness="1" CornerRadius="6"
-                DragOver="PackageDropArea_DragOver" Drop="PackageDropArea_Drop">
-            <StackPanel HorizontalAlignment="Center">
-                <TextBlock HorizontalAlignment="Center" FontSize="17" FontWeight="SemiBold"
-                           Text="Drop a .btd5mod package here" />
-                <Button Margin="0,14,0,0" Padding="18,7" Click="ChoosePackage_Click"
-                        Content="Choose package…" />
-            </StackPanel>
+        <Grid Grid.Row="1" Margin="0,20,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Margin="0,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold"
+                       Text="Game copy" />
+            <TextBox x:Name="GameDirectoryText" Grid.Column="1" Padding="8,6"
+                     IsReadOnly="True" />
+            <Button Grid.Column="2" Margin="10,0,0,0" Padding="16,6"
+                    Click="ChooseGameDirectory_Click" Content="Choose…" />
+        </Grid>
+        <TabControl Grid.Row="2">
+            <TabItem Header="Setup">
+                <StackPanel Margin="18">
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Loader installation" />
+                    <TextBlock Margin="0,8,0,16" TextWrapping="Wrap"
+                               Text="Choose the folder containing release artifacts. Existing conflicting files are never overwritten." />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Margin="0,0,12,0" VerticalAlignment="Center" Text="Artifacts" />
+                        <TextBox x:Name="ArtifactDirectoryText" Grid.Column="1" Padding="8,6" IsReadOnly="True" />
+                        <Button Grid.Column="2" Margin="10,0,0,0" Padding="16,6"
+                                Click="ChooseArtifactDirectory_Click" Content="Choose…" />
+                    </Grid>
+                    <WrapPanel Margin="0,18,0,0">
+                        <Button Margin="0,0,8,8" Padding="18,7" Click="InstallLoader_Click" Content="Install" />
+                        <Button Margin="0,0,8,8" Padding="18,7" Click="VerifyLoader_Click" Content="Verify" />
+                        <Button Margin="0,0,8,8" Padding="18,7" Click="RepairLoader_Click" Content="Repair" />
+                        <Button Margin="0,0,8,8" Padding="18,7" Click="UninstallLoader_Click" Content="Uninstall" />
+                    </WrapPanel>
+                    <TextBlock x:Name="LoaderStatusText" Margin="0,12,0,0" TextWrapping="Wrap"
+                               Text="Select a supported game copy to inspect loader status." />
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="Packages">
+                <Grid Margin="18">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Padding="18" AllowDrop="True" BorderBrush="#8A8A8A" BorderThickness="1"
+                            CornerRadius="6" DragOver="PackageDropArea_DragOver" Drop="PackageDropArea_Drop">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock FontSize="16" FontWeight="SemiBold" Text="Drop a .btd5mod package here" />
+                            <Button Margin="0,12,0,0" Padding="16,6" Click="ChoosePackage_Click"
+                                    Content="Choose package…" />
+                        </StackPanel>
+                    </Border>
+                    <Grid Grid.Row="1" Margin="0,16,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="PackageDetailsText" TextWrapping="Wrap"
+                                   Text="No package selected." />
+                        <Button x:Name="InstallPackageButton" Grid.Column="1" Margin="12,0,0,0"
+                                Padding="18,7" IsEnabled="False" Click="InstallPackage_Click"
+                                Content="Install package" />
+                    </Grid>
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ListBox x:Name="InstalledPackagesList" MinHeight="180" />
+                        <Button Grid.Column="1" Margin="12,0,0,0" Padding="16,7"
+                                VerticalAlignment="Top" Click="UninstallPackage_Click"
+                                Content="Uninstall selected" />
+                    </Grid>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Profiles">
+                <Grid Margin="18">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Margin="0,0,10,0" VerticalAlignment="Center" Text="Profile" />
+                        <ComboBox x:Name="ProfilesList" Grid.Column="1" Padding="6"
+                                  SelectionChanged="ProfilesList_SelectionChanged" />
+                        <TextBlock Grid.Column="2" Margin="18,0,10,0" VerticalAlignment="Center"
+                                   Text="New name" />
+                        <TextBox x:Name="NewProfileNameText" Grid.Column="3" Padding="7,5" />
+                        <Button Grid.Column="4" Margin="10,0,0,0" Padding="15,6"
+                                Click="CreateProfile_Click" Content="Create" />
+                    </Grid>
+                    <Grid Grid.Row="1" Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Margin="0,0,0,8" FontWeight="SemiBold" Text="Installed versions" />
+                            <ListBox x:Name="ProfilePackagesList" MinHeight="260" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="16,28">
+                            <Button Margin="0,0,0,8" Padding="14,6" Click="EnablePackage_Click"
+                                    Content="Enable / use →" />
+                            <Button Margin="0,0,0,8" Padding="14,6" Click="DisableMod_Click"
+                                    Content="Disable" />
+                            <Button Margin="0,0,0,8" Padding="14,6" Click="MoveModUp_Click"
+                                    Content="Move up" />
+                            <Button Margin="0,0,0,8" Padding="14,6" Click="MoveModDown_Click"
+                                    Content="Move down" />
+                            <Button Padding="14,6" Click="RemoveMod_Click" Content="Remove" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Margin="0,0,0,8" FontWeight="SemiBold" Text="Profile mods" />
+                            <ListBox x:Name="ProfileModsList" MinHeight="260" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Launch &amp; diagnostics">
+                <Grid Margin="18">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="ReadinessText" TextWrapping="Wrap"
+                               Text="Select a game copy and profile, then refresh status." />
+                    <CheckBox x:Name="OfflineRiskCheck" Grid.Row="1" Margin="0,14,0,0"
+                              Content="I understand network blocking is not implemented yet and will use Steam Offline Mode." />
+                    <WrapPanel Grid.Row="2" Margin="0,14,0,12">
+                        <Button Margin="0,0,8,8" Padding="16,7" Click="RefreshStatus_Click" Content="Refresh status" />
+                        <Button Margin="0,0,8,8" Padding="16,7" Click="LaunchModded_Click" Content="Launch modded" />
+                        <Button Margin="0,0,8,8" Padding="16,7" Click="LaunchVanilla_Click" Content="Launch vanilla" />
+                        <Button Margin="0,0,8,8" Padding="16,7" Click="RefreshLogs_Click" Content="Refresh logs" />
+                        <Button Margin="0,0,8,8" Padding="16,7" Click="ExportDiagnostics_Click" Content="Export diagnostics…" />
+                    </WrapPanel>
+                    <TextBox x:Name="RuntimeLogText" Grid.Row="3" Padding="10" FontFamily="Consolas"
+                             FontSize="12" IsReadOnly="True" AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+                </Grid>
+            </TabItem>
+        </TabControl>
+        <Border Grid.Row="3" Margin="0,14,0,0" Padding="10" Background="#F1F1F1" CornerRadius="4">
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" Text="Ready" />
         </Border>
-        <Border Grid.Row="2" Padding="20" Background="#F5F5F5" CornerRadius="6">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="150" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <TextBlock FontWeight="SemiBold" Text="Package" />
-                <TextBlock x:Name="PackageNameText" Grid.Column="1" Text="No package selected" />
-                <TextBlock Grid.Row="1" Margin="0,10,0,0" FontWeight="SemiBold" Text="Author / version" />
-                <TextBlock x:Name="AuthorVersionText" Grid.Row="1" Grid.Column="1" Margin="0,10,0,0" Text="—" />
-                <TextBlock Grid.Row="2" Margin="0,10,0,0" FontWeight="SemiBold" Text="Mod ID" />
-                <TextBlock x:Name="ModIdText" Grid.Row="2" Grid.Column="1" Margin="0,10,0,0" Text="—" />
-                <TextBlock Grid.Row="3" Margin="0,10,0,0" FontWeight="SemiBold" Text="Permissions" />
-                <TextBlock x:Name="CapabilitiesText" Grid.Row="3" Grid.Column="1" Margin="0,10,0,0" Text="—" TextWrapping="Wrap" />
-                <TextBlock Grid.Row="4" Margin="0,10,0,0" FontWeight="SemiBold" Text="Dependencies" />
-                <TextBlock x:Name="DependenciesText" Grid.Row="4" Grid.Column="1" Margin="0,10,0,0" Text="—" TextWrapping="Wrap" />
-                <TextBlock Grid.Row="5" Margin="0,10,0,0" FontWeight="SemiBold" Text="Validation" />
-                <TextBlock x:Name="ValidationText" Grid.Row="5" Grid.Column="1" Margin="0,10,0,0"
-                           Text="Choose a package to validate it." TextWrapping="Wrap" />
-            </Grid>
-        </Border>
-        <DockPanel Grid.Row="3" Margin="0,20,0,0">
-            <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="#555555" Text="Ready" />
-            <Button x:Name="InstallPackageButton" Padding="22,8" HorizontalAlignment="Right"
-                    IsEnabled="False" Click="InstallPackage_Click" Content="Install package" />
-        </DockPanel>
     </Grid>
 </Window>

@@ -9,6 +9,11 @@ A mod may define `on_load()`, `on_ready()`, and `on_shutdown()`. A callback
 error is annotated with the mod ID and callback name. The failing callback is
 disabled; other callbacks and other mod states remain available.
 
+The live manager-to-runtime bridge currently invokes `on_load()` inside BTD5.
+`on_ready()` and deterministic timer advancement remain host-tested only until
+the Phase 6 game-ready/update hooks are installed. Mods must not infer that the
+game scene is ready from `on_load()`.
+
 ## Sandboxed host API
 
 - `btd5.log(level, message)` writes through the loader log sink.
