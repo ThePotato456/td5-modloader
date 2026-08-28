@@ -20,6 +20,7 @@ public sealed record ModPackageInfo(
     IReadOnlyList<string> LoadBefore,
     IReadOnlyList<string> LoadAfter,
     IReadOnlyList<string> Capabilities,
+    IReadOnlyDictionary<string, JsonElement> ConfigurationDefaults,
     IReadOnlyList<string> Errors);
 
 public sealed record ModPackageInstallResult(
@@ -236,6 +237,7 @@ public static partial class ModPackageService
         var loadBefore = new List<string>();
         var loadAfter = new List<string>();
         var capabilities = new List<string>();
+        var configurationDefaults = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         try
         {
             var utf8 = new UTF8Encoding(false, true).GetString(manifestBytes);
@@ -312,6 +314,7 @@ public static partial class ModPackageService
                 errors.Add("A mod cannot depend on itself.");
             }
             ReadLoadOrder(root, loadBefore, loadAfter, errors);
+            ReadConfigurationDefaults(root, configurationDefaults, errors);
             if (id is not null && (loadBefore.Contains(id, StringComparer.Ordinal) ||
                 loadAfter.Contains(id, StringComparer.Ordinal)))
             {
@@ -337,6 +340,7 @@ public static partial class ModPackageService
             loadBefore,
             loadAfter,
             capabilities,
+            configurationDefaults,
             errors);
     }
 
@@ -395,6 +399,31 @@ public static partial class ModPackageService
             {
                 errors.Add("load_order contains an invalid mod ID.");
             }
+        }
+    }
+
+    private static void ReadConfigurationDefaults(
+        JsonElement root,
+        Dictionary<string, JsonElement> destination,
+        List<string> errors)
+    {
+        if (!root.TryGetProperty("configuration_defaults", out var element))
+        {
+            return;
+        }
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            errors.Add("configuration_defaults must be an object.");
+            return;
+        }
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.IsNullOrWhiteSpace(property.Name) || property.Name.Length > 128)
+            {
+                errors.Add("configuration_defaults contains an invalid key.");
+                continue;
+            }
+            destination.Add(property.Name, property.Value.Clone());
         }
     }
 
@@ -472,7 +501,8 @@ public static partial class ModPackageService
     }
 
     private static ModPackageInfo EmptyResult(string packagePath, IReadOnlyList<string> errors) =>
-        new(packagePath, false, null, null, null, null, null, [], [], [], [], [], errors);
+        new(packagePath, false, null, null, null, null, null, [], [], [], [], [],
+            new Dictionary<string, JsonElement>(), errors);
 
     private static void CopyAtomically(string source, string destination)
     {

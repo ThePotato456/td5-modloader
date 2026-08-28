@@ -51,7 +51,13 @@ public sealed class ProfileModService
         var index = mods.FindIndex(mod => string.Equals(mod.Id, modId, StringComparison.Ordinal));
         if (index < 0)
         {
+            var package = (await ModPackageService.ListInstalledAsync(
+                    managerStateRoot, buildId, cancellationToken).ConfigureAwait(false))
+                .SingleOrDefault(value => value.Valid &&
+                    string.Equals(value.Id, modId, StringComparison.Ordinal) &&
+                    string.Equals(value.Version, version, StringComparison.Ordinal));
             mods.Add(new(modId, version, true, mods.Count,
+                package?.ConfigurationDefaults ??
                 new Dictionary<string, System.Text.Json.JsonElement>()));
         }
         else

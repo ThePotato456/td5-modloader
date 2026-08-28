@@ -147,6 +147,7 @@ custom-tower examples will be added when their implementation gates pass.
 | [Mod package format](docs/mod-packages.md) | Archive layout, validation limits, and deterministic ordering |
 | [Manager storage and ownership](docs/manager-storage.md) | Safe installation, repair, uninstall, and local state rules |
 | [Supported build validation](docs/validation-steam-win32-4.8.md) | Fingerprints and manual compatibility evidence |
+| [Phase 5 validation](docs/validation-phase5.md) | Manager workflow and live Lua `on_load` acceptance evidence |
 | [Upstream code provenance](docs/upstream-code-provenance.md) | Auditable record of GPL-covered adaptations |
 | [Upstream research policy](docs/upstream-research.md) | Boundaries for research-only upstream material |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Pinned dependencies and their licenses |

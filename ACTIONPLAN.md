@@ -120,9 +120,9 @@ Initial supported build fingerprints:
 
 ### Phase 5 implementation gate
 
-- [ ] A new user can locate BTD5, install the loader, install a sample package, create a profile, and launch it without manual file editing.
-- [ ] Repair restores missing loader-owned files, and uninstall removes only files recorded as loader-owned.
-- [ ] Conflicting, incompatible, or dependency-broken profiles cannot launch and display an actionable explanation.
+- [x] A new user can locate BTD5, install the loader, install a sample package, create a profile, and launch it without manual file editing.
+- [x] Repair restores missing loader-owned files, and uninstall removes only files recorded as loader-owned.
+- [x] Conflicting, incompatible, or dependency-broken profiles cannot launch and display an actionable explanation.
 
 ---
 

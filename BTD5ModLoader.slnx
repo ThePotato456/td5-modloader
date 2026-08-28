@@ -4,7 +4,7 @@
     <Project Path="src/manager/BTD5ModLoader.Manager.Core/BTD5ModLoader.Manager.Core.csproj" />
   </Folder>
   <Folder Name="/Tests/">
+    <Project Path="tests/managed/BTD5ModLoader.LiveSmoke/BTD5ModLoader.LiveSmoke.csproj" />
     <Project Path="tests/managed/BTD5ModLoader.Manager.Core.Tests/BTD5ModLoader.Manager.Core.Tests.csproj" />
   </Folder>
 </Solution>
-

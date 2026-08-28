@@ -104,13 +104,15 @@ try
           "supported_game_builds": ["fixture-build"],
           "dependencies": [{"id":"sample.library","version":"^1.0.0"}],
           "load_order": {"before":[],"after":[]},
-          "capabilities": ["storage"]
+          "capabilities": ["storage"],
+          "configuration_defaults": {"greeting":"hello"}
         }
         """;
     CreatePackage(packagePath, manifest, ("lua/main.lua", "return {}"));
     var packageInfo = await ModPackageService.InspectAsync(packagePath, "fixture-build");
     Assert(packageInfo.Valid && packageInfo.Id == "sample.lifecycle" &&
-        packageInfo.Dependencies.Count == 1 && packageInfo.Capabilities.SequenceEqual(new[] { "storage" }),
+        packageInfo.Dependencies.Count == 1 && packageInfo.Capabilities.SequenceEqual(new[] { "storage" }) &&
+        packageInfo.ConfigurationDefaults["greeting"].GetString() == "hello",
         "Valid package identity and permissions were not inspected correctly.");
     var packageInstall = await ModPackageService.InstallAsync(packagePath, stateRoot, "fixture-build");
     Assert(packageInstall.Success && packageInstall.InstalledPath is not null &&
