@@ -6,7 +6,9 @@
 #include <btd5loader/version.hpp>
 
 #include "logger.hpp"
+#include "compatibility.hpp"
 #include "runtime_state.hpp"
+#include "symbol_resolver.hpp"
 
 namespace {
 
@@ -38,7 +40,43 @@ DWORD WINAPI initialize_worker(LPVOID) {
         return ERROR_INVALID_STATE;
     }
 
-    g_logger.info("runtime", "compatibility_check_pending_phase_3");
+    const auto detection = btd5loader::runtime::detect_build(
+        g_game_directory, g_game_directory / L"symbols");
+    if (!detection.build) {
+        g_logger.error("compatibility", detection.error);
+        g_logger.info(
+            "compatibility",
+            "exe_sha256=" + detection.fingerprints.executable_sha256 +
+                ";assets_sha256=" + detection.fingerprints.assets_sha256);
+        (void)g_state.transition_to(State::Failed);
+        return ERROR_REVISION_MISMATCH;
+    }
+
+    g_logger.info("compatibility", "supported_build=" + detection.build->id);
+    const auto resolution = btd5loader::runtime::resolve_symbols_from_image(
+        *detection.build, g_game_directory / L"BTD5-Win.exe");
+    for (const auto& symbol : resolution.resolved) {
+        g_logger.info("symbols", "resolved=" + symbol.name);
+    }
+    for (const auto& diagnostic : resolution.diagnostics) {
+        const auto message = diagnostic.name + ":" + diagnostic.message;
+        if (diagnostic.required) {
+            g_logger.error("symbols", message);
+        } else {
+            g_logger.info("symbols", message);
+        }
+    }
+    if (!resolution.success) {
+        g_logger.error("symbols", "required_symbol_resolution_failed");
+        (void)g_state.transition_to(State::Failed);
+        return ERROR_INVALID_ADDRESS;
+    }
+    if (!g_state.transition_to(State::HooksReady)) {
+        g_logger.error("runtime", "invalid_hooks_ready_transition");
+        (void)g_state.transition_to(State::Failed);
+        return ERROR_INVALID_STATE;
+    }
+    g_logger.info("runtime", "hooks_ready_no_hooks_registered");
     return ERROR_SUCCESS;
 }
 

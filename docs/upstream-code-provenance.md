@@ -26,11 +26,6 @@ does.
 
 ## Adaptation ledger
 
-No upstream source has been copied or adapted yet.
-
-When the first adaptation is made, replace the sentence above with rows using
-this format:
-
 | Local file | Upstream project/path | Commit | Upstream copyright | What was adapted | Local modifications |
 | --- | --- | --- | --- | --- | --- |
-| `path/to/local.cpp` | `NKHook5/path/to/source.cpp` | full commit hash | named holder or `NKHook5 contributors` | concise description | concise description |
+| `symbols/btd5-steam-4.8.json` | `NKHook5/Signatures/Signature.cpp` | `6bcac69de5b76bf2bed49e5db600841bfb42ccb2` | NKHook5 contributors | Steam patterns for main, asset loading, and tower/weapon factories | Renamed through a stable namespace; restricted to the fingerprinted 4.8 map; added prerequisites and validation patterns |

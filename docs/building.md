@@ -25,3 +25,11 @@ to the ignored `config/local.json` and adjust the path.
 Release builds use `-Configuration Release`. Native output is always Win32/x86
 because it loads into the 32-bit game; the WPF manager is architecture-neutral.
 
+## Read-only game compatibility check
+
+After building, inspect a legally obtained installation without launching or
+modifying it:
+
+```powershell
+.\scripts\inspect-symbols.ps1 -GameDirectory 'C:\Program Files (x86)\Steam\steamapps\common\BloonsTD5'
+```

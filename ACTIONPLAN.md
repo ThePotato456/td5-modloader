@@ -68,13 +68,13 @@ Initial supported build fingerprints:
 
 ## Phase 3 — Build detection, symbols, and hook safety
 
-- [ ] Hash the executable and `BTD5.jet` before any game hook is installed.
-- [ ] Define a versioned symbol-map format containing build hashes, named functions/data, signatures or offsets, validation bytes, and hook prerequisites.
-- [ ] Add the initial map for the confirmed 4.8 build.
-- [ ] Resolve game locations by stable names internally so Lua APIs never expose raw addresses.
-- [ ] Validate every resolved location against expected module ranges and instruction/data patterns.
-- [ ] Install hooks transactionally: if a required hook fails, remove hooks already installed and abort mod loading.
-- [ ] Add a developer-only diagnostics report for resolved and unresolved symbols without dumping proprietary game code.
+- [x] Hash the executable and `BTD5.jet` before any game hook is installed.
+- [x] Define a versioned symbol-map format containing build hashes, named functions/data, signatures or offsets, validation bytes, and hook prerequisites.
+- [x] Add the initial map for the confirmed 4.8 build.
+- [x] Resolve game locations by stable names internally so Lua APIs never expose raw addresses.
+- [x] Validate every resolved location against expected module ranges and instruction/data patterns.
+- [x] Install hooks transactionally: if a required hook fails, remove hooks already installed and abort mod loading.
+- [x] Add a developer-only diagnostics report for resolved and unresolved symbols without dumping proprietary game code.
 
 ### Phase 3 implementation gate
 

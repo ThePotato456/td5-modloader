@@ -26,13 +26,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(cmake/CompilerOptions.cmake)
+include(cmake/Dependencies.cmake)
+btd5ml_enable_runtime_dependencies()
 
 add_subdirectory(src/native)
 
 if(BTD5ML_BUILD_TESTS)
     include(CTest)
-    include(cmake/Dependencies.cmake)
     btd5ml_enable_test_dependencies()
     add_subdirectory(tests/native)
 endif()
-
