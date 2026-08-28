@@ -18,6 +18,17 @@ section and passed their validation patterns:
 - `tower.factory.constructor`
 - `weapon.factory.constructor`
 
-This record satisfies the offline fingerprint and symbol-resolution check. It
-does not satisfy the Phase 3 no-mod launch gate, which remains unchecked until
-the reversible loader package is tested in the game process.
+## Isolated-copy launch check
+
+A byte-identical copy of the installation was placed under the ignored
+`.local/game` directory. Only that copy received the loader proxy, runtime,
+symbol map, and a development-only `steam_appid.txt` containing App ID 306020.
+The registered Steam installation was not modified.
+
+The copied executable authenticated against the running Steam client, resolved
+all mandatory symbols, reached `HooksReady`, and remained running for the full
+15-second startup stability window. The exact test process was then closed.
+
+This satisfies the Phase 3 supported-build no-mod launch gate. Automated tests
+separately verify unknown-build rejection, named resolver failures, and
+reverse-order transactional hook rollback.

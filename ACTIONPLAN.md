@@ -78,9 +78,9 @@ Initial supported build fingerprints:
 
 ### Phase 3 implementation gate
 
-- [ ] The supported build resolves every mandatory bootstrap symbol and reaches a stable no-mod launch.
-- [ ] Altered or unknown hashes prevent all game hooks and Lua mods from loading.
-- [ ] Injected resolver and hook failures roll back cleanly and explain the failed symbol in the log.
+- [x] The supported build resolves every mandatory bootstrap symbol and reaches a stable no-mod launch.
+- [x] Altered or unknown hashes prevent all game hooks and Lua mods from loading.
+- [x] Injected resolver and hook failures roll back cleanly and explain the failed symbol in the log.
 
 ---
 

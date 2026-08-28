@@ -9,12 +9,14 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../../src/native/runtime/compatibility.hpp"
 #include "../../src/native/runtime/hook_transaction.hpp"
 #include "../../src/native/runtime/pattern.hpp"
 #include "../../src/native/runtime/runtime_state.hpp"
+#include "../../src/native/runtime/symbol_resolver.hpp"
 
 TEST_CASE("product metadata is available", "[foundation]") {
     REQUIRE(btd5loader::kProductName == "BTD5 Mod Loader");
@@ -146,4 +148,29 @@ TEST_CASE("an unknown executable and asset pair fails closed", "[compatibility]"
     REQUIRE_FALSE(detection.fingerprints.executable_sha256.empty());
     REQUIRE_FALSE(detection.fingerprints.assets_sha256.empty());
     std::filesystem::remove_all(test_root);
+}
+
+TEST_CASE("a required resolver failure identifies its stable symbol name", "[symbols]") {
+    std::array<wchar_t, 32768> executable_path{};
+    const DWORD length = GetModuleFileNameW(
+        nullptr, executable_path.data(), static_cast<DWORD>(executable_path.size()));
+    REQUIRE(length > 0);
+    REQUIRE(length < executable_path.size());
+
+    btd5loader::runtime::BuildDefinition definition;
+    btd5loader::runtime::SymbolDefinition symbol;
+    symbol.name = "game.injected.failure";
+    symbol.module = "BTD5-Win.exe";
+    symbol.section = ".section-that-does-not-exist";
+    symbol.pattern = "55 8B EC";
+    symbol.required = true;
+    definition.symbols.push_back(std::move(symbol));
+
+    const auto report = btd5loader::runtime::resolve_symbols_from_image(
+        definition, std::filesystem::path(executable_path.data(), executable_path.data() + length));
+    REQUIRE_FALSE(report.success);
+    REQUIRE(report.diagnostics.size() == 1);
+    REQUIRE(report.diagnostics.front().name == "game.injected.failure");
+    REQUIRE(report.diagnostics.front().required);
+    REQUIRE(report.diagnostics.front().message == "section not found");
 }
