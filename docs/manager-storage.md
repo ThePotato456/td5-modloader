@@ -36,9 +36,9 @@ the handoff as untrusted: it checks the build ID, confines archives to the
 manager-owned package directory, revalidates every archive, and extracts each
 mod into a unique per-process session directory before creating its Lua state.
 
-The current bridge invokes `on_load` inside the real game process. It does not
-invoke `on_ready` yet because that callback requires the verified game-ready
-hook planned for Phase 6. Modded launch requires an explicit warning
+The current bridge invokes `on_load` inside the real game process, invokes
+`on_ready` on the first rendered frame after profile loading, and advances Lua
+timers once per rendered frame. Modded launch requires an explicit warning
 acknowledgement until Phase 9 network enforcement is complete. Vanilla launch
 uses Steam App ID 306020 and does not pass a mod profile.
 

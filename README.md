@@ -47,8 +47,8 @@ The repository currently includes:
   package inspection, profiles, launch controls, logs, and diagnostics export;
 - named profile persistence, per-mod configuration, deterministic profile order,
   dependency-safe operations, and bounded launch history;
-- a validated manager-to-runtime handoff that loads packages and invokes Lua
-  `on_load` inside the game process while waiting for the Phase 6 game-ready hook;
+- a validated manager-to-runtime handoff that loads packages, invokes Lua
+  `on_load` and `on_ready`, and advances timers from a transactional render hook;
 - native and managed integration tests that do not redistribute game files.
 
 Detailed progress and mandatory implementation gates are maintained in the
@@ -148,6 +148,7 @@ custom-tower examples will be added when their implementation gates pass.
 | [Manager storage and ownership](docs/manager-storage.md) | Safe installation, repair, uninstall, and local state rules |
 | [Supported build validation](docs/validation-steam-win32-4.8.md) | Fingerprints and manual compatibility evidence |
 | [Phase 5 validation](docs/validation-phase5.md) | Manager workflow and live Lua `on_load` acceptance evidence |
+| [Phase 6 foundation validation](docs/validation-phase6-foundation.md) | Live render hook, `on_ready`, and timer acceptance evidence |
 | [Upstream code provenance](docs/upstream-code-provenance.md) | Auditable record of GPL-covered adaptations |
 | [Upstream research policy](docs/upstream-research.md) | Boundaries for research-only upstream material |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Pinned dependencies and their licenses |

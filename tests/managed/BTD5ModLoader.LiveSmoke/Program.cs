@@ -16,20 +16,54 @@ const string profileName = "Live Smoke";
 Process? gameProcess = null;
 try
 {
-    var installation = await new LoaderInstallationService(stateRoot)
-        .InstallAsync(gameDirectory, artifactDirectory);
+    var installationService = new LoaderInstallationService(stateRoot);
+    var installationRecord = installationService.GetRecordPath(gameDirectory);
+    if (File.Exists(installationRecord))
+    {
+        var uninstall = await installationService.UninstallAsync(gameDirectory);
+        if (!uninstall.Success)
+        {
+            return Fail("Previous loader uninstall failed: " + uninstall.Message + Format(uninstall.Conflicts));
+        }
+    }
+    var installation = await installationService.InstallAsync(gameDirectory, artifactDirectory);
     if (!installation.Success)
     {
         return Fail("Loader install failed: " + installation.Message + Format(installation.Conflicts));
     }
-    var package = await ModPackageService.InstallAsync(
-        packagePath, stateRoot, "steam-win32-4.8");
+    var candidate = await ModPackageService.InspectAsync(packagePath, "steam-win32-4.8");
+    if (!candidate.Valid || candidate.Id is null || candidate.Version is null)
+    {
+        return Fail("Package inspection failed: " + Format(candidate.Errors));
+    }
+    var profiles = new ProfileService(stateRoot);
+    var existingProfile = await profiles.LoadAsync(profileName);
+    if (existingProfile?.Mods.Any(mod => mod.Id == candidate.Id) == true)
+    {
+        var remove = await new ProfileModService(stateRoot, "steam-win32-4.8")
+            .RemoveAsync(profileName, candidate.Id);
+        if (!remove.Success)
+        {
+            return Fail("Previous sample removal failed: " + Format(remove.Validation.Errors));
+        }
+    }
+    var installedPackages = await ModPackageService.ListInstalledAsync(stateRoot, "steam-win32-4.8");
+    if (installedPackages.Any(package => package.Id == candidate.Id && package.Version == candidate.Version))
+    {
+        var uninstallPackage = await new ProfileModService(stateRoot, "steam-win32-4.8")
+            .UninstallPackageAsync(candidate.Id, candidate.Version);
+        if (!uninstallPackage.Success)
+        {
+            return Fail("Previous sample uninstall failed: " +
+                uninstallPackage.Message + Format(uninstallPackage.BlockingProfiles));
+        }
+    }
+    var package = await ModPackageService.InstallAsync(packagePath, stateRoot, "steam-win32-4.8");
     if (!package.Success || package.Package.Id is null || package.Package.Version is null)
     {
         return Fail("Package install failed: " + package.Message + Format(package.Package.Errors));
     }
 
-    var profiles = new ProfileService(stateRoot);
     if (await profiles.LoadAsync(profileName) is null)
     {
         await profiles.CreateAsync(profileName);
@@ -72,12 +106,14 @@ try
             continue;
         }
         var log = await File.ReadAllTextAsync(logPath);
-        if (log.Contains("Hello from Lua (launch 1)", StringComparison.Ordinal) &&
+        if (log.Contains("Hello from Lua (launch ", StringComparison.Ordinal) &&
             log.Contains("sample.lifecycle:loaded", StringComparison.Ordinal) &&
-            log.Contains("mods_loaded_waiting_for_game_ready_hook", StringComparison.Ordinal))
+            log.Contains("game_ready_frame_hook", StringComparison.Ordinal) &&
+            log.Contains("Lifecycle Sample is ready", StringComparison.Ordinal) &&
+            log.Contains("deterministic timer fired", StringComparison.Ordinal))
         {
             Console.WriteLine("LIVE_SMOKE_PASS");
-            Console.WriteLine("Lua on_load executed inside the stable copied game process.");
+            Console.WriteLine("Lua on_load, on_ready, and deterministic timers executed in BTD5.");
             return 0;
         }
     }

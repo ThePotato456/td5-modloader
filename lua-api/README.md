@@ -9,10 +9,10 @@ A mod may define `on_load()`, `on_ready()`, and `on_shutdown()`. A callback
 error is annotated with the mod ID and callback name. The failing callback is
 disabled; other callbacks and other mod states remain available.
 
-The live manager-to-runtime bridge currently invokes `on_load()` inside BTD5.
-`on_ready()` and deterministic timer advancement remain host-tested only until
-the Phase 6 game-ready/update hooks are installed. Mods must not infer that the
-game scene is ready from `on_load()`.
+The live manager-to-runtime bridge invokes `on_load()` during profile loading.
+It invokes `on_ready()` once on the first rendered frame after all enabled mods
+load, then advances deterministic timers once per rendered frame. Mods must not
+infer that the game scene is ready from `on_load()`.
 
 ## Sandboxed host API
 
@@ -22,6 +22,8 @@ game scene is ready from `on_load()`.
 - `btd5.localization.get(key)` resolves a localized string or returns the key.
 - `btd5.resource.read_text(path)` reads a packaged text resource up to 1 MiB.
 - `btd5.timer.after(ticks, callback)` schedules a deterministic one-shot timer.
+  In the current live host, one tick is one rendered frame rather than one game
+  simulation step.
 
 Resource paths must use `/`, remain relative, and contain no `.` or `..`
 components. Mods never receive a general filesystem path.

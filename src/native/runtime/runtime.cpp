@@ -14,8 +14,10 @@
 #include <nlohmann/json.hpp>
 
 #include "active_profile.hpp"
-#include "logger.hpp"
 #include "compatibility.hpp"
+#include "frame_hook.hpp"
+#include "hook_transaction.hpp"
+#include "logger.hpp"
 #include "lua_mod.hpp"
 #include "mod_package.hpp"
 #include "runtime_state.hpp"
@@ -29,6 +31,40 @@ std::filesystem::path g_game_directory;
 std::filesystem::path g_session_directory;
 std::vector<std::unique_ptr<btd5loader::runtime::LuaMod>> g_mods;
 std::mutex g_mods_mutex;
+btd5loader::runtime::FrameHook g_frame_hook;
+btd5loader::runtime::HookTransaction g_hooks;
+
+void dispatch_frame(HDC) {
+    using btd5loader::runtime::State;
+
+    thread_local bool dispatching = false;
+    if (dispatching) {
+        return;
+    }
+    dispatching = true;
+    const auto reset_dispatching = []() { dispatching = false; };
+
+    {
+        std::scoped_lock lock(g_mods_mutex);
+        if (g_state.current() == State::ModsLoading) {
+            if (!g_state.transition_to(State::GameReady)) {
+                g_logger.error("runtime", "invalid_game_ready_transition");
+                reset_dispatching();
+                return;
+            }
+            g_logger.info("runtime", "game_ready_frame_hook");
+            for (const auto& mod : g_mods) {
+                (void)mod->invoke("on_ready");
+            }
+        }
+        if (g_state.current() == State::GameReady) {
+            for (const auto& mod : g_mods) {
+                mod->advance_timers(1);
+            }
+        }
+    }
+    reset_dispatching();
+}
 
 std::wstring environment_value(const wchar_t* name) {
     const DWORD required = GetEnvironmentVariableW(name, nullptr, 0);
@@ -274,13 +310,33 @@ DWORD WINAPI initialize_worker(LPVOID) {
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_ADDRESS;
     }
+    g_hooks.add({
+        "render.swap_buffers",
+        true,
+        []() {
+            std::string error;
+            const bool installed = g_frame_hook.install(&dispatch_frame, error);
+            if (!installed) {
+                g_logger.error("hooks", error);
+            }
+            return installed;
+        },
+        []() { g_frame_hook.remove(); }});
+    std::string hook_error;
+    if (!g_hooks.commit(hook_error)) {
+        g_logger.error("hooks", hook_error);
+        (void)g_state.transition_to(State::Failed);
+        return ERROR_HOOK_NOT_INSTALLED;
+    }
     if (!g_state.transition_to(State::HooksReady)) {
+        g_hooks.rollback();
         g_logger.error("runtime", "invalid_hooks_ready_transition");
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_STATE;
     }
-    g_logger.info("runtime", "hooks_ready_no_hooks_registered");
+    g_logger.info("runtime", "hooks_ready=render.swap_buffers");
     if (!load_active_mods(detection.build->id)) {
+        g_hooks.rollback();
         g_logger.error("runtime", "active_mod_loading_failed");
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_DATA;
@@ -314,6 +370,7 @@ extern "C" btd5loader::runtime::State WINAPI BTD5Loader_GetState() {
 
 extern "C" void WINAPI BTD5Loader_Shutdown() {
     using btd5loader::runtime::State;
+    g_hooks.rollback();
     {
         std::scoped_lock lock(g_mods_mutex);
         for (auto iterator = g_mods.rbegin(); iterator != g_mods.rend(); ++iterator) {

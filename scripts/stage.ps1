@@ -5,6 +5,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Toolchain.ps1')
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $repositoryRoot = Get-RepositoryRoot
 $dotnet = Get-DotNetExecutable
@@ -37,11 +39,33 @@ $samplePackage = Join-Path $samplesRoot 'lifecycle-sample.btd5mod'
 if (Test-Path -LiteralPath $samplePackage) {
     Remove-Item -LiteralPath $samplePackage -Force
 }
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    (Join-Path $repositoryRoot 'samples\lifecycle-mod'),
+$sampleSource = Join-Path $repositoryRoot 'samples\lifecycle-mod'
+$packageStream = [System.IO.File]::Open(
     $samplePackage,
-    [System.IO.Compression.CompressionLevel]::Optimal,
-    $false)
+    [System.IO.FileMode]::CreateNew,
+    [System.IO.FileAccess]::Write,
+    [System.IO.FileShare]::None)
+$archive = $null
+try {
+    $archive = New-Object System.IO.Compression.ZipArchive(
+        $packageStream,
+        [System.IO.Compression.ZipArchiveMode]::Create,
+        $false)
+    foreach ($file in Get-ChildItem -LiteralPath $sampleSource -File -Recurse | Sort-Object FullName) {
+        $relativePath = $file.FullName.Substring($sampleSource.Length).TrimStart('\', '/') -replace '\\', '/'
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $archive,
+            $file.FullName,
+            $relativePath,
+            [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    }
+}
+finally {
+    if ($null -ne $archive) {
+        $archive.Dispose()
+    }
+    $packageStream.Dispose()
+}
 
 Write-Host "Staged manager bundle: $stageRoot"
 Write-Host "Staged sample package: $samplePackage"

@@ -128,6 +128,9 @@ Initial supported build fingerprints:
 
 ## Phase 6 — Core gameplay object model and mutable events
 
+- [x] Install a transactional render-frame hook without patching the game executable on disk.
+- [x] Dispatch Lua `on_ready()` once from the live game render thread and advance deterministic timers once per rendered frame.
+- [x] Prove the lifecycle bridge in the copied Steam build with a rerunnable `on_load`/`on_ready`/timer smoke test.
 - [ ] Define versioned Lua wrappers with runtime lifetime checks for matches, rounds, players, towers, attacks, projectiles, and bloons.
 - [ ] Prevent wrappers from accessing game objects after those objects have been destroyed or their scene has changed.
 - [ ] Implement event subscription/unsubscription and deterministic handler ordering.
