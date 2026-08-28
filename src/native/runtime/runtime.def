@@ -1,0 +1,6 @@
+LIBRARY btd5loader_runtime
+EXPORTS
+    BTD5Loader_Initialize=_BTD5Loader_Initialize@4
+    BTD5Loader_GetState=_BTD5Loader_GetState@0
+    BTD5Loader_Shutdown=_BTD5Loader_Shutdown@0
+

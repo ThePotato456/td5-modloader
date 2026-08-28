@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/Manager/">
+    <Project Path="src/manager/BTD5ModLoader.Manager/BTD5ModLoader.Manager.csproj" />
+    <Project Path="src/manager/BTD5ModLoader.Manager.Core/BTD5ModLoader.Manager.Core.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="tests/managed/BTD5ModLoader.Manager.Core.Tests/BTD5ModLoader.Manager.Core.Tests.csproj" />
+  </Folder>
+</Solution>
+

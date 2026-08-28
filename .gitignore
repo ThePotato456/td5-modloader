@@ -1,0 +1,30 @@
+# Native and managed build output
+/out/
+/artifacts/
+/src/manager/**/bin/
+/src/manager/**/obj/
+/tests/managed/**/bin/
+/tests/managed/**/obj/
+
+# Project-local tools and caches
+/.tools/
+/.vs/
+/.cache/
+/.nuget/
+
+# Local integration settings and game-owned data
+/config/local.json
+/config/*.local.json
+/installed-mods/
+/extracted-mods/
+/logs/
+/backups/
+
+# IDE and operating-system state
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
+.DS_Store
+Thumbs.db
+

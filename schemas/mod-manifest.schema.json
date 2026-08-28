@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://btd5modloader.local/schemas/mod-manifest.schema.json",
+  "title": "BTD5 Mod Package Manifest",
+  "description": "Placeholder contract. Phase 4 will define and lock the v1 fields.",
+  "type": "object"
+}
+

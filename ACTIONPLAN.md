@@ -17,6 +17,8 @@
 - [x] Include new towers as a first-release feature, alongside gameplay events and balance changes.
 - [x] Support named profiles, shared vanilla saves with pre-launch backups, offline-only modded play, and automatic recovery from startup crashes.
 - [x] Support only explicitly fingerprinted game builds and fail closed on unknown builds.
+- [x] License the loader under GPL-3.0-only so GPL-covered NKHook5 code can be adapted with attribution and corresponding source.
+- [x] Treat BTD5-Decomp as research-only; do not copy or adapt its unlicensed source.
 
 Initial supported build fingerprints:
 
@@ -29,38 +31,38 @@ Initial supported build fingerprints:
 
 ## Phase 1 — Repository and reproducible build foundation
 
-- [ ] Create a CMake-based C++20 solution for x86 bootstrap/runtime code.
-- [ ] Create the .NET WPF manager solution and shared test projects.
-- [ ] Establish directories for runtime code, manager code, Lua API definitions, build-specific symbol maps, package schemas, samples, tests, and documentation.
-- [ ] Pin third-party source dependencies and record their licenses. Include Lua 5.4, a hooking library, JSON parsing, ZIP handling, and the C++ test framework.
-- [ ] Add build presets for Debug and Release x86 runtime artifacts.
-- [ ] Add formatting, static-analysis, and test commands that do not require BTD5 to be installed.
-- [ ] Add ignore rules for build output, local game paths, extracted mods, logs, backups, and test artifacts.
-- [ ] Add a local, untracked configuration template for locating an installed Steam copy during integration testing.
+- [x] Create a CMake-based C++20 solution for x86 bootstrap/runtime code.
+- [x] Create the .NET WPF manager solution and shared test projects.
+- [x] Establish directories for runtime code, manager code, Lua API definitions, build-specific symbol maps, package schemas, samples, tests, and documentation.
+- [x] Pin third-party source dependencies and record their licenses. Include Lua 5.4, a hooking library, JSON parsing, ZIP handling, and the C++ test framework.
+- [x] Add build presets for Debug and Release x86 runtime artifacts.
+- [x] Add formatting, static-analysis, and test commands that do not require BTD5 to be installed.
+- [x] Add ignore rules for build output, local game paths, extracted mods, logs, backups, and test artifacts.
+- [x] Add a local, untracked configuration template for locating an installed Steam copy during integration testing.
 
 ### Phase 1 implementation gate
 
-- [ ] A clean checkout builds the C++ x86 targets and WPF manager using documented commands.
-- [ ] All empty-project tests run successfully without game files.
-- [ ] No generated artifact or machine-specific path appears in version control.
+- [x] A clean checkout builds the C++ x86 targets and WPF manager using documented commands.
+- [x] All empty-project tests run successfully without game files.
+- [x] No generated artifact or machine-specific path appears in version control.
 
 ---
 
 ## Phase 2 — Reversible bootstrap and runtime lifecycle
 
-- [ ] Implement a 32-bit `version.dll` proxy that loads the genuine DLL from `System32` and correctly forwards its exported API.
-- [ ] Keep the proxy minimal; load a separate loader runtime DLL for all substantial behavior.
-- [ ] Locate the game directory from the current process rather than hard-coding a Steam path.
-- [ ] Initialize structured file logging before installing hooks or loading mods.
-- [ ] Add runtime states for bootstrap, compatibility check, hooks ready, mods loading, game ready, shutting down, and failed.
-- [ ] Make loader installation reversible without modifying `BTD5-Win.exe` or `BTD5.jet`.
-- [ ] Create a fixture executable that imports `version.dll` and exercises every forwarded function used by the game.
+- [x] Implement a 32-bit `wininet.dll` proxy that loads the genuine DLL from `SysWOW64` and correctly forwards the WinINet API imported by BTD5.
+- [x] Keep the proxy minimal; load a separate loader runtime DLL for all substantial behavior.
+- [x] Locate the game directory from the current process rather than hard-coding a Steam path.
+- [x] Initialize structured file logging before installing hooks or loading mods.
+- [x] Add runtime states for bootstrap, compatibility check, hooks ready, mods loading, game ready, shutting down, and failed.
+- [x] Make loader installation reversible without modifying `BTD5-Win.exe` or `BTD5.jet`.
+- [x] Create a fixture executable that imports `wininet.dll` and exercises every forwarded function used by the game.
 
 ### Phase 2 implementation gate
 
-- [ ] The fixture runs identically with and without the proxy present.
-- [ ] Installing and removing the proxy leaves fixture and game binaries byte-for-byte unchanged.
-- [ ] Runtime initialization failures produce a readable log and return control without recursive loading or an unexplained crash.
+- [x] The fixture runs identically with and without the proxy present.
+- [x] Installing and removing the proxy leaves fixture and game binaries byte-for-byte unchanged.
+- [x] Runtime initialization failures produce a readable log and return control without recursive loading or an unexplained crash.
 
 ---
 
@@ -225,4 +227,3 @@ Initial supported build fingerprints:
 - [ ] A new player can install, use, recover, and uninstall the loader without modifying game files manually.
 - [ ] Release artifacts contain no game binaries, proprietary assets, saves, credentials, account identifiers, or local paths.
 - [ ] Tag v1 only after every earlier phase gate remains checked on the release candidate.
-

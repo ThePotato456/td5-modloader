@@ -1,0 +1,22 @@
+<Window x:Class="BTD5ModLoader.Manager.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:ClassModifier="internal"
+        Title="BTD5 Mod Loader"
+        Width="900"
+        Height="600"
+        MinWidth="700"
+        MinHeight="450"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="32">
+        <StackPanel VerticalAlignment="Center">
+            <TextBlock FontSize="32"
+                       FontWeight="SemiBold"
+                       Text="BTD5 Mod Loader" />
+            <TextBlock Margin="0,12,0,0"
+                       FontSize="16"
+                       Foreground="#666666"
+                       Text="Project foundation is ready. Game discovery arrives in Phase 5." />
+        </StackPanel>
+    </Grid>
+</Window>

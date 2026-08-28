@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{c,cc,cpp,cxx,h,hpp}]
+indent_style = space
+indent_size = 4
+
+[*.{cs,csproj,props,targets,xaml}]
+indent_style = space
+indent_size = 4
+
+[*.{json,jsonc,md,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.ps1]
+indent_style = space
+indent_size = 4
+
+[src/manager/BTD5ModLoader.Manager/*.cs]
+# WPF instantiates these types through generated XAML rather than a visible
+# constructor call, which the analyzer cannot follow.
+dotnet_diagnostic.CA1812.severity = none
