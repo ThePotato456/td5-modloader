@@ -1,11 +1,23 @@
+<div align="center">
+
 # BTD5 Mod Loader
 
+**An open-source, offline-focused Lua mod loader for Bloons TD 5.**
+
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-F59E0B)](ACTIONPLAN.md)
+[![Latest release](https://img.shields.io/github/v/release/ThePotato456/td5-modloader?include_prereleases&label=release&color=2EA44F)](https://github.com/ThePotato456/td5-modloader/releases/latest)
 [![Platform: Windows x86](https://img.shields.io/badge/platform-Windows%20x86-0078D4?logo=windows)](docs/building.md)
 [![C++ 20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus)](CMakeLists.txt)
 [![Lua 5.4.9](https://img.shields.io/badge/Lua-5.4.9-2C2D72?logo=lua)](lua-api/README.md)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)](global.json)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue)](LICENSE)
+
+<img src="docs/assets/manager-preview.png"
+     alt="BTD5 Mod Loader manager showing installed mods, profiles, mod details, game detection, options, and the offline-mode launch requirement">
+
+<sub>The Windows manager provides local mod packages, profiles, configuration, loader health, and guarded launching.</sub>
+
+</div>
 
 An open-source, offline-focused mod loader for the 32-bit Windows Steam edition
 of **Bloons TD 5**. The loader integrates with the game through a native C++20
