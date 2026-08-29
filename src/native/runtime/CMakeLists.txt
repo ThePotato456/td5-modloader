@@ -16,6 +16,7 @@ add_library(
         mod_package.cpp
         pattern.cpp
         symbol_resolver.cpp
+        tower_placement_hook.cpp
         runtime.cpp
         runtime.def
         runtime_state.cpp

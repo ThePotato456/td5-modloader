@@ -3,9 +3,9 @@
 This publishable sample uses only the sandboxed Lua API. It logs each lifecycle
 stage, persists a launch counter in mod-owned storage, reads configuration and
 localization, schedules a deterministic timer, and logs all live match and
-round lifecycle events plus cash, lives, and tower placed/upgraded/sold
+round lifecycle events plus cash, lives, and tower placing/placed/upgraded/sold
 notifications. The tower handlers demonstrate stable wrapper identity and
-post-sale invalidation. Bloon handlers log spawned, popped, and leaked
+pre/post placement ordering as well as post-sale invalidation. Bloon handlers log spawned, popped, and leaked
 identities and verify post-pop and post-leak invalidation.
 Lives handlers verify matching `old_lives` and `new_lives` values across the
 exact pre-write and post-change notifications.

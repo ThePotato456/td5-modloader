@@ -51,11 +51,13 @@ fields. They are currently read-only, but `lives.changing` is cancellable by
 setting `event.cancelled = true`. Cancellation skips the pending lives write
 without undoing the originating action, and suppresses `lives.changed` for that
 transition.
+`tower.placing` fires immediately before verified tower-manager ownership.
 `tower.placed`, `tower.upgraded`, and `tower.sold` fire after their corresponding
-native observer dispatches and carry `event.tower`. The opaque wrapper keeps the
-same ID across placement, upgrades, and sale. It is valid during `tower.sold`
-handlers and becomes stale after they return. Tower pre-event counterparts and
-all bloon pre-event names do not yet have live hooks.
+native observer dispatches. All carry `event.tower`. The opaque wrapper keeps
+the same ID across placing, placement, upgrades, and sale. It is valid during
+`tower.sold` handlers and becomes stale after they return. `tower.placing` is
+read-only and not yet cancellable. The upgrade/sale and all bloon pre-event
+names do not yet have live hooks.
 `bloon.spawned`, `bloon.popped`, and `bloon.leaked` are live post-notifications
 and carry `event.bloon`. The opaque wrapper keeps the spawned object's ID through
 its pop or leak callback, then becomes stale after handlers return. A popped

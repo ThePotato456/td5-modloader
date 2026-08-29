@@ -22,6 +22,7 @@ Currently live in the supported Steam Win32 4.8 build:
   stored lives value;
 - `lives.changed`, after that native handler completes and the stored value is
   verified to have changed;
+- `tower.placing`, immediately before the tower manager takes ownership;
 - `tower.placed`, after native `CTowerSpawnedEvent` observer dispatch;
 - `tower.upgraded`, after native `CTowerUpgradedEvent` observer dispatch; and
 - `tower.sold`, after native `CTowerSoldEvent` observer dispatch;
@@ -29,7 +30,7 @@ Currently live in the supported Steam Win32 4.8 build:
 - `bloon.popped`, after native `CBloonPoppedEvent` observer dispatch; and
 - `bloon.leaked`, after native `CBloonEscapedEvent` observer dispatch.
 
-Tower and bloon pre-events remain mock-host only. Lives events carry
+Tower upgrade/sale and all bloon pre-events remain mock-host only. Lives events carry
 `old_lives` and `new_lives`; cash events currently carry no value fields. Each
 live tower notification carries `event.tower`, and each live bloon notification
 carries `event.bloon`. Payload fields are not yet mutable. `lives.changing` is
@@ -41,9 +42,10 @@ dispatch boundary. `lives.changing` runs at the exact add/subtract instruction,
 after the game has accepted the update, and `new_lives` reflects the clamped
 result for losses. Cancellation affects only the lives delta: it does not undo
 the originating reward or bloon leak. When cancelled, `lives.changed` does not
-run because the stored value remains unchanged. Tower notifications are
-deliberately post-only because the native spawned, upgraded, and sold events
-occur after their actions are committed.
+run because the stored value remains unchanged. `tower.placing` is a read-only
+pre-event at the verified manager insertion boundary. It is not yet cancellable.
+Tower upgrade and sale notifications remain post-only because their native
+events occur after those actions are committed.
 Bloon notifications are likewise post-only because the native events occur
 after spawning, popping, or leaking has been committed.
 
@@ -78,7 +80,7 @@ feedback loops.
 | Match | `match.starting` (live), `match.ending` (live) | `match.started` (live), `match.ended` (live) |
 | Round | `round.starting` (live), `round.ending` (live) | `round.started` (live), `round.ended` (live) |
 | Economy | `cash.changing` (live), `lives.changing` (live) | `cash.changed` (live), `lives.changed` (live) |
-| Tower placement | `tower.placing` | `tower.placed` (live) |
+| Tower placement | `tower.placing` (live) | `tower.placed` (live) |
 | Tower upgrade | `tower.upgrading` | `tower.upgraded` (live) |
 | Tower sale | `tower.selling` | `tower.sold` (live) |
 | Bloon spawn | `bloon.spawning` | `bloon.spawned` (live) |
@@ -112,8 +114,9 @@ invalidates every wrapper from the previous scene. IDs may be reused, but a new
 generation prevents an old wrapper from resolving to the replacement object.
 Calling `id()` or `kind()` on a stale wrapper raises a contained Lua error.
 
-For live tower notifications, placement creates or reuses the tower's stable
-handle, upgrades retain that identity, and sale invalidates the handle after all
+For live tower notifications, `tower.placing` creates the tower's stable handle
+before manager ownership and `tower.placed` reuses it after the native spawned
+event. Upgrades retain that identity, and sale invalidates the handle after all
 `tower.sold` handlers return. The sold wrapper is valid during the callback so a
 handler can identify it, then `is_valid()` returns `false`. Match teardown also
 invalidates every remaining tower handle before `match.ended` is dispatched.

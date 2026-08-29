@@ -189,6 +189,16 @@
       "validation": { "offset": 0, "pattern": "29 88 88 00 00 00" }
     },
     {
+      "name": "tower.manager.place",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "55 8B EC 6A FF 68 ?? ?? ?? ?? 64 A1 00 00 00 00 50 51 56 57 A1 34 00 D8 00 33 C5 50 8D 45 F4 64 A3 00 00 00 00 8B F9 8B 45 08 8D 4F 04",
+      "result_offset": 0,
+      "required": true,
+      "prerequisites": ["event.tower.spawned.vtable"],
+      "validation": { "offset": 0, "pattern": "55 8B EC 6A FF" }
+    },
+    {
       "name": "tower.factory.constructor",
       "module": "BTD5-Win.exe",
       "section": ".text",

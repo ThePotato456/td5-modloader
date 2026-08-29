@@ -201,10 +201,13 @@ try
             !log.Contains(
                 "Lifecycle Sample observed lives.changed " + cancelledTransition,
                 StringComparison.Ordinal);
+        var placingTower = Regex.Match(log, "Lifecycle Sample observed tower\\.placing id=(\\d+)");
         var placedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.placed id=(\\d+)");
         var upgradedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.upgraded id=(\\d+)");
         var soldTower = Regex.Match(log, "Lifecycle Sample observed tower\\.sold id=(\\d+)");
-        var towerActions = placedTower.Success && upgradedTower.Success && soldTower.Success &&
+        var towerActions = placingTower.Success && placedTower.Success && upgradedTower.Success &&
+            soldTower.Success && placingTower.Index < placedTower.Index &&
+            placingTower.Groups[1].Value == placedTower.Groups[1].Value &&
             placedTower.Groups[1].Value == upgradedTower.Groups[1].Value &&
             placedTower.Groups[1].Value == soldTower.Groups[1].Value &&
             log.Contains("Lifecycle Sample confirmed sold tower became stale", StringComparison.Ordinal);
@@ -229,7 +232,7 @@ try
             Console.WriteLine(expectBloonActions
                 ? "Lua observed bloon spawn, pop, and leak notifications in BTD5."
                 : expectTowerActions
-                ? "Lua observed tower placement, upgrade, and sale notifications in BTD5."
+                ? "Lua observed tower pre-placement, placement, upgrade, and sale notifications in BTD5."
                 : expectLivesCancel
                 ? "Lua cancelled a verified lives loss and the native write did not occur in BTD5."
                 : expectLivesLoss
@@ -251,7 +254,7 @@ try
     return Fail(expectBloonActions
         ? "Timed out waiting for bloon spawn, pop, leak, and Lua event evidence."
         : expectTowerActions
-        ? "Timed out waiting for tower placement, upgrade, sale, and Lua event evidence."
+        ? "Timed out waiting for tower pre-placement, placement, upgrade, sale, and Lua event evidence."
         : expectLivesCancel
         ? "Timed out waiting for a cancelled lives loss with no post-change notification."
         : expectLivesLoss

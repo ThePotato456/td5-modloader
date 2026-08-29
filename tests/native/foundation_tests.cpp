@@ -28,6 +28,7 @@
 #include "../../src/native/runtime/native_event_hook.hpp"
 #include "../../src/native/runtime/runtime_state.hpp"
 #include "../../src/native/runtime/symbol_resolver.hpp"
+#include "../../src/native/runtime/tower_placement_hook.hpp"
 
 namespace {
 
@@ -82,6 +83,20 @@ __declspec(noinline) void __fastcall fake_game_screen_uninit(void* const instanc
     if (screen != nullptr && screen->calls != nullptr) {
         screen->calls->emplace_back("original_uninit");
     }
+}
+
+struct FakeTowerManager final {
+    void* placed{};
+    std::vector<std::string>* calls{};
+};
+
+__declspec(noinline) void __fastcall fake_tower_placement(
+    void* const instance,
+    void*,
+    void* const tower) {
+    auto* const manager = static_cast<FakeTowerManager*>(instance);
+    manager->placed = tower;
+    manager->calls->emplace_back("original");
 }
 
 struct FakeEventManager final {
@@ -599,6 +614,36 @@ TEST_CASE("match hook preserves x86 lifecycle ordering and removes cleanly", "[h
     fake_game_screen_init(&screen, nullptr, &screen_data);
     fake_game_screen_uninit(&screen, nullptr);
     REQUIRE(calls == std::vector<std::string>{"original", "original_uninit"});
+}
+
+TEST_CASE("tower placement hook fires before manager ownership", "[hooks]") {
+    std::vector<std::string> calls;
+    FakeTowerManager manager{nullptr, &calls};
+    int tower = 1;
+    btd5loader::runtime::TowerPlacementHook hook;
+    std::string error;
+    REQUIRE(hook.install(
+        reinterpret_cast<void*>(&fake_tower_placement),
+        [&manager, &calls, &tower](void* const candidate) {
+            REQUIRE(candidate == &tower);
+            REQUIRE(manager.placed == nullptr);
+            calls.emplace_back("placing");
+        },
+        error));
+    REQUIRE(error.empty());
+    REQUIRE(hook.installed());
+
+    fake_tower_placement(&manager, nullptr, &tower);
+    REQUIRE(manager.placed == &tower);
+    REQUIRE(calls == std::vector<std::string>{"placing", "original"});
+
+    hook.remove();
+    REQUIRE_FALSE(hook.installed());
+    manager.placed = nullptr;
+    calls.clear();
+    fake_tower_placement(&manager, nullptr, &tower);
+    REQUIRE(manager.placed == &tower);
+    REQUIRE(calls == std::vector<std::string>{"original"});
 }
 
 TEST_CASE("native event hook filters vtables and preserves dispatch ordering", "[hooks]") {

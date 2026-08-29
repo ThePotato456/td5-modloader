@@ -65,9 +65,19 @@ btd5.events.on("lives.changed", function(event)
     log("Lifecycle Sample observed lives.changed " .. completed)
 end)
 
+local pending_tower_placement
+
+btd5.events.on("tower.placing", function(event)
+    assert(event.tower:is_valid())
+    pending_tower_placement = event.tower:id()
+    log("Lifecycle Sample observed tower.placing id=" .. pending_tower_placement)
+end)
+
 btd5.events.on("tower.placed", function(event)
     assert(event.tower:is_valid())
+    assert(event.tower:id() == pending_tower_placement)
     log("Lifecycle Sample observed tower.placed id=" .. event.tower:id())
+    pending_tower_placement = nil
 end)
 
 btd5.events.on("tower.upgraded", function(event)

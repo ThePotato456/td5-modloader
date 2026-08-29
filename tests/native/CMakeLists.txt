@@ -14,6 +14,7 @@ add_executable(
     ../../src/native/runtime/mod_package.cpp
     ../../src/native/runtime/pattern.cpp
     ../../src/native/runtime/symbol_resolver.cpp
+    ../../src/native/runtime/tower_placement_hook.cpp
     ../../src/native/runtime/runtime_state.cpp
 )
 target_link_libraries(

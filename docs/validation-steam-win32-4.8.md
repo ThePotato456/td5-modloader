@@ -31,6 +31,7 @@ section and passed their validation patterns:
 - `player.lives.loss.handler`
 - `player.lives.gain.write`
 - `player.lives.loss.write`
+- `tower.manager.place`
 - `tower.factory.constructor`
 - `weapon.factory.constructor`
 
