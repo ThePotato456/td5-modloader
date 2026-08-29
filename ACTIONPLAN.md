@@ -140,7 +140,8 @@ Initial supported build fingerprints:
 - [x] Add cash change events.
 - [x] Add a post-change lives notification for verified gains and losses.
 - [ ] Add a verified lives pre-change event.
-- [ ] Add tower placement, placed, upgrade, upgraded, sale, and sold events.
+- [x] Add post-action tower placed, upgraded, and sold notifications.
+- [ ] Add verified tower placing, upgrading, and selling pre-events.
 - [ ] Add bloon spawn, spawned, pop, popped, leak, and leaked events.
 - [ ] Make verified pre-events cancellable and mutable.
 - [ ] Make supported live-object properties mutable through validated setters; reject invalid types, ranges, phases, and stale objects.

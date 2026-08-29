@@ -46,8 +46,11 @@ supported game. `round.starting`, `round.started`, `round.ending`, and
 native money-update observer dispatch, but currently have no balance payload or
 mutation support. `lives.changed` fires only after a native gain or loss is
 confirmed by comparing the stored value; it currently has no value payload.
-`lives.changing` and the remaining names do not yet have live hooks. Mods must
-not infer support for an event merely because the API accepts its name.
+`tower.placed`, `tower.upgraded`, and `tower.sold` fire after their corresponding
+native observer dispatches, but do not yet carry a tower wrapper. Their pre-event
+counterparts, `lives.changing`, and all bloon names do not yet have live hooks.
+Mods must not infer support for an event merely because the API accepts its
+name.
 
 Resource paths must use `/`, remain relative, and contain no `.` or `..`
 components. Mods never receive a general filesystem path.

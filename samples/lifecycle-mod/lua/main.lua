@@ -46,6 +46,18 @@ btd5.events.on("lives.changed", function()
     log("Lifecycle Sample observed lives.changed")
 end)
 
+btd5.events.on("tower.placed", function()
+    log("Lifecycle Sample observed tower.placed")
+end)
+
+btd5.events.on("tower.upgraded", function()
+    log("Lifecycle Sample observed tower.upgraded")
+end)
+
+btd5.events.on("tower.sold", function()
+    log("Lifecycle Sample observed tower.sold")
+end)
+
 function on_load()
     local launches = tonumber(btd5.storage.get("launches") or "0") + 1
     btd5.storage.set("launches", tostring(launches))

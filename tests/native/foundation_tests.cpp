@@ -530,6 +530,7 @@ TEST_CASE("native event hook filters vtables and preserves dispatch ordering", "
     int started_type = 1;
     int ended_type = 2;
     int unrelated_type = 3;
+    int post_only_type = 4;
     btd5loader::runtime::NativeEventHook hook;
     std::string error;
     REQUIRE(hook.install(
@@ -545,6 +546,11 @@ TEST_CASE("native event hook filters vtables and preserves dispatch ordering", "
                 [&calls]() { calls.emplace_back("ending"); },
                 [&calls]() { calls.emplace_back("ended"); },
             },
+            {
+                &post_only_type,
+                {},
+                [&calls]() { calls.emplace_back("completed"); },
+            },
         },
         error));
     REQUIRE(error.empty());
@@ -558,6 +564,11 @@ TEST_CASE("native event hook filters vtables and preserves dispatch ordering", "
     FakeNativeEvent ended_event{&ended_type};
     REQUIRE(fake_event_dispatch(&manager, nullptr, &ended_event, true));
     REQUIRE(calls == std::vector<std::string>{"ending", "original_queued", "ended"});
+
+    calls.clear();
+    FakeNativeEvent post_only_event{&post_only_type};
+    REQUIRE(fake_event_dispatch(&manager, nullptr, &post_only_event, false));
+    REQUIRE(calls == std::vector<std::string>{"original", "completed"});
 
     calls.clear();
     FakeNativeEvent unrelated_event{&unrelated_type};

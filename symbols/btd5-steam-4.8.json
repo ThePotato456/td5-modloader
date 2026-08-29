@@ -89,6 +89,36 @@
       "validation": { "offset": 0, "pattern": "70 E9 5A 00" }
     },
     {
+      "name": "event.tower.spawned.vtable",
+      "module": "BTD5-Win.exe",
+      "section": ".rdata",
+      "pattern": "14 99 C4 00 30 1A 60 00 50 D1 5A 00 62 75 69 6C 64 69 6E 67 5F 61 6E 69",
+      "result_offset": 4,
+      "required": true,
+      "prerequisites": ["event.manager.dispatch"],
+      "validation": { "offset": 0, "pattern": "30 1A 60 00" }
+    },
+    {
+      "name": "event.tower.upgraded.vtable",
+      "module": "BTD5-Win.exe",
+      "section": ".rdata",
+      "pattern": "28 99 C4 00 30 1A 60 00 50 D1 5A 00 44 99 C4 00 A0 08 63 00 D6 60 93 00",
+      "result_offset": 4,
+      "required": true,
+      "prerequisites": ["event.manager.dispatch"],
+      "validation": { "offset": 0, "pattern": "30 1A 60 00" }
+    },
+    {
+      "name": "event.tower.sold.vtable",
+      "module": "BTD5-Win.exe",
+      "section": ".rdata",
+      "pattern": "48 79 C5 00 30 1A 60 00 50 D1 5A 00 20 7B C5 00 20 06 79 00 4E 75 6C 6C",
+      "result_offset": 4,
+      "required": true,
+      "prerequisites": ["event.manager.dispatch"],
+      "validation": { "offset": 0, "pattern": "30 1A 60 00" }
+    },
+    {
       "name": "player.lives.gain.handler",
       "module": "BTD5-Win.exe",
       "section": ".text",

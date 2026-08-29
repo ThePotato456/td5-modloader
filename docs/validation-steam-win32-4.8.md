@@ -21,6 +21,9 @@ section and passed their validation patterns:
 - `event.round.started.vtable`
 - `event.round.ended.vtable`
 - `event.money.updated.vtable`
+- `event.tower.spawned.vtable`
+- `event.tower.upgraded.vtable`
+- `event.tower.sold.vtable`
 - `player.lives.gain.handler`
 - `player.lives.loss.handler`
 - `tower.factory.constructor`

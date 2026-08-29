@@ -3,4 +3,5 @@
 This publishable sample uses only the sandboxed Lua API. It logs each lifecycle
 stage, persists a launch counter in mod-owned storage, reads configuration and
 localization, schedules a deterministic timer, and logs all live match and
-round lifecycle events plus cash- and lives-update notifications.
+round lifecycle events plus cash, lives, and tower placed/upgraded/sold
+notifications.

@@ -19,15 +19,19 @@ Currently live in the supported Steam Win32 4.8 build:
   dispatch; and
 - `cash.changed`, after native `CMoneyUpdatedEvent` observer dispatch; and
 - `lives.changed`, after a verified native gain or loss changed the stored lives
-  value.
+  value;
+- `tower.placed`, after native `CTowerSpawnedEvent` observer dispatch;
+- `tower.upgraded`, after native `CTowerUpgradedEvent` observer dispatch; and
+- `tower.sold`, after native `CTowerSoldEvent` observer dispatch.
 
-`lives.changing`, tower events, and bloon events remain mock-host only. The cash
-and lives events currently carry no old/new value fields and cannot cancel or
-modify a value. The game has already updated its internal balance when
-`cash.changing` runs; the pre/post distinction describes the native
+`lives.changing`, tower pre-events, and bloon events remain mock-host only. The
+cash, lives, and tower events currently carry no object/value fields and cannot
+cancel or modify an action. The game has already updated its internal balance
+when `cash.changing` runs; the pre/post distinction describes the native
 observer-dispatch boundary. `lives.changed` is deliberately post-only until a
 pre-mutation boundary can distinguish a real change from a mode-suppressed
-attempt.
+attempt. Tower notifications are deliberately post-only because the native
+spawned, upgraded, and sold events occur after their actions are committed.
 
 ## Subscription
 
@@ -60,9 +64,9 @@ feedback loops.
 | Match | `match.starting` (live), `match.ending` (live) | `match.started` (live), `match.ended` (live) |
 | Round | `round.starting` (live), `round.ending` (live) | `round.started` (live), `round.ended` (live) |
 | Economy | `cash.changing` (live), `lives.changing` | `cash.changed` (live), `lives.changed` (live) |
-| Tower placement | `tower.placing` | `tower.placed` |
-| Tower upgrade | `tower.upgrading` | `tower.upgraded` |
-| Tower sale | `tower.selling` | `tower.sold` |
+| Tower placement | `tower.placing` | `tower.placed` (live) |
+| Tower upgrade | `tower.upgrading` | `tower.upgraded` (live) |
+| Tower sale | `tower.selling` | `tower.sold` (live) |
 | Bloon spawn | `bloon.spawning` | `bloon.spawned` |
 | Bloon pop | `bloon.popping` | `bloon.popped` |
 | Bloon leak | `bloon.leaking` | `bloon.leaked` |

@@ -28,7 +28,7 @@ bool NativeEventHook::install(
         return false;
     }
     for (auto binding = bindings.begin(); binding != bindings.end(); ++binding) {
-        if (binding->event_vtable == nullptr || !binding->before || !binding->after) {
+        if (binding->event_vtable == nullptr || (!binding->before && !binding->after)) {
             error = "native event binding is incomplete";
             return false;
         }
@@ -114,7 +114,7 @@ bool __fastcall NativeEventHook::hooked_dispatch(
             binding = &*found;
         }
     }
-    if (binding != nullptr) {
+    if (binding != nullptr && binding->before) {
         try {
             binding->before();
         } catch (...) {
@@ -122,7 +122,7 @@ bool __fastcall NativeEventHook::hooked_dispatch(
         }
     }
     const bool result = original != nullptr && original(manager, event, queued);
-    if (binding != nullptr) {
+    if (binding != nullptr && binding->after) {
         try {
             binding->after();
         } catch (...) {
