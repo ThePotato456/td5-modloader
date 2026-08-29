@@ -48,6 +48,10 @@ mutation support. `lives.changed` fires only after a native gain or loss is
 confirmed by comparing the stored value. `lives.changing` fires at the exact
 accepted native write boundary. Both carry integer `old_lives` and `new_lives`
 fields; they are currently read-only and non-cancellable.
+fields. They are currently read-only, but `lives.changing` is cancellable by
+setting `event.cancelled = true`. Cancellation skips the pending lives write
+without undoing the originating action, and suppresses `lives.changed` for that
+transition.
 `tower.placed`, `tower.upgraded`, and `tower.sold` fire after their corresponding
 native observer dispatches and carry `event.tower`. The opaque wrapper keeps the
 same ID across placement, upgrades, and sale. It is valid during `tower.sold`

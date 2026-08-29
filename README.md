@@ -1,121 +1,107 @@
 # BTD5 Mod Loader
 
-[![Development status](https://img.shields.io/badge/status-pre--alpha-orange)](ACTIONPLAN.md)
-[![Platform](https://img.shields.io/badge/platform-Windows%20x86-0078D4?logo=windows)](docs/building.md)
-[![C++](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus)](CMakeLists.txt)
-[![Lua](https://img.shields.io/badge/Lua-5.4.9-2C2D72?logo=lua)](THIRD_PARTY_NOTICES.md)
-[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](global.json)
-[![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0--only-blue)](LICENSE)
+[![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-F59E0B)](ACTIONPLAN.md)
+[![Platform: Windows x86](https://img.shields.io/badge/platform-Windows%20x86-0078D4?logo=windows)](docs/building.md)
+[![C++ 20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus)](CMakeLists.txt)
+[![Lua 5.4.9](https://img.shields.io/badge/Lua-5.4.9-2C2D72?logo=lua)](lua-api/README.md)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)](global.json)
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue)](LICENSE)
 
-An open-source, offline-focused mod loader for the 32-bit Windows Steam release
-of **Bloons TD 5**. Native integration is implemented in C++20, while all public
-mods use isolated, sandboxed Lua 5.4 environments.
+An open-source, offline-focused mod loader for the 32-bit Windows Steam edition
+of **Bloons TD 5**. The loader integrates with the game through a native C++20
+runtime while giving mod authors a sandboxed Lua 5.4 API.
 
-> [!IMPORTANT]
-> This project is under active development and is not ready for normal gameplay.
-> Network blocking, save backups, crash recovery, gameplay mutation, and custom
-> towers are roadmap features and must not be treated as complete yet. A limited
-> set of lifecycle, cash, lives, tower, and bloon events is live for development
-> testing. Lives events now include a verified pre-write boundary and values.
+> [!WARNING]
+> BTD5 Mod Loader is in pre-alpha development. It can load Lua mods and interact
+> with a verified game build, but it does not yet provide network enforcement,
+> automatic save backups, crash recovery, general gameplay mutation, or custom
+> towers. Do not use it for online, ranked, leaderboard, or multiplayer play.
 
-BTD5 Mod Loader is an unofficial community project. It is not affiliated with,
-endorsed by, or sponsored by Ninja Kiwi. Bloons TD 5 and its assets remain the
-property of their respective owners.
+This is an unofficial community project. It is not affiliated with or endorsed
+by Ninja Kiwi. Bloons TD 5 and its assets belong to their respective owners.
 
-## Project goals
+## What works today
 
-- Provide one stable, documented Lua API instead of exposing native addresses or
-  a public DLL plugin ABI.
-- Allow Lua mods to add gameplay behavior and original content, including custom
-  towers, upgrades, projectiles, artwork, localization, and audio.
-- Fail closed when the installed game build is unknown or required hooks cannot
-  be validated.
-- Keep installation reversible without patching `BTD5-Win.exe` or `BTD5.jet`.
-- Isolate mods with separate Lua states, restricted standard libraries, memory
-  limits, instruction budgets, time limits, and contained callback failures.
-- Support local `.btd5mod` packages, named profiles, dependency validation, safe
-  recovery, and an approachable Windows manager.
-
-## Current status
-
-The repository currently includes:
-
-- a reversible WinINet proxy and separate native loader runtime;
-- executable and asset fingerprinting for the Steam Win32 4.8 build;
-- validated symbol maps and transactional hook rollback;
-- an embedded Lua 5.4.9 host with isolated mod states and sandbox limits;
-- validated `.btd5mod` ZIP packages and deterministic dependency ordering;
-- a WPF manager with Steam discovery, safe loader install/verify/repair/uninstall,
-  package inspection, profiles, launch controls, logs, and diagnostics export;
-- named profile persistence, per-mod configuration, deterministic profile order,
-  dependency-safe operations, and bounded launch history;
-- a validated manager-to-runtime handoff that loads packages, invokes Lua
-  `on_load` and `on_ready`, and advances timers from a transactional render hook;
-- live Lua match, round, cash, verified lives-changing/changed, and post-action
-  tower events with lifetime-checked tower wrappers on the supported build;
-- live post-action bloon spawned, popped, and leaked events with
-  lifetime-checked bloon wrappers;
-- native and managed integration tests that do not redistribute game files.
-
-Detailed progress and mandatory implementation gates are maintained in the
-[implementation action plan](ACTIONPLAN.md).
-
-## Architecture
-
-| Component | Technology | Responsibility |
+| Area | Status | Current capability |
 | --- | --- | --- |
-| Bootstrap | C++20, Win32 | Loads the real WinINet library and starts the separate runtime |
-| Runtime | C++20 | Compatibility checks, hooks, lifecycle, Lua host, and game integration |
-| Public mod API | Lua 5.4 | Sandboxed lifecycle scripts, configuration, storage, localization, and future gameplay/content APIs |
-| Manager | C# / WPF / .NET 10 | Installation, packages, profiles, launch workflow, diagnostics, and recovery |
-| Mod package | ZIP / JSON / Lua | Portable `.btd5mod` archive containing a manifest, scripts, assets, localization, and documentation |
+| Windows manager | Working | Finds Steam installations; installs, verifies, repairs, and removes loader-owned files |
+| Mod packages | Working | Validates and installs local `.btd5mod` archives with dependencies and deterministic load order |
+| Profiles | Working | Enables, disables, reorders, upgrades, and launches configured sets of mods |
+| Lua runtime | Working | Isolated Lua states, lifecycle callbacks, timers, configuration, localization, storage, and resource reads |
+| Gameplay events | Working | Live match, round, cash, lives, tower, and bloon notifications |
+| Object wrappers | Partial | Stable, lifetime-checked tower and bloon handles are exposed to Lua |
+| Event cancellation | Partial | `lives.changing` can cancel a verified life gain or loss before the native write |
+| Mutable gameplay | Planned | Validated property setters and mutable event fields are not implemented |
+| Custom towers | Planned | Lua-defined towers, upgrades, attacks, and assets begin after the Phase 6 gate |
+| Offline protection | Planned | Network guards, save backups, and crash recovery are Phase 9 work |
 
-Native code is an internal implementation detail. Version 1 mods will be
-Lua-only, including mods that register new towers.
+Progress is tracked by checked implementation steps and mandatory phase gates in
+[ACTIONPLAN.md](ACTIONPLAN.md).
 
-## Building from source
+## Design
 
-### Requirements
+- **Lua is the public mod format.** Mod authors do not need to compile C++ or
+  depend on a native plugin ABI.
+- **C++ stays behind the API boundary.** Hooking, compatibility checks, object
+  lifetime tracking, and Lua hosting remain loader implementation details.
+- **Unknown builds fail closed.** The runtime checks game fingerprints, resolves
+  named symbols, validates expected instructions, and refuses unsafe hooks.
+- **Installation is reversible.** Loader files are tracked separately;
+  `BTD5-Win.exe` and `BTD5.jet` are not patched on disk.
+- **Mods are isolated.** Each mod receives its own restricted Lua state with
+  memory, instruction, recursion, and callback-time limits.
+- **Packages are deterministic.** Dependencies, explicit ordering constraints,
+  profile order, and stable tie-breaking produce a repeatable load order.
 
-- Windows 10 or newer;
-- Visual Studio Build Tools with MSVC and CMake support;
-- Git and network access for the initial pinned-dependency restore;
-- the project-local .NET 10.0.400 SDK, or that exact SDK on `PATH`.
+## Supported game build
 
-Install the local SDK and run the standard development gates from PowerShell:
+The current compatibility target is **Steam Win32 4.8**.
 
-```powershell
-./scripts/install-dotnet.ps1
-./scripts/build.ps1 -Configuration Debug
-./scripts/test.ps1 -Configuration Debug
-./scripts/analyze.ps1
-./scripts/check-format.ps1
+The loader uses relative virtual addresses and runtime pattern validation, so
+Windows ASLR does not require fixed process addresses. Another computer can use
+the same compatibility map when its game executable and asset archive are
+byte-for-byte identical to the verified build. A different update, storefront
+edition, regional binary, or modified executable requires a separately tested
+symbol map.
+
+Compatibility is checked before gameplay hooks are installed. A mismatch stops
+mod loading instead of attempting to reuse uncertain offsets. See the
+[supported-build validation record](docs/validation-steam-win32-4.8.md).
+
+## Lua mod example
+
+Every enabled mod runs in its own Lua environment. This example observes life
+changes and optionally cancels life loss:
+
+```lua
+btd5.events.on("lives.changing", function(event)
+    btd5.log(
+        "info",
+        "lives: " .. event.old_lives .. " -> " .. event.new_lives
+    )
+
+    if event.new_lives < event.old_lives then
+        event.cancelled = true
+    end
+end)
+
+function on_ready()
+    btd5.log("info", "mod is ready")
+end
 ```
 
-Use `-Configuration Release` for an optimized build. Native targets are always
-Win32/x86 because they load into the 32-bit game process. The WPF manager is
-architecture-neutral.
+Cancelling `lives.changing` skips only the pending lives write. It does not undo
+the originating bloon leak or reward action, and a cancelled transition does
+not emit `lives.changed`.
 
-See the complete [build guide](docs/building.md) for toolchain details and the
-read-only compatibility inspector.
+Start with the [Lua API reference](lua-api/README.md), the
+[gameplay event contract](docs/gameplay-events.md), and the complete
+[lifecycle sample](samples/lifecycle-mod/README.md).
 
-## Game installation and local testing
+## Mod package layout
 
-The game is not required to build or run the automated test suites. Integration
-testing requires a legally obtained Steam installation of Bloons TD 5.
-
-You may use the normal Steam installation or an ignored local test copy. Keep a
-local copy under `.local/game/` and put machine-specific settings in
-`config/local.json`; both locations are excluded from Git. The loader must never
-commit, redistribute, or silently modify the game's executable or asset archive.
-
-Only explicitly fingerprinted builds are accepted. The currently supported
-target and its validation record are documented in
-[Steam Win32 4.8 validation](docs/validation-steam-win32-4.8.md).
-
-## Creating a Lua mod
-
-A mod is distributed as a `.btd5mod` ZIP archive with `mod.json` at its root:
+A mod is a ZIP-compatible archive using the `.btd5mod` extension, with
+`mod.json` at its root:
 
 ```text
 example.btd5mod
@@ -128,80 +114,115 @@ example.btd5mod
 └── README.md
 ```
 
-The manifest declares the mod ID, semantic version, Lua entry point, loader API,
-supported game builds, dependencies, ordering constraints, and requested
-capabilities. Invalid or unsafe archives are rejected before the game starts.
+The manifest declares identity, version, entry point, loader API compatibility,
+supported game builds, dependencies, ordering constraints, capabilities, and
+configuration defaults. Unsafe paths, malformed manifests, unsupported files,
+oversized content, dependency errors, and incompatible builds are rejected
+before launch.
 
-Start with:
+See the [package specification](docs/mod-packages.md) and
+[manifest schema](schemas/mod-manifest.schema.json).
 
-- the [Lua API reference](lua-api/README.md);
-- the [package format specification](docs/mod-packages.md);
-- the [manifest schema](schemas/mod-manifest.schema.json); and
-- the [lifecycle sample mod](samples/lifecycle-mod/README.md).
+## Architecture
 
-The current sample demonstrates lifecycle callbacks, logging, configuration,
-localization, deterministic timers, private mod storage, and the currently live
-match, round, cash, post-change lives, tower placed/upgraded/sold, and bloon
-spawned/popped/leaked events. Tower events include a stable, opaque tower
-wrapper, and bloon events include an opaque wrapper with verified removal
-invalidation. A custom-tower example will be added when its implementation gate
-passes.
+| Component | Technology | Responsibility |
+| --- | --- | --- |
+| Bootstrap | C++20 / Win32 | Proxies the real system WinINet library and starts the runtime |
+| Runtime | C++20 | Fingerprinting, symbol resolution, hooks, object tracking, and Lua hosting |
+| Public mod API | Lua 5.4 | Sandboxed scripts, lifecycle, events, storage, configuration, and future content registration |
+| Manager | C# / WPF / .NET 10 | Installation, packages, profiles, launch controls, logs, and diagnostics |
+| Mod package | ZIP / JSON / Lua | Portable scripts, metadata, localization, documentation, and original assets |
+
+Native plugins are not part of the public v1 format. Future custom towers will
+also be registered through Lua.
+
+## Building from source
+
+### Requirements
+
+- Windows 10 or later;
+- Visual Studio Build Tools with the MSVC x86/x64 workload and bundled CMake;
+- Git and network access for the first pinned-dependency restore; and
+- the project-local .NET 10.0.400 SDK, or that exact SDK on `PATH`.
+
+From PowerShell:
+
+```powershell
+./scripts/install-dotnet.ps1
+./scripts/build.ps1 -Configuration Debug
+./scripts/test.ps1 -Configuration Debug
+./scripts/analyze.ps1
+./scripts/check-format.ps1
+./scripts/stage.ps1 -Configuration Debug
+```
+
+The staged manager, runtime, compatibility maps, and sample package are written
+to `out/stage/debug`. Use `-Configuration Release` for optimized artifacts.
+Native targets are always Win32/x86 because they load into BTD5's 32-bit
+process; the manager itself is architecture-neutral.
+
+The automated suites do not require the game. See the
+[build guide](docs/building.md) for complete toolchain and symbol-inspection
+instructions.
+
+## Local game testing
+
+Integration tests require a legally obtained Steam installation. You may point
+the tools at the normal Steam directory or place an ignored test copy under
+`.local/game/`. Machine-specific settings belong in ignored
+`config/local.json`.
+
+Never commit or redistribute the game executable, assets, saves, Steam account
+data, installed mods, logs, or local paths. The repository intentionally
+contains no Ninja Kiwi files.
 
 ## Documentation
 
-| Document | Purpose |
-| --- | --- |
-| [Implementation action plan](ACTIONPLAN.md) | Ordered roadmap, progress markers, and phase gates |
-| [Build guide](docs/building.md) | Prerequisites, build commands, tests, analysis, and symbol inspection |
-| [Lua API](lua-api/README.md) | Available sandboxed Lua functions and lifecycle behavior |
-| [Gameplay event contract](docs/gameplay-events.md) | Event names, ordering, containment, and object lifetime rules |
-| [Mod package format](docs/mod-packages.md) | Archive layout, validation limits, and deterministic ordering |
-| [Manager storage and ownership](docs/manager-storage.md) | Safe installation, repair, uninstall, and local state rules |
-| [Supported build validation](docs/validation-steam-win32-4.8.md) | Fingerprints and manual compatibility evidence |
-| [Phase 5 validation](docs/validation-phase5.md) | Manager workflow and live Lua `on_load` acceptance evidence |
-| [Phase 6 foundation validation](docs/validation-phase6-foundation.md) | Live render hook, `on_ready`, and timer acceptance evidence |
-| [Phase 6 match-entry validation](docs/validation-phase6-match-entry.md) | First live Lua gameplay-event acceptance evidence |
-| [Phase 6 match lifecycle validation](docs/validation-phase6-match-lifecycle.md) | Live match entry and teardown acceptance evidence |
-| [Phase 6 round lifecycle validation](docs/validation-phase6-round-lifecycle.md) | Live native round-event acceptance evidence |
-| [Phase 6 cash validation](docs/validation-phase6-cash.md) | Live native cash-notification acceptance evidence |
-| [Phase 6 lives validation](docs/validation-phase6-lives-changed.md) | Verified post-change lives notification evidence |
-| [Phase 6 tower-action validation](docs/validation-phase6-tower-actions.md) | Live tower placed, upgraded, and sold evidence |
-| [Phase 6 bloon-action validation](docs/validation-phase6-bloon-actions.md) | Live bloon spawned, popped, and leaked evidence |
-| [Upstream code provenance](docs/upstream-code-provenance.md) | Auditable record of GPL-covered adaptations |
-| [Upstream research policy](docs/upstream-research.md) | Boundaries for research-only upstream material |
-| [Third-party notices](THIRD_PARTY_NOTICES.md) | Pinned dependencies and their licenses |
+- [Implementation roadmap and gates](ACTIONPLAN.md)
+- [Building and compatibility inspection](docs/building.md)
+- [Lua API reference](lua-api/README.md)
+- [Gameplay events and wrapper lifetimes](docs/gameplay-events.md)
+- [Mod package format](docs/mod-packages.md)
+- [Manager storage and file ownership](docs/manager-storage.md)
+- [Supported Steam build validation](docs/validation-steam-win32-4.8.md)
+- [Live lives-event and cancellation validation](docs/validation-phase6-lives-changed.md)
+- [Tower-event validation](docs/validation-phase6-tower-actions.md)
+- [Bloon-event validation](docs/validation-phase6-bloon-actions.md)
+- [Upstream code provenance](docs/upstream-code-provenance.md)
+- [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-## Safety and project boundaries
+Additional milestone evidence is kept under [`docs/`](docs/).
 
-- Do not use the unfinished loader in online, ranked, leaderboard, or multiplayer
-  contexts.
-- Do not report a build as supported without executable and asset fingerprints
-  plus passing symbol validation.
-- Do not commit game binaries, assets, saves, Steam account data, installed mods,
-  logs, backups, credentials, or machine-specific paths.
-- Do not write custom identifiers into vanilla progression data.
-- Treat every mod package as untrusted input and preserve sandbox boundaries.
+## Safety boundaries
 
-Offline enforcement and save protection are planned for Phase 9. Until that gate
-passes, “offline-focused” describes the project policy and design—not a completed
-technical guarantee.
+- Treat every mod package as untrusted input.
+- Do not claim compatibility for an unverified executable or asset fingerprint.
+- Do not use the loader in networked or competitive contexts.
+- Do not write mod identifiers or custom data into vanilla progression files.
+- Do not distribute proprietary game content with the loader or a mod.
+
+“Offline-focused” currently describes project scope and policy. It is not yet a
+technical guarantee; fail-closed network enforcement and save protection remain
+planned work.
 
 ## Contributing
 
-Review [ACTIONPLAN.md](ACTIONPLAN.md) before starting work. Phases are completed
-in order, and each phase has an implementation gate that must pass before the
-next phase begins. Changes should include proportionate tests, preserve the
-fail-closed compatibility model, and avoid all proprietary game content.
+Read [ACTIONPLAN.md](ACTIONPLAN.md) before starting. Work proceeds in phase order,
+and each phase has an implementation gate that must pass before the next phase
+begins. Changes should include proportionate tests, preserve transactional hook
+rollback, and keep all compatibility claims tied to verified evidence.
 
-Bug reports should include loader/manager logs, the loader version, and the
-detected build ID. Do not attach game executables, assets, saves, or account data.
+Bug reports should include the loader version, detected build ID, and relevant
+loader or manager logs. Do not attach game executables, assets, saves, account
+identifiers, or credentials.
 
-## License
+## License and upstream work
 
 BTD5 Mod Loader is licensed under the
 [GNU General Public License v3.0 only](LICENSE).
 
-GPL-covered code adapted from NKHook5 is documented with upstream paths and
-commit provenance. BTD5-Decomp is research-only and contributes no copied or
-adapted source. See [third-party notices](THIRD_PARTY_NOTICES.md) and
-[upstream provenance](docs/upstream-code-provenance.md) for details.
+GPL-covered adaptations from NKHook5 are recorded with their source paths and
+commit provenance. BTD5-Decomp is used only as research material; no source is
+copied from it. See [upstream provenance](docs/upstream-code-provenance.md),
+[research policy](docs/upstream-research.md), and
+[third-party notices](THIRD_PARTY_NOTICES.md).
