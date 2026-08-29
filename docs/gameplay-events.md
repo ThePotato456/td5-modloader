@@ -24,13 +24,14 @@ Currently live in the supported Steam Win32 4.8 build:
   verified to have changed;
 - `tower.placing`, immediately before the tower manager takes ownership;
 - `tower.placed`, after native `CTowerSpawnedEvent` observer dispatch;
+- `tower.upgrading`, after native eligibility succeeds and before mutation;
 - `tower.upgraded`, after native `CTowerUpgradedEvent` observer dispatch; and
 - `tower.sold`, after native `CTowerSoldEvent` observer dispatch;
 - `bloon.spawned`, after native `CBloonSpawnedEvent` observer dispatch;
 - `bloon.popped`, after native `CBloonPoppedEvent` observer dispatch; and
 - `bloon.leaked`, after native `CBloonEscapedEvent` observer dispatch.
 
-Tower upgrade/sale and all bloon pre-events remain mock-host only. Lives events carry
+Tower sale and all bloon pre-events remain mock-host only. Lives events carry
 `old_lives` and `new_lives`; cash events currently carry no value fields. Each
 live tower notification carries `event.tower`, and each live bloon notification
 carries `event.bloon`. Payload fields are not yet mutable. `lives.changing` is
@@ -81,7 +82,7 @@ feedback loops.
 | Round | `round.starting` (live), `round.ending` (live) | `round.started` (live), `round.ended` (live) |
 | Economy | `cash.changing` (live), `lives.changing` (live) | `cash.changed` (live), `lives.changed` (live) |
 | Tower placement | `tower.placing` (live) | `tower.placed` (live) |
-| Tower upgrade | `tower.upgrading` | `tower.upgraded` (live) |
+| Tower upgrade | `tower.upgrading` (live) | `tower.upgraded` (live) |
 | Tower sale | `tower.selling` | `tower.sold` (live) |
 | Bloon spawn | `bloon.spawning` | `bloon.spawned` (live) |
 | Bloon pop | `bloon.popping` | `bloon.popped` (live) |

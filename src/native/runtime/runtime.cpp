@@ -27,6 +27,7 @@
 #include "runtime_state.hpp"
 #include "symbol_resolver.hpp"
 #include "tower_placement_hook.hpp"
+#include "tower_upgrade_hook.hpp"
 
 namespace {
 
@@ -43,6 +44,7 @@ btd5loader::runtime::LivesWriteHook g_lives_write_hook;
 btd5loader::runtime::MatchHook g_match_hook;
 btd5loader::runtime::NativeEventHook g_native_event_hook;
 btd5loader::runtime::TowerPlacementHook g_tower_placement_hook;
+btd5loader::runtime::TowerUpgradeHook g_tower_upgrade_hook;
 btd5loader::runtime::HookTransaction g_hooks;
 
 void dispatch_game_event(
@@ -491,6 +493,12 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "tower.manager.place";
         });
+    const auto tower_upgrade_commit = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "tower.upgrade.commit";
+        });
     const auto bloon_spawned_vtable = std::find_if(
         resolution.resolved.begin(),
         resolution.resolved.end(),
@@ -544,6 +552,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
         tower_upgraded_vtable == resolution.resolved.end() ||
         tower_sold_vtable == resolution.resolved.end() ||
         tower_manager_place == resolution.resolved.end() ||
+        tower_upgrade_commit == resolution.resolved.end() ||
         bloon_spawned_vtable == resolution.resolved.end() ||
         bloon_popped_vtable == resolution.resolved.end() ||
         bloon_escaped_vtable == resolution.resolved.end() ||
@@ -575,6 +584,8 @@ DWORD WINAPI initialize_worker(LPVOID) {
         reinterpret_cast<std::uintptr_t>(executable) + tower_sold_vtable->relative_virtual_address);
     void* const tower_manager_place_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + tower_manager_place->relative_virtual_address);
+    void* const tower_upgrade_commit_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + tower_upgrade_commit->relative_virtual_address);
     void* const bloon_spawned_vtable_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + bloon_spawned_vtable->relative_virtual_address);
     void* const bloon_popped_vtable_target = reinterpret_cast<void*>(
@@ -641,6 +652,21 @@ DWORD WINAPI initialize_worker(LPVOID) {
             return installed;
         },
         []() { g_tower_placement_hook.remove(); }});
+    g_hooks.add({
+        "tower.upgrading",
+        true,
+        [tower_upgrade_commit_target]() {
+            std::string error;
+            const bool installed = g_tower_upgrade_hook.install(
+                tower_upgrade_commit_target,
+                [](void* tower) { dispatch_tower_event("tower.upgrading", tower, false); },
+                error);
+            if (!installed) {
+                g_logger.error("hooks", error);
+            }
+            return installed;
+        },
+        []() { g_tower_upgrade_hook.remove(); }});
     g_hooks.add({
         "event.gameplay.lifecycle",
         true,
@@ -771,7 +797,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
     g_logger.info(
         "runtime",
         "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit,event.gameplay.lifecycle,"
-        "tower.placing,player.lives.changing,player.lives.changed");
+        "tower.placing,tower.upgrading,player.lives.changing,player.lives.changed");
     if (!load_active_mods(detection.build->id)) {
         g_hooks.rollback();
         g_logger.error("runtime", "active_mod_loading_failed");

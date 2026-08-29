@@ -144,7 +144,8 @@ Initial supported build fingerprints:
 - [x] Add post-action tower placed, upgraded, and sold notifications.
 - [x] Attach stable, lifetime-checked tower wrappers to live tower notifications.
 - [x] Add a verified tower placing pre-event immediately before manager ownership.
-- [ ] Add verified tower upgrading and selling pre-events.
+- [x] Add a verified tower upgrading pre-event after eligibility and before mutation.
+- [ ] Add a verified tower selling pre-event.
 - [x] Add post-action bloon spawned, popped, and leaked notifications.
 - [x] Attach stable, lifetime-checked bloon wrappers to live bloon notifications.
 - [ ] Add verified bloon spawning, popping, and leaking pre-events.

@@ -203,11 +203,14 @@ try
                 StringComparison.Ordinal);
         var placingTower = Regex.Match(log, "Lifecycle Sample observed tower\\.placing id=(\\d+)");
         var placedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.placed id=(\\d+)");
+        var upgradingTower = Regex.Match(log, "Lifecycle Sample observed tower\\.upgrading id=(\\d+)");
         var upgradedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.upgraded id=(\\d+)");
         var soldTower = Regex.Match(log, "Lifecycle Sample observed tower\\.sold id=(\\d+)");
-        var towerActions = placingTower.Success && placedTower.Success && upgradedTower.Success &&
-            soldTower.Success && placingTower.Index < placedTower.Index &&
+        var towerActions = placingTower.Success && placedTower.Success && upgradingTower.Success &&
+            upgradedTower.Success && soldTower.Success && placingTower.Index < placedTower.Index &&
+            upgradingTower.Index < upgradedTower.Index &&
             placingTower.Groups[1].Value == placedTower.Groups[1].Value &&
+            placedTower.Groups[1].Value == upgradingTower.Groups[1].Value &&
             placedTower.Groups[1].Value == upgradedTower.Groups[1].Value &&
             placedTower.Groups[1].Value == soldTower.Groups[1].Value &&
             log.Contains("Lifecycle Sample confirmed sold tower became stale", StringComparison.Ordinal);

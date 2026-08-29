@@ -80,9 +80,19 @@ btd5.events.on("tower.placed", function(event)
     pending_tower_placement = nil
 end)
 
+local pending_tower_upgrade
+
+btd5.events.on("tower.upgrading", function(event)
+    assert(event.tower:is_valid())
+    pending_tower_upgrade = event.tower:id()
+    log("Lifecycle Sample observed tower.upgrading id=" .. pending_tower_upgrade)
+end)
+
 btd5.events.on("tower.upgraded", function(event)
     assert(event.tower:is_valid())
+    assert(event.tower:id() == pending_tower_upgrade)
     log("Lifecycle Sample observed tower.upgraded id=" .. event.tower:id())
+    pending_tower_upgrade = nil
 end)
 
 btd5.events.on("tower.sold", function(event)

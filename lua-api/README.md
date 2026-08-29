@@ -56,8 +56,10 @@ transition.
 native observer dispatches. All carry `event.tower`. The opaque wrapper keeps
 the same ID across placing, placement, upgrades, and sale. It is valid during
 `tower.sold` handlers and becomes stale after they return. `tower.placing` is
-read-only and not yet cancellable. The upgrade/sale and all bloon pre-event
-names do not yet have live hooks.
+read-only and not yet cancellable. `tower.upgrading` is also live after the
+native eligibility check and immediately before the first upgrade mutation; it
+is read-only and not yet cancellable. The sale and all bloon pre-event names do
+not yet have live hooks.
 `bloon.spawned`, `bloon.popped`, and `bloon.leaked` are live post-notifications
 and carry `event.bloon`. The opaque wrapper keeps the spawned object's ID through
 its pop or leak callback, then becomes stale after handlers return. A popped

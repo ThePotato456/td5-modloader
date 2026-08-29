@@ -14,6 +14,7 @@ calls. The symbol inspector resolved all required targets uniquely:
 
 - `event.manager.dispatch` at RVA `0x5AC020`;
 - `tower.manager.place` at RVA `0x2308D0`;
+- `tower.upgrade.commit` at RVA `0x23251C`;
 - `event.tower.spawned.vtable` at RVA `0x7D2774`;
 - `event.tower.upgraded.vtable` at RVA `0x7D2794`; and
 - `event.tower.sold.vtable` at RVA `0x7F1C5C`.
@@ -66,6 +67,11 @@ identity across the complete sequence:
 - `tower.upgraded`, ID `1`, at `2026-08-29T15:24:19.672Z`; and
 - `tower.sold`, ID `1`, at `2026-08-29T15:24:22.264Z`.
 
+A third Release run verified the accepted-upgrade boundary. Lua received
+`tower.upgrading`, ID `1`, at `2026-08-29T15:59:06.723Z`, followed by
+`tower.upgraded`, ID `1`, at `2026-08-29T15:59:06.724Z`. The placement and sale
+events in that run also retained ID `1`.
+
 On the next rendered frame at `2026-08-29T09:43:05.764Z`, the Lua sample
 confirmed that the saved sold-tower wrapper's `is_valid()` result was `false`.
 
@@ -81,7 +87,7 @@ no BTD5 process running. The copied game retained its supported hashes:
 
 These are read-only notifications. The wrapper supports only
 `is_valid()`, `id()`, and `kind()`; it exposes no native address, gameplay
-properties, or mutation. `tower.placing` is not yet cancellable.
-`tower.upgrading` and `tower.selling` remain pending until true pre-action
-boundaries and validation rules exist. This result does not claim custom-tower
+properties, or mutation. `tower.placing` and `tower.upgrading` are not yet
+cancellable. `tower.selling` remains pending until a true pre-action boundary
+and validation rules exist. This result does not claim custom-tower
 registration, an on-screen overlay, or online safety enforcement.

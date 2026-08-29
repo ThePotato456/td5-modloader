@@ -189,6 +189,16 @@
       "validation": { "offset": 0, "pattern": "29 88 88 00 00 00" }
     },
     {
+      "name": "tower.upgrade.commit",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "84 C0 0F 84 ?? ?? ?? ?? 56 8B CF E8 ?? ?? ?? ?? FF 75 E4 8B 4D E8 57",
+      "result_offset": 8,
+      "required": true,
+      "prerequisites": ["event.tower.upgraded.vtable"],
+      "validation": { "offset": 0, "pattern": "56 8B CF E8" }
+    },
+    {
       "name": "tower.manager.place",
       "module": "BTD5-Win.exe",
       "section": ".text",
