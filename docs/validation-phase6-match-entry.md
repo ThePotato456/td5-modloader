@@ -5,6 +5,10 @@ Date: 2026-08-28
 This validation covers the first live gameplay-event boundary. Match exit and
 round lifecycle events remain open Phase 6 work.
 
+This is the historical entry-only result from 2026-08-28. Match teardown was
+implemented and accepted later in the
+[complete match lifecycle validation](validation-phase6-match-lifecycle.md).
+
 ## Symbol and hook validation
 
 The read-only symbol inspector resolved `screen.game.init` uniquely in the

@@ -7,10 +7,12 @@ gate.
 
 Currently live in the supported Steam Win32 4.8 build:
 
-- `match.starting`, immediately before `CGameScreen::Init`; and
-- `match.started`, after `CGameScreen::Init` returns.
+- `match.starting`, immediately before `CGameScreen::Init`;
+- `match.started`, after `CGameScreen::Init` returns;
+- `match.ending`, immediately before `CGameScreen::Uninit`; and
+- `match.ended`, after `CGameScreen::Uninit` returns.
 
-Match exit, round, economy, tower, and bloon events remain mock-host only.
+Round, economy, tower, and bloon events remain mock-host only.
 
 ## Subscription
 
@@ -40,7 +42,7 @@ feedback loops.
 
 | Area | Pre-events | Post-events |
 | --- | --- | --- |
-| Match | `match.starting` (live), `match.ending` | `match.started` (live), `match.ended` |
+| Match | `match.starting` (live), `match.ending` (live) | `match.started` (live), `match.ended` (live) |
 | Round | `round.starting`, `round.ending` | `round.started`, `round.ended` |
 | Economy | `cash.changing`, `lives.changing` | `cash.changed`, `lives.changed` |
 | Tower placement | `tower.placing` | `tower.placed` |

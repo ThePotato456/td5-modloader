@@ -2,11 +2,13 @@ using System.Diagnostics;
 using BTD5ModLoader.Manager.Core;
 
 if (args.Length is < 4 or > 5 ||
-    (args.Length == 5 && !string.Equals(args[4], "--expect-match", StringComparison.Ordinal)))
+    (args.Length == 5 &&
+        !string.Equals(args[4], "--expect-match", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-match-exit", StringComparison.Ordinal)))
 {
     Console.Error.WriteLine(
         "Usage: BTD5ModLoader.LiveSmoke <game-directory> <artifact-directory> " +
-        "<package> <state-root> [--expect-match]");
+        "<package> <state-root> [--expect-match|--expect-match-exit]");
     return 2;
 }
 
@@ -15,6 +17,8 @@ var artifactDirectory = Path.GetFullPath(args[1]);
 var packagePath = Path.GetFullPath(args[2]);
 var stateRoot = Path.GetFullPath(args[3]);
 var expectMatch = args.Length == 5;
+var expectMatchExit = args.Length == 5 &&
+    string.Equals(args[4], "--expect-match-exit", StringComparison.Ordinal);
 const string profileName = "Live Smoke";
 Process? gameProcess = null;
 try
@@ -95,7 +99,7 @@ try
         return Fail("Modded launch failed: " + launch.Message + Format(launch.Errors));
     }
     gameProcess = Process.GetProcessById(launch.ProcessId.Value);
-    var deadline = DateTimeOffset.UtcNow.AddSeconds(expectMatch ? 180 : 20);
+    var deadline = DateTimeOffset.UtcNow.AddSeconds(expectMatchExit ? 240 : expectMatch ? 180 : 20);
     while (DateTimeOffset.UtcNow < deadline)
     {
         await Task.Delay(250);
@@ -116,16 +120,22 @@ try
             log.Contains("deterministic timer fired", StringComparison.Ordinal);
         var matchReady = log.Contains("Lifecycle Sample observed match.starting", StringComparison.Ordinal) &&
             log.Contains("Lifecycle Sample observed match.started", StringComparison.Ordinal);
-        if (lifecycleReady && (!expectMatch || matchReady))
+        var matchExited = log.Contains("Lifecycle Sample observed match.ending", StringComparison.Ordinal) &&
+            log.Contains("Lifecycle Sample observed match.ended", StringComparison.Ordinal);
+        if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited))
         {
             Console.WriteLine("LIVE_SMOKE_PASS");
-            Console.WriteLine(expectMatch
-                ? "Lua observed match.starting and match.started in BTD5."
-                : "Lua on_load, on_ready, and deterministic timers executed in BTD5.");
+            Console.WriteLine(expectMatchExit
+                ? "Lua observed the complete match entry and exit lifecycle in BTD5."
+                : expectMatch
+                    ? "Lua observed match.starting and match.started in BTD5."
+                    : "Lua on_load, on_ready, and deterministic timers executed in BTD5.");
             return 0;
         }
     }
-    return Fail(expectMatch
+    return Fail(expectMatchExit
+        ? "Timed out waiting for a match to start, exit, and emit complete Lua lifecycle evidence."
+        : expectMatch
         ? "Timed out waiting for a match to start and emit Lua event evidence."
         : "Timed out waiting for live Lua lifecycle evidence.");
 }

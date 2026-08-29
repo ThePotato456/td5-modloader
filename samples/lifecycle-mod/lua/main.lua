@@ -10,6 +10,14 @@ btd5.events.on("match.started", function()
     log("Lifecycle Sample observed match.started")
 end)
 
+btd5.events.on("match.ending", function()
+    log("Lifecycle Sample observed match.ending")
+end)
+
+btd5.events.on("match.ended", function()
+    log("Lifecycle Sample observed match.ended")
+end)
+
 function on_load()
     local launches = tonumber(btd5.storage.get("launches") or "0") + 1
     btd5.storage.set("launches", tostring(launches))

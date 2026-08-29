@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include <filesystem>
 #include <iostream>
+#include <iomanip>
 
 #include "../../src/native/runtime/compatibility.hpp"
 #include "../../src/native/runtime/symbol_resolver.hpp"
@@ -20,7 +21,9 @@ int wmain(const int argument_count, wchar_t** arguments) {
     const auto report = btd5loader::runtime::resolve_symbols_from_image(
         *detection.build, game_directory / L"BTD5-Win.exe");
     for (const auto& symbol : report.resolved) {
-        std::cout << "resolved: " << symbol.name << '\n';
+        std::cout << "resolved: " << symbol.name << " rva=0x"
+                  << std::hex << std::uppercase << symbol.relative_virtual_address
+                  << std::dec << '\n';
     }
     for (const auto& diagnostic : report.diagnostics) {
         std::cout << (diagnostic.required ? "required" : "optional") << ": "

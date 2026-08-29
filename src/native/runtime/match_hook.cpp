@@ -8,22 +8,27 @@
 namespace btd5loader::runtime {
 
 MatchHook* MatchHook::active_{};
-MatchHook::InitFunction MatchHook::original_{};
+MatchHook::InitFunction MatchHook::original_init_{};
+MatchHook::UninitFunction MatchHook::original_uninit_{};
 
 MatchHook::~MatchHook() {
     remove();
 }
 
 bool MatchHook::install(
-    void* const target,
+    void* const init_target,
+    void* const uninit_target,
     Callback starting,
     Callback started,
+    Callback ending,
+    Callback ended,
     std::string& error) {
     if (installed_ || active_ != nullptr) {
         error = "match hook is already installed";
         return false;
     }
-    if (target == nullptr || !starting || !started) {
+    if (init_target == nullptr || uninit_target == nullptr || !starting || !started || !ending ||
+        !ended) {
         error = "match hook target or callback is missing";
         return false;
     }
@@ -33,27 +38,47 @@ bool MatchHook::install(
         return false;
     }
 
-    InitFunction original = nullptr;
+    InitFunction original_init = nullptr;
     if (MH_CreateHook(
-            target,
+            init_target,
             reinterpret_cast<void*>(&hooked_init),
-            reinterpret_cast<void**>(&original)) != MH_OK) {
+            reinterpret_cast<void**>(&original_init)) != MH_OK) {
         error = "CGameScreen::Init hook creation failed";
         return false;
     }
-    target_ = target;
+    UninitFunction original_uninit = nullptr;
+    if (MH_CreateHook(
+            uninit_target,
+            reinterpret_cast<void*>(&hooked_uninit),
+            reinterpret_cast<void**>(&original_uninit)) != MH_OK) {
+        (void)MH_RemoveHook(init_target);
+        error = "CGameScreen::Uninit hook creation failed";
+        return false;
+    }
+    init_target_ = init_target;
+    uninit_target_ = uninit_target;
     starting_ = std::move(starting);
     started_ = std::move(started);
-    original_ = original;
+    ending_ = std::move(ending);
+    ended_ = std::move(ended);
+    original_init_ = original_init;
+    original_uninit_ = original_uninit;
     active_ = this;
-    if (MH_EnableHook(target_) != MH_OK) {
+    if (MH_EnableHook(init_target_) != MH_OK || MH_EnableHook(uninit_target_) != MH_OK) {
+        (void)MH_DisableHook(init_target_);
+        (void)MH_DisableHook(uninit_target_);
         active_ = nullptr;
-        original_ = nullptr;
+        original_init_ = nullptr;
+        original_uninit_ = nullptr;
         starting_ = {};
         started_ = {};
-        (void)MH_RemoveHook(target_);
-        target_ = nullptr;
-        error = "CGameScreen::Init hook enable failed";
+        ending_ = {};
+        ended_ = {};
+        (void)MH_RemoveHook(uninit_target_);
+        (void)MH_RemoveHook(init_target_);
+        init_target_ = nullptr;
+        uninit_target_ = nullptr;
+        error = "CGameScreen lifecycle hook enable failed";
         return false;
     }
     installed_ = true;
@@ -64,13 +89,19 @@ void MatchHook::remove() noexcept {
     if (!installed_) {
         return;
     }
-    (void)MH_DisableHook(target_);
+    (void)MH_DisableHook(init_target_);
+    (void)MH_DisableHook(uninit_target_);
     active_ = nullptr;
-    (void)MH_RemoveHook(target_);
-    original_ = nullptr;
+    (void)MH_RemoveHook(uninit_target_);
+    (void)MH_RemoveHook(init_target_);
+    original_init_ = nullptr;
+    original_uninit_ = nullptr;
     starting_ = {};
     started_ = {};
-    target_ = nullptr;
+    ending_ = {};
+    ended_ = {};
+    init_target_ = nullptr;
+    uninit_target_ = nullptr;
     installed_ = false;
 }
 
@@ -83,7 +114,7 @@ void __fastcall MatchHook::hooked_init(
     void*,
     void* const screen_data) noexcept {
     MatchHook* const active = active_;
-    const InitFunction original = original_;
+    const InitFunction original = original_init_;
     if (active != nullptr && active->starting_) {
         try {
             active->starting_();
@@ -99,6 +130,28 @@ void __fastcall MatchHook::hooked_init(
             active->started_();
         } catch (...) {
             // Keep the game initialization boundary exception-safe.
+        }
+    }
+}
+
+void __fastcall MatchHook::hooked_uninit(void* const instance, void*) noexcept {
+    MatchHook* const active = active_;
+    const UninitFunction original = original_uninit_;
+    if (active != nullptr && active->ending_) {
+        try {
+            active->ending_();
+        } catch (...) {
+            // Keep the game teardown boundary exception-safe.
+        }
+    }
+    if (original != nullptr) {
+        original(instance);
+    }
+    if (active != nullptr && active->ended_) {
+        try {
+            active->ended_();
+        } catch (...) {
+            // Keep the game teardown boundary exception-safe.
         }
     }
 }

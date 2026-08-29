@@ -39,6 +39,16 @@
       "validation": { "offset": 0, "pattern": "55 8B EC 6A" }
     },
     {
+      "name": "screen.game.uninit",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "55 8B EC 6A ?? 68 ?? ?? ?? ?? 64 A1 ?? ?? ?? ?? 50 81 EC ?? ?? ?? ?? A1 34 ?? ?? ?? 33 C5 89 45 ?? 53 56 57 50 8D 45 ?? 64 A3 ?? ?? ?? ?? 8B D9 BE A0 00 00 00 8B 83 B8 00 00 00",
+      "result_offset": 0,
+      "required": true,
+      "prerequisites": ["screen.game.init"],
+      "validation": { "offset": 0, "pattern": "55 8B EC 6A" }
+    },
+    {
       "name": "tower.factory.constructor",
       "module": "BTD5-Win.exe",
       "section": ".text",

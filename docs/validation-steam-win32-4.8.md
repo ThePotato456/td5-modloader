@@ -16,6 +16,7 @@ section and passed their validation patterns:
 - `game.main`
 - `game.load_assets`
 - `screen.game.init`
+- `screen.game.uninit`
 - `tower.factory.constructor`
 - `weapon.factory.constructor`
 

@@ -74,6 +74,13 @@ __declspec(noinline) void __fastcall fake_game_screen_init(
     }
 }
 
+__declspec(noinline) void __fastcall fake_game_screen_uninit(void* const instance, void*) {
+    auto* const screen = static_cast<FakeGameScreen*>(instance);
+    if (screen != nullptr && screen->calls != nullptr) {
+        screen->calls->emplace_back("original_uninit");
+    }
+}
+
 }  // namespace
 
 TEST_CASE("product metadata is available", "[foundation]") {
@@ -418,7 +425,7 @@ TEST_CASE("required hook failure rolls back in reverse order", "[hooks]") {
     REQUIRE_FALSE(transaction.committed());
 }
 
-TEST_CASE("match hook preserves x86 member-call ordering and removes cleanly", "[hooks]") {
+TEST_CASE("match hook preserves x86 lifecycle ordering and removes cleanly", "[hooks]") {
     std::vector<std::string> calls;
     FakeGameScreen screen{&calls};
     int screen_data = 1;
@@ -426,20 +433,32 @@ TEST_CASE("match hook preserves x86 member-call ordering and removes cleanly", "
     std::string error;
     REQUIRE(hook.install(
         reinterpret_cast<void*>(&fake_game_screen_init),
+        reinterpret_cast<void*>(&fake_game_screen_uninit),
         [&calls]() { calls.emplace_back("starting"); },
         [&calls]() { calls.emplace_back("started"); },
+        [&calls]() { calls.emplace_back("ending"); },
+        [&calls]() { calls.emplace_back("ended"); },
         error));
     REQUIRE(error.empty());
     REQUIRE(hook.installed());
 
     fake_game_screen_init(&screen, nullptr, &screen_data);
     REQUIRE(calls == std::vector<std::string>{"starting", "original", "started"});
+    fake_game_screen_uninit(&screen, nullptr);
+    REQUIRE(calls == std::vector<std::string>{
+                         "starting",
+                         "original",
+                         "started",
+                         "ending",
+                         "original_uninit",
+                         "ended"});
 
     hook.remove();
     REQUIRE_FALSE(hook.installed());
     calls.clear();
     fake_game_screen_init(&screen, nullptr, &screen_data);
-    REQUIRE(calls == std::vector<std::string>{"original"});
+    fake_game_screen_uninit(&screen, nullptr);
+    REQUIRE(calls == std::vector<std::string>{"original", "original_uninit"});
 }
 
 TEST_CASE("an unknown executable and asset pair fails closed", "[compatibility]") {

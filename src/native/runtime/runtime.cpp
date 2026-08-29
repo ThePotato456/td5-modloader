@@ -333,14 +333,23 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "screen.game.init";
         });
+    const auto game_screen_uninit = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "screen.game.uninit";
+        });
     const HMODULE executable = GetModuleHandleW(nullptr);
-    if (game_screen_init == resolution.resolved.end() || executable == nullptr) {
-        g_logger.error("hooks", "screen.game.init target unavailable");
+    if (game_screen_init == resolution.resolved.end() ||
+        game_screen_uninit == resolution.resolved.end() || executable == nullptr) {
+        g_logger.error("hooks", "game-screen lifecycle target unavailable");
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_ADDRESS;
     }
     void* const game_screen_init_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + game_screen_init->relative_virtual_address);
+    void* const game_screen_uninit_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + game_screen_uninit->relative_virtual_address);
     g_hooks.add({
         "render.swap_buffers",
         true,
@@ -354,14 +363,17 @@ DWORD WINAPI initialize_worker(LPVOID) {
         },
         []() { g_frame_hook.remove(); }});
     g_hooks.add({
-        "screen.game.init",
+        "screen.game.lifecycle",
         true,
-        [game_screen_init_target]() {
+        [game_screen_init_target, game_screen_uninit_target]() {
             std::string error;
             const bool installed = g_match_hook.install(
                 game_screen_init_target,
+                game_screen_uninit_target,
                 []() { dispatch_game_event("match.starting"); },
                 []() { dispatch_game_event("match.started"); },
+                []() { dispatch_game_event("match.ending"); },
+                []() { dispatch_game_event("match.ended"); },
                 error);
             if (!installed) {
                 g_logger.error("hooks", error);
@@ -381,7 +393,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_STATE;
     }
-    g_logger.info("runtime", "hooks_ready=render.swap_buffers,screen.game.init");
+    g_logger.info("runtime", "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit");
     if (!load_active_mods(detection.build->id)) {
         g_hooks.rollback();
         g_logger.error("runtime", "active_mod_loading_failed");
