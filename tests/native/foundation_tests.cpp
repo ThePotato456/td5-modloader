@@ -720,6 +720,7 @@ TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]
         [&state, &changes](const std::int32_t before, const std::int32_t after) {
             REQUIRE(state.lives == before);
             changes.emplace_back(before, after);
+            return false;
         },
         error));
     REQUIRE(error.empty());
@@ -738,11 +739,32 @@ TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]
     REQUIRE(state.lives == -4);
     REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{3, 0});
 
+    bool cancel_next = true;
+    hook.remove();
+    REQUIRE(hook.install(
+        reinterpret_cast<void*>(&fake_gain_lives_write),
+        reinterpret_cast<void*>(&fake_loss_lives_write),
+        [&cancel_next, &changes](const std::int32_t before, const std::int32_t after) {
+            changes.emplace_back(before, after);
+            return std::exchange(cancel_next, false);
+        },
+        error));
+    state.lives = 50;
+    invoke_fake_lives_write(&state, 5, reinterpret_cast<void*>(&fake_gain_lives_write));
+    REQUIRE(state.lives == 50);
+    REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{50, 55});
+    cancel_next = true;
+    invoke_fake_lives_write(&state, 7, reinterpret_cast<void*>(&fake_loss_lives_write));
+    REQUIRE(state.lives == 50);
+    REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{50, 43});
+    invoke_fake_lives_write(&state, 5, reinterpret_cast<void*>(&fake_gain_lives_write));
+    REQUIRE(state.lives == 55);
+
     hook.remove();
     REQUIRE_FALSE(hook.installed());
     changes.clear();
     invoke_fake_lives_write(&state, 4, reinterpret_cast<void*>(&fake_gain_lives_write));
-    REQUIRE(state.lives == 0);
+    REQUIRE(state.lives == 59);
     REQUIRE(changes.empty());
 }
 

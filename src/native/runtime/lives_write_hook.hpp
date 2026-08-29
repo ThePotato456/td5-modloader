@@ -9,7 +9,7 @@ namespace btd5loader::runtime {
 
 class LivesWriteHook final {
 public:
-    using Callback = std::function<void(std::int32_t, std::int32_t)>;
+    using Callback = std::function<bool(std::int32_t, std::int32_t)>;
 
     LivesWriteHook() = default;
     ~LivesWriteHook();
@@ -25,8 +25,8 @@ public:
     void remove() noexcept;
     [[nodiscard]] bool installed() const noexcept;
 
-    static void __stdcall dispatch_gain(void* state, std::int32_t amount) noexcept;
-    static void __stdcall dispatch_loss(void* state, std::int32_t amount) noexcept;
+    static int __stdcall dispatch_gain(void* state, std::int32_t amount) noexcept;
+    static int __stdcall dispatch_loss(void* state, std::int32_t amount) noexcept;
 
 private:
     static LivesWriteHook* active_;

@@ -70,6 +70,30 @@ void dispatch_lives_event(
         });
 }
 
+bool dispatch_lives_changing(
+    const std::int32_t before,
+    const std::int32_t after) {
+    using btd5loader::runtime::State;
+
+    if (g_state.current() != State::GameReady) {
+        return false;
+    }
+    const btd5loader::runtime::LuaEventFields fields{
+        {"old_lives", static_cast<std::int64_t>(before)},
+        {"new_lives", static_cast<std::int64_t>(after)},
+    };
+    bool cancelled = false;
+    std::scoped_lock lock(g_mods_mutex);
+    g_logger.info("events", "lives.changing");
+    for (const auto& mod : g_mods) {
+        cancelled = mod->dispatch_event("lives.changing", fields, true).cancelled || cancelled;
+    }
+    if (cancelled) {
+        g_logger.info("events", "lives.changing:cancelled");
+    }
+    return cancelled;
+}
+
 void* capture_game_object_event(void* const event) noexcept {
     return event != nullptr ? static_cast<void**>(event)[1] : nullptr;
 }
@@ -679,7 +703,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
                 lives_gain_write_target,
                 lives_loss_write_target,
                 [](const std::int32_t before, const std::int32_t after) {
-                    dispatch_lives_event("lives.changing", before, after);
+                    return dispatch_lives_changing(before, after);
                 },
                 error);
             if (!installed) {

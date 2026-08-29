@@ -140,6 +140,7 @@ Initial supported build fingerprints:
 - [x] Add cash change events.
 - [x] Add a post-change lives notification for verified gains and losses.
 - [x] Add a verified lives pre-change event at the exact native write boundary.
+- [x] Make `lives.changing` cancellable so Lua can skip a verified gain or loss write.
 - [x] Add post-action tower placed, upgraded, and sold notifications.
 - [x] Attach stable, lifetime-checked tower wrappers to live tower notifications.
 - [ ] Add verified tower placing, upgrading, and selling pre-events.

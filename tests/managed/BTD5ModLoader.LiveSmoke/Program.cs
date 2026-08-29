@@ -10,6 +10,7 @@ if (args.Length is < 4 or > 5 ||
         !string.Equals(args[4], "--expect-cash", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-lives-loss", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-lives-cancel", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal)))
 {
@@ -17,7 +18,7 @@ if (args.Length is < 4 or > 5 ||
         "Usage: BTD5ModLoader.LiveSmoke <game-directory> <artifact-directory> " +
         "<package> <state-root> " +
         "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
-        "--expect-cash-action|--expect-lives-loss|--expect-tower-actions|" +
+        "--expect-cash-action|--expect-lives-loss|--expect-lives-cancel|--expect-tower-actions|" +
         "--expect-bloon-actions]");
     return 2;
 }
@@ -38,12 +39,15 @@ var expectCashAction = args.Length == 5 &&
     string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal);
 var expectLivesLoss = args.Length == 5 &&
     string.Equals(args[4], "--expect-lives-loss", StringComparison.Ordinal);
+var expectLivesCancel = args.Length == 5 &&
+    string.Equals(args[4], "--expect-lives-cancel", StringComparison.Ordinal);
 var expectTowerActions = args.Length == 5 &&
     string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal);
 var expectBloonActions = args.Length == 5 &&
     string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal);
 const string profileName = "Live Smoke";
 Process? gameProcess = null;
+DateTimeOffset? livesCancellationObservedAt = null;
 try
 {
     var installationService = new LoaderInstallationService(stateRoot);
@@ -109,6 +113,20 @@ try
     {
         return Fail("Package configuration defaults were not inherited by the profile.");
     }
+    if (expectLivesCancel)
+    {
+        var profile = profileChange.Profile!;
+        var configuredMods = profile.Mods.Select(mod => mod.Id != package.Package.Id
+            ? mod
+            : mod with
+            {
+                Configuration = new Dictionary<string, System.Text.Json.JsonElement>(mod.Configuration)
+                {
+                    ["cancel_lives_loss"] = System.Text.Json.JsonSerializer.SerializeToElement(true)
+                }
+            });
+        await profiles.SaveModsAsync(profileName, configuredMods);
+    }
 
     var logPath = Path.Combine(stateRoot, "logs", "runtime.jsonl");
     if (File.Exists(logPath))
@@ -123,7 +141,7 @@ try
     }
     gameProcess = Process.GetProcessById(launch.ProcessId.Value);
     var deadline = DateTimeOffset.UtcNow.AddSeconds(
-        expectMatchExit || expectRound || expectLivesLoss || expectTowerActions || expectBloonActions
+        expectMatchExit || expectRound || expectLivesLoss || expectLivesCancel || expectTowerActions || expectBloonActions
             ? 240
             : expectMatch || expectCash ? 180 : 20);
     while (DateTimeOffset.UtcNow < deadline)
@@ -166,6 +184,23 @@ try
             livesChanging.Groups[1].Value == livesChanged.Groups[1].Value &&
             livesChanging.Groups[2].Value == livesChanged.Groups[2].Value &&
             livesChanging.Index < livesChanged.Index;
+        var livesCancelled = Regex.Match(
+            log,
+            "Lifecycle Sample cancelled lives\\.changing (\\d+)->(\\d+)");
+        if (livesCancelled.Success && livesCancellationObservedAt is null)
+        {
+            livesCancellationObservedAt = DateTimeOffset.UtcNow;
+        }
+        var cancelledTransition = livesCancelled.Success
+            ? livesCancelled.Groups[1].Value + "->" + livesCancelled.Groups[2].Value
+            : string.Empty;
+        var cancellationSettled = livesCancellationObservedAt is not null &&
+            DateTimeOffset.UtcNow - livesCancellationObservedAt >= TimeSpan.FromSeconds(2);
+        var livesCancellation = livesCancelled.Success && cancellationSettled &&
+            log.Contains("lives.changing:cancelled", StringComparison.Ordinal) &&
+            !log.Contains(
+                "Lifecycle Sample observed lives.changed " + cancelledTransition,
+                StringComparison.Ordinal);
         var placedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.placed id=(\\d+)");
         var upgradedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.upgraded id=(\\d+)");
         var soldTower = Regex.Match(log, "Lifecycle Sample observed tower\\.sold id=(\\d+)");
@@ -186,6 +221,7 @@ try
         if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
             (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)) &&
             (!expectLivesLoss || (matchReady && livesLifecycle)) &&
+            (!expectLivesCancel || (matchReady && livesCancellation)) &&
             (!expectTowerActions || (matchReady && towerActions)) &&
             (!expectBloonActions || (matchReady && bloonActions)))
         {
@@ -194,6 +230,8 @@ try
                 ? "Lua observed bloon spawn, pop, and leak notifications in BTD5."
                 : expectTowerActions
                 ? "Lua observed tower placement, upgrade, and sale notifications in BTD5."
+                : expectLivesCancel
+                ? "Lua cancelled a verified lives loss and the native write did not occur in BTD5."
                 : expectLivesLoss
                 ? "Lua observed a verified lives loss after match entry in BTD5."
                 : expectCashAction
@@ -214,6 +252,8 @@ try
         ? "Timed out waiting for bloon spawn, pop, leak, and Lua event evidence."
         : expectTowerActions
         ? "Timed out waiting for tower placement, upgrade, sale, and Lua event evidence."
+        : expectLivesCancel
+        ? "Timed out waiting for a cancelled lives loss with no post-change notification."
         : expectLivesLoss
         ? "Timed out waiting for a verified lives loss and Lua event evidence."
         : expectCashAction

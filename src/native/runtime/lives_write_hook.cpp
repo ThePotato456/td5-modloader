@@ -160,30 +160,31 @@ bool LivesWriteHook::installed() const noexcept {
     return installed_;
 }
 
-void __stdcall LivesWriteHook::dispatch_gain(
+int __stdcall LivesWriteHook::dispatch_gain(
     void* const state,
     const std::int32_t amount) noexcept {
     std::int32_t before = 0;
     LivesWriteHook* const active = active_;
     if (active == nullptr || !active->changing_ || !read_lives(state, before)) {
-        return;
+        return 0;
     }
     const auto proposed = static_cast<std::int32_t>(
         static_cast<std::uint32_t>(before) + static_cast<std::uint32_t>(amount));
     try {
-        active->changing_(before, proposed);
+        return active->changing_(before, proposed) ? 1 : 0;
     } catch (...) {
         // Keep the exact native lives write boundary exception-safe.
+        return 0;
     }
 }
 
-void __stdcall LivesWriteHook::dispatch_loss(
+int __stdcall LivesWriteHook::dispatch_loss(
     void* const state,
     const std::int32_t amount) noexcept {
     std::int32_t before = 0;
     LivesWriteHook* const active = active_;
     if (active == nullptr || !active->changing_ || !read_lives(state, before)) {
-        return;
+        return 0;
     }
     const std::int64_t difference =
         static_cast<std::int64_t>(before) - static_cast<std::int64_t>(amount);
@@ -192,9 +193,10 @@ void __stdcall LivesWriteHook::dispatch_loss(
         0,
         (std::numeric_limits<std::int32_t>::max)()));
     try {
-        active->changing_(before, proposed);
+        return active->changing_(before, proposed) ? 1 : 0;
     } catch (...) {
         // Keep the exact native lives write boundary exception-safe.
+        return 0;
     }
 }
 
@@ -205,9 +207,15 @@ void __declspec(naked) hooked_lives_gain_write() noexcept {
         push ecx
         push eax
         call LivesWriteHook::dispatch_gain
+        test eax, eax
+        jnz cancelled
         popad
         popfd
         add dword ptr [eax + 88h], ecx
+        jmp dword ptr [g_lives_gain_continue]
+    cancelled:
+        popad
+        popfd
         jmp dword ptr [g_lives_gain_continue]
     }
 }
@@ -219,9 +227,15 @@ void __declspec(naked) hooked_lives_loss_write() noexcept {
         push ecx
         push eax
         call LivesWriteHook::dispatch_loss
+        test eax, eax
+        jnz cancelled
         popad
         popfd
         sub dword ptr [eax + 88h], ecx
+        jmp dword ptr [g_lives_loss_continue]
+    cancelled:
+        popad
+        popfd
         jmp dword ptr [g_lives_loss_continue]
     }
 }

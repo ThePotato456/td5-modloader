@@ -32,14 +32,18 @@ Currently live in the supported Steam Win32 4.8 build:
 Tower and bloon pre-events remain mock-host only. Lives events carry
 `old_lives` and `new_lives`; cash events currently carry no value fields. Each
 live tower notification carries `event.tower`, and each live bloon notification
-carries `event.bloon`. No fields are mutable and no live event can cancel or
-modify an action. The game has already updated its internal balance when
+carries `event.bloon`. Payload fields are not yet mutable. `lives.changing` is
+the first live cancellable event; setting `event.cancelled = true` skips the
+pending lives write. Other live events cannot cancel or modify an action. The
+game has already updated its internal balance when
 `cash.changing` runs; the pre/post distinction describes the native observer
 dispatch boundary. `lives.changing` runs at the exact add/subtract instruction,
 after the game has accepted the update, and `new_lives` reflects the clamped
-result for losses. Tower notifications are deliberately post-only because the
-native spawned, upgraded, and sold events occur after their actions are
-committed.
+result for losses. Cancellation affects only the lives delta: it does not undo
+the originating reward or bloon leak. When cancelled, `lives.changed` does not
+run because the stored value remains unchanged. Tower notifications are
+deliberately post-only because the native spawned, upgraded, and sold events
+occur after their actions are committed.
 Bloon notifications are likewise post-only because the native events occur
 after spawning, popping, or leaking has been committed.
 
@@ -84,9 +88,11 @@ feedback loops.
 Pre-event cancellation and field mutation are represented by a shared event
 table, so earlier handler changes are visible to later handlers. A hook may
 honor `event.cancelled = true` only when that event is documented as
-cancellable. Field schemas, ranges, and live mutability remain unimplemented;
-game hooks must not consume arbitrary table changes until those validators are
-added.
+cancellable. `lives.changing` currently honors cancellation. Its
+`old_lives` and `new_lives` fields are read-only inputs; assigning different
+values does not change the native write. Field schemas, ranges, and other live
+mutability remain unimplemented; game hooks must not consume arbitrary table
+changes until those validators are added.
 
 ## Object wrappers
 

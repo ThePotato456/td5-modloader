@@ -46,8 +46,16 @@ local pending_lives_change
 
 btd5.events.on("lives.changing", function(event)
     assert(event.old_lives ~= event.new_lives)
-    pending_lives_change = tostring(event.old_lives) .. "->" .. tostring(event.new_lives)
-    log("Lifecycle Sample observed lives.changing " .. pending_lives_change)
+    local transition = tostring(event.old_lives) .. "->" .. tostring(event.new_lives)
+    log("Lifecycle Sample observed lives.changing " .. transition)
+    if btd5.config.get("cancel_lives_loss") == "true" and
+        event.new_lives < event.old_lives then
+        event.cancelled = true
+        pending_lives_change = nil
+        log("Lifecycle Sample cancelled lives.changing " .. transition)
+        return
+    end
+    pending_lives_change = transition
 end)
 
 btd5.events.on("lives.changed", function(event)

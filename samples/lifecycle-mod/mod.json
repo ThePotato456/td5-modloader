@@ -10,7 +10,10 @@
   "dependencies": [],
   "load_order": { "before": [], "after": [] },
   "capabilities": ["gameplay.events", "storage"],
-  "configuration_defaults": { "greeting": "Hello from Lua" },
+  "configuration_defaults": {
+    "greeting": "Hello from Lua",
+    "cancel_lives_loss": false
+  },
   "localization": ["localization/en-US.json"],
   "documentation": "README.md"
 }
