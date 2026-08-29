@@ -32,11 +32,11 @@ function Invoke-CheckedScript {
         [string]$Name,
         [Parameter(Mandatory)]
         [string]$Path,
-        [string[]]$Arguments = @()
+        [hashtable]$Parameters = @{}
     )
 
     Write-Host "`n==> $Name" -ForegroundColor Cyan
-    & $Path @Arguments
+    & $Path @Parameters
     if ($LASTEXITCODE -ne 0) {
         throw "$Name failed with exit code $LASTEXITCODE."
     }
@@ -114,7 +114,7 @@ try {
     Invoke-CheckedScript `
         -Name 'Release build and tests' `
         -Path (Join-Path $PSScriptRoot 'test.ps1') `
-        -Arguments @('-Configuration', 'Release')
+        -Parameters @{ Configuration = 'Release' }
     Invoke-CheckedScript `
         -Name 'Static analysis' `
         -Path (Join-Path $PSScriptRoot 'analyze.ps1')
@@ -131,7 +131,7 @@ try {
     Invoke-CheckedScript `
         -Name 'Release staging' `
         -Path (Join-Path $PSScriptRoot 'stage.ps1') `
-        -Arguments @('-Configuration', 'Release')
+        -Parameters @{ Configuration = 'Release' }
 
     $requiredArtifacts = @(
         'BTD5ModLoader.Manager.exe',
