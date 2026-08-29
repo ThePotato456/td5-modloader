@@ -126,6 +126,50 @@ Initial supported build fingerprints:
 
 ---
 
+> **Forward feature work is paused.** Phase 5 passed its original gate, but real-use testing
+> exposed workflow and recovery problems. Phase 5R below must pass before the remaining
+> Phase 6 work or Phase 7 begins.
+
+## Phase 5R — Manager workflow and reliability revamp
+
+- [x] Audit the existing setup, package, profile, configuration, launch, and recovery flows.
+- [x] Define the user-facing state model: an installed package is separate from profile
+  membership, enabled state, selected version, and per-profile configuration.
+- [x] Persist the selected game copy and current profile with atomic, validated manager settings.
+- [x] Replace the artifact-folder picker with automatic discovery of release files shipped beside
+  the manager; keep an explicit developer override outside the normal workflow.
+- [x] Replace separate install/verify/repair buttons with one loader health inspection and one
+  context-aware primary action. Keep uninstall in an advanced recovery area.
+- [x] Report loader files individually as healthy, missing, modified, unavailable, or foreign;
+  distinguish a missing record, invalid record, unsupported game, and partial installation.
+- [~] Make install and repair transactional, automatically verify their result, preserve foreign or
+  modified files, and leave an actionable recovery result after interruption or partial failure.
+- [~] Replace the dual-list profile editor with a current-profile mod list containing an enable
+  toggle, selected version, dependency status, load order, Configure action, and Remove action.
+- [x] Add profile create, select, rename, duplicate, and delete workflows with a visible current
+  profile and safe fallback when the current profile is removed.
+- [x] Add a practical per-profile configuration editor inferred from package defaults for booleans,
+  numbers, and strings, with validation plus per-setting and whole-mod reset controls.
+- [~] Automatically inspect loader, game, and current-profile readiness at startup and before launch;
+  route failures to the exact corrective action instead of a generic status string.
+- [ ] Migrate existing profile and installation state without losing configuration or launch history.
+- [ ] Update manager documentation and screenshots after the workflow stabilizes.
+
+### Phase 5R implementation gate
+
+- [ ] Automated tests cover settings persistence/recovery, profile lifecycle, configuration edits,
+  every loader health state, interrupted operations, post-operation verification, and migrations.
+- [ ] From a fresh state, a player can choose BTD5 once, install the loader with one primary action,
+  install a mod, enable and configure it in the current profile, and launch without editing files.
+- [ ] Restarting the manager preserves the game and current profile; invalid saved selections recover
+  to an explicit safe state without silently selecting an unrelated profile.
+- [ ] Missing loader files can be repaired, while modified or foreign files are preserved and shown
+  with a clear manual recovery path; uninstall removes only verified loader-owned files.
+- [ ] A profile cannot launch with broken dependencies or invalid configuration, and the manager
+  identifies the affected mod and corrective action.
+
+---
+
 ## Phase 6 — Core gameplay object model and mutable events
 
 - [x] Install a transactional render-frame hook without patching the game executable on disk.

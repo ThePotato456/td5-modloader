@@ -51,7 +51,11 @@ try
 
     var service = new LoaderInstallationService(stateRoot, builds);
     var proxyTarget = Path.Combine(gameDirectory, "wininet.dll");
+    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
+        LoaderHealthState.NotInstalled, "A clean game was not reported as not installed.");
     await File.WriteAllTextAsync(proxyTarget, "pre-existing proxy");
+    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
+        LoaderHealthState.Conflict, "A foreign proxy was not reported as an install conflict.");
     var conflict = await service.InstallAsync(gameDirectory, artifactDirectory);
     Assert(!conflict.Success && conflict.Conflicts.SequenceEqual(new[] { "wininet.dll" }),
         "Install did not report the pre-existing proxy conflict.");
@@ -62,6 +66,8 @@ try
     var install = await service.InstallAsync(gameDirectory, artifactDirectory);
     Assert(install.Success && File.Exists(service.GetRecordPath(gameDirectory)),
         "Loader installation failed.");
+    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
+        LoaderHealthState.Healthy, "A verified loader was not reported as healthy.");
     Assert((await service.VerifyAsync(gameDirectory)).Success, "Installed loader did not verify.");
 
     var runtimeTarget = Path.Combine(gameDirectory, "btd5loader_runtime.dll");
@@ -70,10 +76,14 @@ try
     Assert(!missingVerification.Success &&
         missingVerification.Conflicts.Contains("btd5loader_runtime.dll", StringComparer.OrdinalIgnoreCase),
         "Verification did not report a missing loader file.");
+    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
+        LoaderHealthState.Repairable, "A missing owned file was not reported as repairable.");
     Assert((await service.RepairAsync(gameDirectory, artifactDirectory)).Success && File.Exists(runtimeTarget),
         "Repair did not restore a missing loader-owned file.");
 
     await File.WriteAllTextAsync(proxyTarget, "user-modified proxy");
+    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
+        LoaderHealthState.Conflict, "A modified owned file was not reported as a conflict.");
     var repairConflict = await service.RepairAsync(gameDirectory, artifactDirectory);
     Assert(!repairConflict.Success &&
         repairConflict.Conflicts.Contains("wininet.dll", StringComparer.OrdinalIgnoreCase),
@@ -88,6 +98,14 @@ try
     var uninstall = await service.UninstallAsync(gameDirectory);
     Assert(uninstall.Success && !File.Exists(proxyTarget) && !File.Exists(service.GetRecordPath(gameDirectory)),
         "Uninstall did not finish after the conflict was recovered.");
+    Assert((await service.InspectAsync(gameDirectory, Path.Combine(testRoot, "missing-artifacts"))).State ==
+        LoaderHealthState.ArtifactUnavailable,
+        "Missing release artifacts were not distinguished from a normal uninstalled state.");
+    Directory.CreateDirectory(Path.GetDirectoryName(service.GetRecordPath(gameDirectory))!);
+    await File.WriteAllTextAsync(service.GetRecordPath(gameDirectory), "{not json");
+    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
+        LoaderHealthState.InvalidRecord, "A damaged installation record was not reported safely.");
+    File.Delete(service.GetRecordPath(gameDirectory));
     Assert(await GameDiscovery.HashFileAsync(Path.Combine(gameDirectory, "BTD5-Win.exe")) == executableHash &&
         await GameDiscovery.HashFileAsync(Path.Combine(gameDirectory, "Assets", "BTD5.jet")) == assetsHash,
         "The install workflow modified proprietary game files.");
@@ -119,6 +137,14 @@ try
         File.Exists(packageInstall.InstalledPath), "Valid package installation failed.");
     Assert((await ModPackageService.InstallAsync(packagePath, stateRoot, "fixture-build")).Success,
         "Reinstalling an identical package was not idempotent.");
+
+    var looseStateRoot = Path.Combine(testRoot, "loose-package-state");
+    var loosePackagesRoot = Path.Combine(looseStateRoot, "packages");
+    Directory.CreateDirectory(loosePackagesRoot);
+    File.Copy(packagePath, Path.Combine(loosePackagesRoot, "lifecycle-sample.btd5mod"));
+    var loosePackages = await ModPackageService.ListInstalledAsync(looseStateRoot, "fixture-build");
+    Assert(loosePackages is [{ Valid: true, Id: "sample.lifecycle", Version: "1.0.0" }],
+        "A valid package copied directly into the Packages folder was not discovered.");
 
     var incompatible = await ModPackageService.InspectAsync(packagePath, "other-build");
     Assert(!incompatible.Valid && incompatible.Errors.Any(error => error.Contains(
@@ -160,6 +186,27 @@ try
     await AssertThrowsAsync<InvalidOperationException>(
         () => profileService.CreateAsync("testing"),
         "Case-insensitive duplicate profile name was accepted.");
+    var duplicated = await profileService.DuplicateAsync("Testing", "Testing Copy");
+    Assert(duplicated.Mods.Count == profile.Mods.Count && duplicated.LaunchHistory.Count == 0,
+        "Profile duplication did not preserve mods or clear launch history.");
+    var renamed = await profileService.RenameAsync("Testing Copy", "Renamed");
+    Assert(renamed.Name == "Renamed" && await profileService.LoadAsync("Testing Copy") is null,
+        "Profile rename did not move the profile atomically.");
+    await profileService.DeleteAsync("Renamed");
+    Assert(await profileService.LoadAsync("Renamed") is null, "Profile deletion failed.");
+
+    var settingsService = new ManagerSettingsService(stateRoot);
+    await settingsService.SetGameDirectoryAsync(gameDirectory);
+    var savedSettings = await settingsService.SetCurrentProfileAsync("Testing");
+    Assert(PathsEqual(savedSettings.GameDirectory!, gameDirectory) &&
+        savedSettings.CurrentProfile == "Testing" &&
+        (await settingsService.LoadAsync()).Settings == savedSettings,
+        "Manager game/profile selection did not persist.");
+    await File.WriteAllTextAsync(Path.Combine(stateRoot, "manager.json"), "{not json");
+    var recoveredSettings = await settingsService.LoadAsync();
+    Assert(recoveredSettings.Recovered && recoveredSettings.Settings == ManagerSettingsService.Default() &&
+        File.Exists(Path.Combine(stateRoot, "manager.json")),
+        "Invalid manager settings did not recover safely while preserving the source file.");
 
     var operationsStateRoot = Path.Combine(testRoot, "operations-state");
     var libraryPackage = Path.Combine(testRoot, "library.btd5mod");
@@ -199,6 +246,25 @@ try
         "Dependency package could not be enabled.");
     Assert((await operations.EnableAsync("Operations", "sample.application", "1.0.0")).Success,
         "Mod could not be enabled after its dependency.");
+    var updatedConfiguration = new Dictionary<string, System.Text.Json.JsonElement>
+    {
+        ["enabled"] = System.Text.Json.JsonSerializer.SerializeToElement(false),
+        ["label"] = System.Text.Json.JsonSerializer.SerializeToElement("custom"),
+        ["weight"] = System.Text.Json.JsonSerializer.SerializeToElement(2.5)
+    };
+    Assert((await operations.UpdateConfigurationAsync(
+        "Operations", "sample.application", updatedConfiguration)).Success,
+        "Valid per-profile configuration could not be saved.");
+    var invalidConfiguration = updatedConfiguration.ToDictionary(
+        value => value.Key, value => value.Value, StringComparer.Ordinal);
+    invalidConfiguration["enabled"] = System.Text.Json.JsonSerializer.SerializeToElement("no");
+    var rejectedConfiguration = await operations.UpdateConfigurationAsync(
+        "Operations", "sample.application", invalidConfiguration);
+    Assert(!rejectedConfiguration.Success && rejectedConfiguration.Validation.Errors.Any(error =>
+        error.Contains("must be a boolean", StringComparison.Ordinal)),
+        "A configuration value with the wrong type was accepted.");
+    Assert((await operations.ResetConfigurationAsync("Operations", "sample.application")).Success,
+        "Resetting per-profile configuration to package defaults failed.");
     var dependencyOrder = await operations.ValidateAsync("Operations");
     Assert(dependencyOrder.Valid && dependencyOrder.OrderedPackages.Select(package => package.Id)
         .SequenceEqual(new[] { "sample.library", "sample.application" }),
@@ -373,7 +439,8 @@ static string BuildManifest(
           "supported_game_builds": ["fixture-build"],
           "dependencies": {{dependencies}},
           "load_order": {"before":[],"after":[]},
-          "capabilities": []
+          "capabilities": [],
+          "configuration_defaults": {"enabled":true,"label":"default","weight":1.0}
         }
         """;
 }

@@ -1,9 +1,12 @@
 # Manager storage and ownership
 
 The manager keeps its mutable state under `%LocalAppData%\BTD5ModLoader`. Mod
-packages are copied to `packages/<mod-id>/<version>/package.btd5mod`; profiles,
-installation records, logs, and future backups use separate subdirectories.
-Nothing in this state directory belongs in the source repository.
+packages installed through the picker or drag-and-drop are copied to
+`packages/<mod-id>/<version>/package.btd5mod`. A user can also copy a valid
+`.btd5mod` file directly into the `packages` folder (or one of its subfolders);
+the manager discovers it when its window regains focus. Profiles, installation
+records, logs, and future backups use separate subdirectories. Nothing in this
+state directory belongs in the source repository.
 
 ## Loader installation safety
 

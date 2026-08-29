@@ -114,6 +114,78 @@ public sealed class ProfileService
         return updated;
     }
 
+    public async Task<ModProfile> RenameAsync(
+        string name,
+        string newName,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateName(name);
+        ValidateName(newName);
+        var current = await LoadRequiredAsync(name, cancellationToken).ConfigureAwait(false);
+        var sourcePath = GetProfilePath(name);
+        var destinationPath = GetProfilePath(newName);
+        if (File.Exists(destinationPath) && !PathsEqual(sourcePath, destinationPath))
+        {
+            throw new InvalidOperationException("A profile with the new name already exists.");
+        }
+        var updated = current with { Name = newName, ModifiedAtUtc = DateTimeOffset.UtcNow };
+        if (PathsEqual(sourcePath, destinationPath))
+        {
+            await ReplaceAsync(sourcePath, updated, cancellationToken).ConfigureAwait(false);
+            return updated;
+        }
+        await SaveNewAsync(destinationPath, updated, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            File.Delete(sourcePath);
+        }
+        catch
+        {
+            File.Delete(destinationPath);
+            throw;
+        }
+        return updated;
+    }
+
+    public async Task<ModProfile> DuplicateAsync(
+        string name,
+        string copyName,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateName(name);
+        ValidateName(copyName);
+        var source = await LoadRequiredAsync(name, cancellationToken).ConfigureAwait(false);
+        var path = GetProfilePath(copyName);
+        if (File.Exists(path))
+        {
+            throw new InvalidOperationException("A profile with this name already exists.");
+        }
+        var now = DateTimeOffset.UtcNow;
+        var copy = source with
+        {
+            Name = copyName,
+            CreatedAtUtc = now,
+            ModifiedAtUtc = now,
+            LaunchHistory = []
+        };
+        await SaveNewAsync(path, copy, cancellationToken).ConfigureAwait(false);
+        return copy;
+    }
+
+    public async Task DeleteAsync(
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateName(name);
+        var path = GetProfilePath(name);
+        if (!File.Exists(path))
+        {
+            throw new InvalidOperationException("The profile does not exist.");
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        File.Delete(path);
+    }
+
     public async Task<ModProfile> RecordLaunchAsync(
         string name,
         string mode,
@@ -188,6 +260,9 @@ public sealed class ProfileService
         var key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
         return Path.Combine(profilesRoot, key + ".json");
     }
+
+    private static bool PathsEqual(string left, string right) =>
+        string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
 
     private static async Task<ModProfile> ReadAsync(
         string path,

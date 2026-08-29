@@ -18,6 +18,34 @@ public sealed record InstallationResult(
     string Message,
     IReadOnlyList<string> Conflicts);
 
+public enum LoaderHealthState
+{
+    UnsupportedGame,
+    NotInstalled,
+    Healthy,
+    Repairable,
+    Conflict,
+    ArtifactUnavailable,
+    InvalidRecord
+}
+
+public enum LoaderFileState
+{
+    Healthy,
+    Missing,
+    Modified,
+    Foreign,
+    SourceUnavailable
+}
+
+public sealed record LoaderFileHealth(string RelativePath, LoaderFileState State);
+
+public sealed record LoaderHealthResult(
+    LoaderHealthState State,
+    string Message,
+    string? BuildId,
+    IReadOnlyList<LoaderFileHealth> Files);
+
 public sealed class LoaderInstallationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -94,7 +122,15 @@ public sealed class LoaderInstallationService
             await WriteAllTextAtomicallyAsync(
                 recordPath,
                 JsonSerializer.Serialize(record, JsonOptions),
+                false,
                 cancellationToken).ConfigureAwait(false);
+            var verification = await VerifyAsync(installation.Directory, cancellationToken)
+                .ConfigureAwait(false);
+            if (!verification.Success)
+            {
+                throw new IOException("The loader did not pass verification after installation: " +
+                    verification.Message);
+            }
             return new(true, "Loader installed successfully.", []);
         }
         catch
@@ -103,8 +139,129 @@ public sealed class LoaderInstallationService
             {
                 File.Delete(ToGamePath(installation.Directory, file.RelativePath));
             }
+            File.Delete(recordPath);
             throw;
         }
+    }
+
+    public async Task<LoaderHealthResult> InspectAsync(
+        string gameDirectory,
+        string artifactDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        var installation = await GameDiscovery.ValidateAsync(
+            gameDirectory, knownBuilds, cancellationToken).ConfigureAwait(false);
+        if (!installation.Supported || installation.BuildId is null)
+        {
+            return new(
+                LoaderHealthState.UnsupportedGame,
+                installation.Error ?? "Game validation failed.",
+                null,
+                []);
+        }
+
+        LoaderInstallationRecord? record;
+        try
+        {
+            record = await ReadRecordAsync(gameDirectory, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException)
+        {
+            return new(
+                LoaderHealthState.InvalidRecord,
+                "The loader installation record is damaged or unsupported. It was preserved for recovery.",
+                installation.BuildId,
+                []);
+        }
+
+        var artifacts = EnumerateArtifacts(artifactDirectory)
+            .ToDictionary(value => value.RelativePath, StringComparer.OrdinalIgnoreCase);
+        if (record is null)
+        {
+            if (artifacts.Count == 0)
+            {
+                return new(
+                    LoaderHealthState.ArtifactUnavailable,
+                    "Loader release files were not found beside the manager.",
+                    installation.BuildId,
+                    []);
+            }
+            var foreign = artifacts.Keys
+                .Where(relative => File.Exists(ToGamePath(installation.Directory, relative)))
+                .Select(relative => new LoaderFileHealth(relative, LoaderFileState.Foreign))
+                .ToArray();
+            return foreign.Length == 0
+                ? new(LoaderHealthState.NotInstalled, "The loader is not installed.", installation.BuildId, [])
+                : new(
+                    LoaderHealthState.Conflict,
+                    "Files not owned by this manager conflict with loader installation.",
+                    installation.BuildId,
+                    foreign);
+        }
+
+        if (!string.Equals(record.BuildId, installation.BuildId, StringComparison.Ordinal))
+        {
+            return new(
+                LoaderHealthState.Conflict,
+                "The recorded loader build does not match this game build.",
+                installation.BuildId,
+                []);
+        }
+
+        var files = new List<LoaderFileHealth>();
+        foreach (var expected in record.Files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var target = ToGamePath(record.GameDirectory, expected.RelativePath);
+            if (!File.Exists(target))
+            {
+                var sourceAvailable = artifacts.TryGetValue(expected.RelativePath, out var source) &&
+                    string.Equals(
+                        await GameDiscovery.HashFileAsync(source.SourcePath, cancellationToken).ConfigureAwait(false),
+                        expected.Sha256,
+                        StringComparison.OrdinalIgnoreCase);
+                files.Add(new(
+                    expected.RelativePath,
+                    sourceAvailable ? LoaderFileState.Missing : LoaderFileState.SourceUnavailable));
+                continue;
+            }
+            var hash = await GameDiscovery.HashFileAsync(target, cancellationToken).ConfigureAwait(false);
+            files.Add(new(
+                expected.RelativePath,
+                string.Equals(hash, expected.Sha256, StringComparison.OrdinalIgnoreCase)
+                    ? LoaderFileState.Healthy
+                    : LoaderFileState.Modified));
+        }
+
+        if (files.Any(file => file.State == LoaderFileState.Modified))
+        {
+            return new(
+                LoaderHealthState.Conflict,
+                "Modified loader-owned files were found and will not be overwritten.",
+                installation.BuildId,
+                files);
+        }
+        if (files.Any(file => file.State == LoaderFileState.SourceUnavailable))
+        {
+            return new(
+                LoaderHealthState.ArtifactUnavailable,
+                "Missing loader files cannot be repaired because matching release files are unavailable.",
+                installation.BuildId,
+                files);
+        }
+        if (files.Any(file => file.State == LoaderFileState.Missing))
+        {
+            return new(
+                LoaderHealthState.Repairable,
+                "Loader files are missing and can be repaired.",
+                installation.BuildId,
+                files);
+        }
+        return new(
+            LoaderHealthState.Healthy,
+            "The loader is installed and healthy.",
+            installation.BuildId,
+            files);
     }
 
     public async Task<InstallationResult> VerifyAsync(
@@ -190,9 +347,14 @@ public sealed class LoaderInstallationService
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             CopyAtomically(artifact.SourcePath, target);
         }
-        return conflicts.Count == 0
-            ? new(true, "Loader installation repaired.", [])
-            : new(false, "Repair found modified or unavailable loader files.", conflicts);
+        if (conflicts.Count != 0)
+        {
+            return new(false, "Repair found modified or unavailable loader files.", conflicts);
+        }
+        var verification = await VerifyAsync(gameDirectory, cancellationToken).ConfigureAwait(false);
+        return verification.Success
+            ? new(true, "Loader installation repaired and verified.", [])
+            : new(false, "Repair completed but post-repair verification failed.", verification.Conflicts);
     }
 
     public async Task<InstallationResult> UninstallAsync(
@@ -232,6 +394,16 @@ public sealed class LoaderInstallationService
             File.Delete(recordPath);
             return new(true, "Loader uninstalled successfully.", []);
         }
+        var remaining = record with
+        {
+            Files = record.Files.Where(file => conflicts.Contains(
+                file.RelativePath, StringComparer.OrdinalIgnoreCase)).ToArray()
+        };
+        await WriteAllTextAtomicallyAsync(
+            recordPath,
+            JsonSerializer.Serialize(remaining, JsonOptions),
+            true,
+            cancellationToken).ConfigureAwait(false);
         return new(false, "Modified loader-owned files were preserved.", conflicts);
     }
 
@@ -336,13 +508,14 @@ public sealed class LoaderInstallationService
     private static async Task WriteAllTextAtomicallyAsync(
         string target,
         string contents,
+        bool replace,
         CancellationToken cancellationToken)
     {
         var temporary = target + ".btd5ml-" + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             await File.WriteAllTextAsync(temporary, contents, cancellationToken).ConfigureAwait(false);
-            File.Move(temporary, target, false);
+            File.Move(temporary, target, replace);
         }
         finally
         {

@@ -101,6 +101,64 @@ public sealed class ProfileModService
             profile, mods, "Mod version changed.", cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<ProfileChangeResult> UpdateConfigurationAsync(
+        string profileName,
+        string modId,
+        IReadOnlyDictionary<string, System.Text.Json.JsonElement> configuration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var profile = await RequireProfileAsync(profileName, cancellationToken).ConfigureAwait(false);
+        var mods = profile.Mods.ToList();
+        var index = mods.FindIndex(mod => string.Equals(mod.Id, modId, StringComparison.Ordinal));
+        if (index < 0)
+        {
+            return MissingMod(profile, modId);
+        }
+        var package = await FindInstalledPackageAsync(
+            mods[index].Id, mods[index].Version, cancellationToken).ConfigureAwait(false);
+        if (package is null)
+        {
+            return new(false, "The selected mod version is not installed.", profile,
+                new(false, [$"{mods[index].Id} {mods[index].Version} is not installed."], []));
+        }
+        var configurationErrors = ValidateConfiguration(package, configuration);
+        if (configurationErrors.Count != 0)
+        {
+            return new(false, "The configuration contains invalid values.", profile,
+                new(false, configurationErrors, []));
+        }
+        mods[index] = mods[index] with
+        {
+            Configuration = configuration.ToDictionary(
+                value => value.Key, value => value.Value.Clone(), StringComparer.Ordinal)
+        };
+        return await TrySaveAsync(
+            profile, mods, "Mod configuration saved.", cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ProfileChangeResult> ResetConfigurationAsync(
+        string profileName,
+        string modId,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await RequireProfileAsync(profileName, cancellationToken).ConfigureAwait(false);
+        var entry = profile.Mods.SingleOrDefault(mod => string.Equals(mod.Id, modId, StringComparison.Ordinal));
+        if (entry is null)
+        {
+            return MissingMod(profile, modId);
+        }
+        var package = await FindInstalledPackageAsync(entry.Id, entry.Version, cancellationToken)
+            .ConfigureAwait(false);
+        if (package is null)
+        {
+            return new(false, "The selected mod version is not installed.", profile,
+                new(false, [$"{entry.Id} {entry.Version} is not installed."], []));
+        }
+        return await UpdateConfigurationAsync(
+            profileName, modId, package.ConfigurationDefaults, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<ProfileChangeResult> MoveAsync(
         string profileName,
         string modId,
@@ -216,6 +274,13 @@ public sealed class ProfileModService
         }
         var byVersion = installed.Where(package => package.Valid && package.Id is not null && package.Version is not null)
             .ToDictionary(package => (package.Id!, package.Version!), PackageIdentityComparer.Instance);
+        foreach (var entry in profile.Mods)
+        {
+            if (byVersion.TryGetValue((entry.Id, entry.Version), out var configuredPackage))
+            {
+                errors.AddRange(ValidateConfiguration(configuredPackage, entry.Configuration));
+            }
+        }
         var enabledEntries = ProfileService.EnabledInProfileOrder(profile);
         var enabledById = enabledEntries.ToDictionary(mod => mod.Id, StringComparer.Ordinal);
         var enabledPackages = new Dictionary<string, ModPackageInfo>(StringComparer.Ordinal);
@@ -288,6 +353,57 @@ public sealed class ProfileModService
             .Select(id => enabledPackages[id]).ToArray();
         return new(errors.Count == 0, errors, errors.Count == 0 ? orderedPackages : []);
     }
+
+    private async Task<ModPackageInfo?> FindInstalledPackageAsync(
+        string modId,
+        string version,
+        CancellationToken cancellationToken)
+    {
+        return (await ModPackageService.ListInstalledAsync(
+                managerStateRoot, buildId, cancellationToken).ConfigureAwait(false))
+            .SingleOrDefault(package => package.Valid &&
+                string.Equals(package.Id, modId, StringComparison.Ordinal) &&
+                string.Equals(package.Version, version, StringComparison.Ordinal));
+    }
+
+    private static IReadOnlyList<string> ValidateConfiguration(
+        ModPackageInfo package,
+        IReadOnlyDictionary<string, System.Text.Json.JsonElement> configuration)
+    {
+        var errors = new List<string>();
+        foreach (var key in configuration.Keys.Except(package.ConfigurationDefaults.Keys, StringComparer.Ordinal))
+        {
+            errors.Add($"{package.Id} configuration contains unknown setting '{key}'.");
+        }
+        foreach (var (key, defaultValue) in package.ConfigurationDefaults)
+        {
+            if (!configuration.TryGetValue(key, out var value))
+            {
+                errors.Add($"{package.Id} configuration is missing setting '{key}'.");
+                continue;
+            }
+            if (!KindsMatch(value.ValueKind, defaultValue.ValueKind))
+            {
+                errors.Add($"{package.Id} setting '{key}' must be {DescribeKind(defaultValue.ValueKind)}.");
+            }
+        }
+        return errors;
+    }
+
+    private static bool KindsMatch(
+        System.Text.Json.JsonValueKind left,
+        System.Text.Json.JsonValueKind right) =>
+        left == right ||
+        left is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False &&
+        right is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False;
+
+    private static string DescribeKind(System.Text.Json.JsonValueKind kind) => kind switch
+    {
+        System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False => "a boolean",
+        System.Text.Json.JsonValueKind.Number => "a number",
+        System.Text.Json.JsonValueKind.String => "text",
+        _ => kind.ToString().ToLowerInvariant()
+    };
 
     private async Task<ModProfile> RequireProfileAsync(
         string profileName,

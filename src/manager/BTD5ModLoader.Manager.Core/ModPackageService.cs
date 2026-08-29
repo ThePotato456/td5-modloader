@@ -198,14 +198,16 @@ public static partial class ModPackageService
 
         var packages = new List<ModPackageInfo>();
         foreach (var path in Directory.EnumerateFiles(
-                     packagesRoot, "package.btd5mod", SearchOption.AllDirectories)
+                     packagesRoot, "*.btd5mod", SearchOption.AllDirectories)
                      .Order(StringComparer.OrdinalIgnoreCase))
         {
             var package = await InspectAsync(path, selectedBuildId, cancellationToken)
                 .ConfigureAwait(false);
             var versionDirectory = Path.GetDirectoryName(path);
             var idDirectory = versionDirectory is null ? null : Path.GetDirectoryName(versionDirectory);
-            if (package.Id is not null && package.Version is not null &&
+            var managerCanonicalPackage = string.Equals(
+                Path.GetFileName(path), "package.btd5mod", StringComparison.OrdinalIgnoreCase);
+            if (managerCanonicalPackage && package.Id is not null && package.Version is not null &&
                 (!string.Equals(Path.GetFileName(idDirectory), package.Id, StringComparison.Ordinal) ||
                  !string.Equals(Path.GetFileName(versionDirectory), package.Version, StringComparison.Ordinal)))
             {
@@ -217,7 +219,26 @@ public static partial class ModPackageService
             }
             packages.Add(package);
         }
-        return packages;
+        var duplicateIdentities = packages
+            .Where(package => package.Valid && package.Id is not null && package.Version is not null)
+            .GroupBy(package => (package.Id!, package.Version!), PackageIdentityComparer.Instance)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet(PackageIdentityComparer.Instance);
+        return packages.Select(package =>
+        {
+            if (package.Id is null || package.Version is null ||
+                !duplicateIdentities.Contains((package.Id, package.Version)))
+            {
+                return package;
+            }
+            return package with
+            {
+                Valid = false,
+                Errors = [.. package.Errors,
+                    "More than one package file declares this same ID and version. Remove the duplicate copy."]
+            };
+        }).ToArray();
     }
 
     private static ModPackageInfo ParseManifest(
@@ -516,6 +537,19 @@ public static partial class ModPackageService
         {
             File.Delete(temporary);
         }
+    }
+
+    private sealed class PackageIdentityComparer : IEqualityComparer<(string Id, string Version)>
+    {
+        public static PackageIdentityComparer Instance { get; } = new();
+
+        public bool Equals((string Id, string Version) left, (string Id, string Version) right) =>
+            string.Equals(left.Id, right.Id, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(left.Version, right.Version, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((string Id, string Version) value) => HashCode.Combine(
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.Id),
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.Version));
     }
 
     [GeneratedRegex("^[a-z][a-z0-9]*(\\.[a-z0-9][a-z0-9-]*)+$", RegexOptions.CultureInvariant)]
