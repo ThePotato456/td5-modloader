@@ -8,6 +8,8 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -166,6 +168,16 @@ extern "C" __declspec(naked) void fake_loss_lives_write() {
         _emit 0x00
         ret
     }
+}
+
+void* resolve_fake_lives_write_target(void* target) {
+    auto* entry = static_cast<std::byte*>(target);
+    for (int depth = 0; depth < 4 && entry[0] == std::byte{0xE9}; ++depth) {
+        std::int32_t displacement = 0;
+        std::memcpy(&displacement, entry + 1, sizeof(displacement));
+        entry += 5 + displacement;
+    }
+    return entry;
 }
 
 void invoke_fake_lives_write(
@@ -759,56 +771,63 @@ TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]
     std::vector<std::pair<std::int32_t, std::int32_t>> changes;
     btd5loader::runtime::LivesWriteHook hook;
     std::string error;
-    REQUIRE(hook.install(
-        reinterpret_cast<void*>(&fake_gain_lives_write),
-        reinterpret_cast<void*>(&fake_loss_lives_write),
+    void* const gain_target =
+        resolve_fake_lives_write_target(reinterpret_cast<void*>(&fake_gain_lives_write));
+    void* const loss_target =
+        resolve_fake_lives_write_target(reinterpret_cast<void*>(&fake_loss_lives_write));
+    REQUIRE(gain_target != loss_target);
+    const bool installed = hook.install(
+        gain_target,
+        loss_target,
         [&state, &changes](const std::int32_t before, const std::int32_t after) {
             REQUIRE(state.lives == before);
             changes.emplace_back(before, after);
             return false;
         },
-        error));
+        error);
+    INFO("Lives write hook installation error: " << error);
+    REQUIRE(installed);
     REQUIRE(error.empty());
     REQUIRE(hook.installed());
 
-    invoke_fake_lives_write(&state, 5, reinterpret_cast<void*>(&fake_gain_lives_write));
+    invoke_fake_lives_write(&state, 5, gain_target);
     REQUIRE(state.lives == 105);
     REQUIRE(changes == std::vector<std::pair<std::int32_t, std::int32_t>>{{100, 105}});
 
-    invoke_fake_lives_write(&state, 7, reinterpret_cast<void*>(&fake_loss_lives_write));
+    invoke_fake_lives_write(&state, 7, loss_target);
     REQUIRE(state.lives == 98);
     REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{105, 98});
 
     state.lives = 3;
-    invoke_fake_lives_write(&state, 7, reinterpret_cast<void*>(&fake_loss_lives_write));
+    invoke_fake_lives_write(&state, 7, loss_target);
     REQUIRE(state.lives == -4);
     REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{3, 0});
 
     bool cancel_next = true;
     hook.remove();
     REQUIRE(hook.install(
-        reinterpret_cast<void*>(&fake_gain_lives_write),
-        reinterpret_cast<void*>(&fake_loss_lives_write),
+        gain_target,
+        loss_target,
         [&cancel_next, &changes](const std::int32_t before, const std::int32_t after) {
             changes.emplace_back(before, after);
             return std::exchange(cancel_next, false);
         },
         error));
     state.lives = 50;
-    invoke_fake_lives_write(&state, 5, reinterpret_cast<void*>(&fake_gain_lives_write));
+    invoke_fake_lives_write(&state, 5, gain_target);
     REQUIRE(state.lives == 50);
     REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{50, 55});
     cancel_next = true;
-    invoke_fake_lives_write(&state, 7, reinterpret_cast<void*>(&fake_loss_lives_write));
+    invoke_fake_lives_write(&state, 7, loss_target);
     REQUIRE(state.lives == 50);
     REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{50, 43});
-    invoke_fake_lives_write(&state, 5, reinterpret_cast<void*>(&fake_gain_lives_write));
+    invoke_fake_lives_write(&state, 5, gain_target);
     REQUIRE(state.lives == 55);
 
     hook.remove();
     REQUIRE_FALSE(hook.installed());
     changes.clear();
-    invoke_fake_lives_write(&state, 4, reinterpret_cast<void*>(&fake_gain_lives_write));
+    invoke_fake_lives_write(&state, 4, gain_target);
     REQUIRE(state.lives == 59);
     REQUIRE(changes.empty());
 }

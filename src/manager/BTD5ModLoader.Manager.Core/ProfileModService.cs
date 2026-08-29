@@ -366,7 +366,7 @@ public sealed class ProfileModService
                 string.Equals(package.Version, version, StringComparison.Ordinal));
     }
 
-    private static IReadOnlyList<string> ValidateConfiguration(
+    private static List<string> ValidateConfiguration(
         ModPackageInfo package,
         IReadOnlyDictionary<string, System.Text.Json.JsonElement> configuration)
     {
@@ -402,7 +402,10 @@ public sealed class ProfileModService
         System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False => "a boolean",
         System.Text.Json.JsonValueKind.Number => "a number",
         System.Text.Json.JsonValueKind.String => "text",
-        _ => kind.ToString().ToLowerInvariant()
+        System.Text.Json.JsonValueKind.Object => "an object",
+        System.Text.Json.JsonValueKind.Array => "a list",
+        System.Text.Json.JsonValueKind.Null => "null",
+        _ => "a defined value"
     };
 
     private async Task<ModProfile> RequireProfileAsync(

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
@@ -35,7 +36,7 @@ internal sealed partial class MainWindow : Window
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true
     };
-    private string ArtifactDirectory
+    private static string ArtifactDirectory
     {
         get
         {
@@ -137,7 +138,8 @@ internal sealed partial class MainWindow : Window
             await RefreshManagerStateAsync(selectedProfile?.Name).ConfigureAwait(true);
             await RefreshReadinessAsync().ConfigureAwait(true);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is IOException or InvalidDataException or
+            InvalidOperationException or UnauthorizedAccessException or JsonException)
         {
             StatusText.Text = "Could not refresh the Mods folder: " + exception.Message;
         }
@@ -509,7 +511,7 @@ internal sealed partial class MainWindow : Window
         }
         try
         {
-            await using var stream = File.OpenRead(dialog.FileName);
+            using var stream = File.OpenRead(dialog.FileName);
             var imported = await JsonSerializer.DeserializeAsync<ModProfile>(
                 stream, ProfileJsonOptions).ConfigureAwait(true) ??
                 throw new InvalidDataException("The profile file is empty.");
@@ -825,7 +827,7 @@ internal sealed partial class MainWindow : Window
             var root = document.RootElement;
             var timestamp = root.TryGetProperty("timestamp", out var timestampElement) &&
                 DateTimeOffset.TryParse(timestampElement.GetString(), out var parsedTimestamp)
-                    ? parsedTimestamp.ToLocalTime().ToString("HH:mm:ss")
+                    ? parsedTimestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture)
                     : "--:--:--";
             var level = root.TryGetProperty("level", out var levelElement)
                 ? levelElement.GetString()?.ToUpperInvariant() ?? "LOG"
@@ -995,7 +997,7 @@ internal sealed partial class MainWindow : Window
             launchReady = status.Problems.Count == 0;
             readinessSummary = launchReady
                 ? $"Ready • {selectedProfile.Mods.Count(mod => mod.Enabled)} mods • {status.BuildId}"
-                : status.Problems.FirstOrDefault() ?? "Launch validation failed.";
+                : status.Problems[0];
             if (reportToStatusBar)
             {
                 StatusText.Text = launchReady
