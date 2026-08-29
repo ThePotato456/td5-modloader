@@ -5,6 +5,13 @@ The contract is implemented and mock-host tested; individual events become
 live only after their fingerprinted game hooks pass the Phase 6 acceptance
 gate.
 
+Currently live in the supported Steam Win32 4.8 build:
+
+- `match.starting`, immediately before `CGameScreen::Init`; and
+- `match.started`, after `CGameScreen::Init` returns.
+
+Match exit, round, economy, tower, and bloon events remain mock-host only.
+
 ## Subscription
 
 ```lua
@@ -33,7 +40,7 @@ feedback loops.
 
 | Area | Pre-events | Post-events |
 | --- | --- | --- |
-| Match | `match.starting`, `match.ending` | `match.started`, `match.ended` |
+| Match | `match.starting` (live), `match.ending` | `match.started` (live), `match.ended` |
 | Round | `round.starting`, `round.ending` | `round.started`, `round.ended` |
 | Economy | `cash.changing`, `lives.changing` | `cash.changed`, `lives.changed` |
 | Tower placement | `tower.placing` | `tower.placed` |

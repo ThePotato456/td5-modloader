@@ -131,6 +131,7 @@ Initial supported build fingerprints:
 - [x] Install a transactional render-frame hook without patching the game executable on disk.
 - [x] Dispatch Lua `on_ready()` once from the live game render thread and advance deterministic timers once per rendered frame.
 - [x] Prove the lifecycle bridge in the copied Steam build with a rerunnable `on_load`/`on_ready`/timer smoke test.
+- [x] Dispatch live `match.starting` and `match.started` events around the verified game-screen initialization boundary.
 - [x] Define versioned Lua wrappers with runtime lifetime checks for matches, rounds, players, towers, attacks, projectiles, and bloons.
 - [x] Prevent wrappers from accessing game objects after those objects have been destroyed or their scene has changed.
 - [x] Implement event subscription/unsubscription and deterministic handler ordering.

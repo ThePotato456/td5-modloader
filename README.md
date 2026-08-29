@@ -150,6 +150,7 @@ custom-tower examples will be added when their implementation gates pass.
 | [Supported build validation](docs/validation-steam-win32-4.8.md) | Fingerprints and manual compatibility evidence |
 | [Phase 5 validation](docs/validation-phase5.md) | Manager workflow and live Lua `on_load` acceptance evidence |
 | [Phase 6 foundation validation](docs/validation-phase6-foundation.md) | Live render hook, `on_ready`, and timer acceptance evidence |
+| [Phase 6 match-entry validation](docs/validation-phase6-match-entry.md) | First live Lua gameplay-event acceptance evidence |
 | [Upstream code provenance](docs/upstream-code-provenance.md) | Auditable record of GPL-covered adaptations |
 | [Upstream research policy](docs/upstream-research.md) | Boundaries for research-only upstream material |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Pinned dependencies and their licenses |

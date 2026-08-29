@@ -19,6 +19,7 @@
 #include "hook_transaction.hpp"
 #include "logger.hpp"
 #include "lua_mod.hpp"
+#include "match_hook.hpp"
 #include "mod_package.hpp"
 #include "runtime_state.hpp"
 #include "symbol_resolver.hpp"
@@ -33,7 +34,21 @@ std::vector<std::unique_ptr<btd5loader::runtime::LuaMod>> g_mods;
 std::mutex g_mods_mutex;
 btd5loader::runtime::GameObjectRegistry g_game_objects;
 btd5loader::runtime::FrameHook g_frame_hook;
+btd5loader::runtime::MatchHook g_match_hook;
 btd5loader::runtime::HookTransaction g_hooks;
+
+void dispatch_game_event(const std::string_view name) {
+    using btd5loader::runtime::State;
+
+    if (g_state.current() != State::GameReady) {
+        return;
+    }
+    std::scoped_lock lock(g_mods_mutex);
+    g_logger.info("events", std::string(name));
+    for (const auto& mod : g_mods) {
+        (void)mod->dispatch_event(name);
+    }
+}
 
 void dispatch_frame(HDC) {
     using btd5loader::runtime::State;
@@ -312,6 +327,20 @@ DWORD WINAPI initialize_worker(LPVOID) {
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_ADDRESS;
     }
+    const auto game_screen_init = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "screen.game.init";
+        });
+    const HMODULE executable = GetModuleHandleW(nullptr);
+    if (game_screen_init == resolution.resolved.end() || executable == nullptr) {
+        g_logger.error("hooks", "screen.game.init target unavailable");
+        (void)g_state.transition_to(State::Failed);
+        return ERROR_INVALID_ADDRESS;
+    }
+    void* const game_screen_init_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + game_screen_init->relative_virtual_address);
     g_hooks.add({
         "render.swap_buffers",
         true,
@@ -324,6 +353,22 @@ DWORD WINAPI initialize_worker(LPVOID) {
             return installed;
         },
         []() { g_frame_hook.remove(); }});
+    g_hooks.add({
+        "screen.game.init",
+        true,
+        [game_screen_init_target]() {
+            std::string error;
+            const bool installed = g_match_hook.install(
+                game_screen_init_target,
+                []() { dispatch_game_event("match.starting"); },
+                []() { dispatch_game_event("match.started"); },
+                error);
+            if (!installed) {
+                g_logger.error("hooks", error);
+            }
+            return installed;
+        },
+        []() { g_match_hook.remove(); }});
     std::string hook_error;
     if (!g_hooks.commit(hook_error)) {
         g_logger.error("hooks", hook_error);
@@ -336,7 +381,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_STATE;
     }
-    g_logger.info("runtime", "hooks_ready=render.swap_buffers");
+    g_logger.info("runtime", "hooks_ready=render.swap_buffers,screen.game.init");
     if (!load_active_mods(detection.build->id)) {
         g_hooks.rollback();
         g_logger.error("runtime", "active_mod_loading_failed");

@@ -30,8 +30,12 @@ Copy-Item -LiteralPath (Join-Path $nativeRoot "bootstrap\$Configuration\wininet.
     -Destination (Join-Path $stageRoot 'wininet.dll') -Force
 Copy-Item -LiteralPath (Join-Path $nativeRoot "runtime\$Configuration\btd5loader_runtime.dll") `
     -Destination (Join-Path $stageRoot 'btd5loader_runtime.dll') -Force
+$stagedSymbols = Join-Path $stageRoot 'symbols'
+if (Test-Path -LiteralPath $stagedSymbols) {
+    Remove-Item -LiteralPath $stagedSymbols -Recurse -Force
+}
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'symbols') `
-    -Destination (Join-Path $stageRoot 'symbols') -Recurse -Force
+    -Destination $stagedSymbols -Recurse -Force
 
 $samplesRoot = Join-Path $stageRoot 'samples'
 New-Item -ItemType Directory -Path $samplesRoot -Force | Out-Null

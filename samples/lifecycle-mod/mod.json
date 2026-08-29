@@ -9,7 +9,7 @@
   "supported_game_builds": ["steam-win32-4.8"],
   "dependencies": [],
   "load_order": { "before": [], "after": [] },
-  "capabilities": ["storage"],
+  "capabilities": ["gameplay.events", "storage"],
   "configuration_defaults": { "greeting": "Hello from Lua" },
   "localization": ["localization/en-US.json"],
   "documentation": "README.md"

@@ -2,6 +2,14 @@ local function log(message)
     btd5.log("info", message)
 end
 
+btd5.events.on("match.starting", function()
+    log("Lifecycle Sample observed match.starting")
+end)
+
+btd5.events.on("match.started", function()
+    log("Lifecycle Sample observed match.started")
+end)
+
 function on_load()
     local launches = tonumber(btd5.storage.get("launches") or "0") + 1
     btd5.storage.set("launches", tostring(launches))

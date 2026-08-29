@@ -39,9 +39,10 @@ Game objects are opaque userdata. `object:is_valid()` is the only operation
 allowed on a stale object. `object:id()` and `object:kind()` reject handles whose
 native object was destroyed, reused, or belonged to an earlier scene.
 
-The event bus and wrappers are mock-host validated but are not yet populated by
-live match/gameplay hooks. Mods must not treat subscription availability as
-evidence that gameplay events currently fire in BTD5.
+The event bus and wrappers are mock-host validated. `match.starting` and
+`match.started` currently fire in the supported game; the remaining names do
+not yet have live hooks. Mods must not infer support for an event merely because
+the API accepts its name.
 
 Resource paths must use `/`, remain relative, and contain no `.` or `..`
 components. Mods never receive a general filesystem path.

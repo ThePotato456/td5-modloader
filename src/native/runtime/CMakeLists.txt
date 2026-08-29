@@ -2,6 +2,7 @@ add_library(
     btd5loader_runtime
     SHARED
         logger.cpp
+        match_hook.cpp
         active_profile.cpp
         compatibility.cpp
         frame_hook.cpp

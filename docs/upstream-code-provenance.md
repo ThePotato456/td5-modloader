@@ -28,4 +28,5 @@ does.
 
 | Local file | Upstream project/path | Commit | Upstream copyright | What was adapted | Local modifications |
 | --- | --- | --- | --- | --- | --- |
-| `symbols/btd5-steam-4.8.json` | `NKHook5/Signatures/Signature.cpp` | `6bcac69de5b76bf2bed49e5db600841bfb42ccb2` | NKHook5 contributors | Steam patterns for main, asset loading, and tower/weapon factories | Renamed through a stable namespace; restricted to the fingerprinted 4.8 map; added prerequisites and validation patterns |
+| `symbols/btd5-steam-4.8.json` | `NKHook5/Signatures/Signature.cpp` | `6bcac69de5b76bf2bed49e5db600841bfb42ccb2` | NKHook5 contributors | Steam patterns for main, asset loading, game-screen initialization, and tower/weapon factories | Renamed through a stable namespace; restricted to the fingerprinted 4.8 map; added prerequisites and validation patterns |
+| `src/native/runtime/match_hook.cpp` | `NKHook5/Patches/CGameScreen/Init.cpp` | `6bcac69de5b76bf2bed49e5db600841bfb42ccb2` | NKHook5 contributors | `CGameScreen::Init` x86 member-function calling convention and before/after detour boundary | Reimplemented as an owned MinHook transaction with exception containment and Lua event callbacks; removed all asset-extension behavior |

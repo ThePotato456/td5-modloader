@@ -6,6 +6,7 @@ add_executable(
     ../../src/native/runtime/game_object.cpp
     ../../src/native/runtime/hook_transaction.cpp
     ../../src/native/runtime/lua_mod.cpp
+    ../../src/native/runtime/match_hook.cpp
     ../../src/native/runtime/mod_manifest.cpp
     ../../src/native/runtime/mod_package.cpp
     ../../src/native/runtime/pattern.cpp
@@ -18,6 +19,7 @@ target_link_libraries(
         Catch2::Catch2WithMain
         bcrypt
         btd5ml_lua
+        minhook
         miniz
         nlohmann_json::nlohmann_json
 )

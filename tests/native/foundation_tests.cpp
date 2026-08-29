@@ -19,6 +19,7 @@
 #include "../../src/native/runtime/active_profile.hpp"
 #include "../../src/native/runtime/hook_transaction.hpp"
 #include "../../src/native/runtime/lua_mod.hpp"
+#include "../../src/native/runtime/match_hook.hpp"
 #include "../../src/native/runtime/mod_manifest.hpp"
 #include "../../src/native/runtime/mod_package.hpp"
 #include "../../src/native/runtime/pattern.hpp"
@@ -57,6 +58,20 @@ bool create_test_zip(
 std::string read_test_file(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+struct FakeGameScreen final {
+    std::vector<std::string>* calls{};
+};
+
+__declspec(noinline) void __fastcall fake_game_screen_init(
+    void* const instance,
+    void*,
+    void* const screen_data) {
+    auto* const screen = static_cast<FakeGameScreen*>(instance);
+    if (screen != nullptr && screen->calls != nullptr && screen_data != nullptr) {
+        screen->calls->emplace_back("original");
+    }
 }
 
 }  // namespace
@@ -401,6 +416,30 @@ TEST_CASE("required hook failure rolls back in reverse order", "[hooks]") {
                           "remove:second",
                           "remove:first"});
     REQUIRE_FALSE(transaction.committed());
+}
+
+TEST_CASE("match hook preserves x86 member-call ordering and removes cleanly", "[hooks]") {
+    std::vector<std::string> calls;
+    FakeGameScreen screen{&calls};
+    int screen_data = 1;
+    btd5loader::runtime::MatchHook hook;
+    std::string error;
+    REQUIRE(hook.install(
+        reinterpret_cast<void*>(&fake_game_screen_init),
+        [&calls]() { calls.emplace_back("starting"); },
+        [&calls]() { calls.emplace_back("started"); },
+        error));
+    REQUIRE(error.empty());
+    REQUIRE(hook.installed());
+
+    fake_game_screen_init(&screen, nullptr, &screen_data);
+    REQUIRE(calls == std::vector<std::string>{"starting", "original", "started"});
+
+    hook.remove();
+    REQUIRE_FALSE(hook.installed());
+    calls.clear();
+    fake_game_screen_init(&screen, nullptr, &screen_data);
+    REQUIRE(calls == std::vector<std::string>{"original"});
 }
 
 TEST_CASE("an unknown executable and asset pair fails closed", "[compatibility]") {

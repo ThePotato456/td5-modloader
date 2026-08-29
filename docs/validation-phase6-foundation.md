@@ -52,8 +52,9 @@ formatting checks, MSVC analysis, and managed analyzers also passed.
 
 Render-frame readiness is a lifecycle foundation, not a live gameplay API. The
 mock host now validates the v1 event bus and generation/scene-checked wrappers
-for matches, rounds, players, towers, attacks, projectiles, and bloons. Real
-gameplay hooks, object properties, cancellation, and validated mutation remain
+for matches, rounds, players, towers, attacks, projectiles, and bloons. The
+first match-entry hook is validated separately; match exit, round/economy/object
+hooks, object properties, cancellation, and validated mutation remain
 unimplemented. Timer ticks currently represent rendered frames, not verified
 simulation updates. No on-screen overlay or gameplay mutation is claimed by
 this validation.
