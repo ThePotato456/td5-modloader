@@ -166,6 +166,20 @@ The automated suites do not require the game. See the
 [build guide](docs/building.md) for complete toolchain and symbol-inspection
 instructions.
 
+## Preparing a release
+
+From a clean `main` branch, prepare a versioned Release bundle with:
+
+```powershell
+./scripts/prepare-release.ps1 -Version 0.1.0
+```
+
+The script updates the managed and native version constants, runs all release
+gates, and writes a ZIP, SHA-256 checksum, and release-notes template under
+`out/release/v0.1.0`. It does not commit, tag, push, or publish automatically.
+See the [release guide](docs/releasing.md) for the review, tagging, push, and
+GitHub Release commands.
+
 ## Local game testing
 
 Integration tests require a legally obtained Steam installation. You may point
@@ -181,6 +195,7 @@ contains no Ninja Kiwi files.
 
 - [Implementation roadmap and gates](ACTIONPLAN.md)
 - [Building and compatibility inspection](docs/building.md)
+- [Preparing and publishing releases](docs/releasing.md)
 - [Lua API reference](lua-api/README.md)
 - [Gameplay events and wrapper lifetimes](docs/gameplay-events.md)
 - [Mod package format](docs/mod-packages.md)

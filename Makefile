@@ -13,7 +13,7 @@ MANAGER_PROJECT := .\src\manager\BTD5ModLoader.Manager\BTD5ModLoader.Manager.csp
 MANAGER_EXE := .\src\manager\BTD5ModLoader.Manager\bin\$(CONFIG)\net10.0-windows\BTD5ModLoader.Manager.exe
 STAGED_MANAGER_EXE := .\out\stage\$(CONFIG)\BTD5ModLoader.Manager.exe
 
-.PHONY: help dev build build-ui ui run-ui stage run build-and-run test test-ui check analyze format release clean
+.PHONY: help dev build build-ui ui run-ui stage run build-and-run test test-ui check analyze format release prepare-release clean
 
 help:
 	@echo BTD5 Mod Loader development commands
@@ -29,6 +29,7 @@ help:
 	@echo   make analyze           Run native and managed static analysis
 	@echo   make format            Verify source formatting
 	@echo   make release           Build and stage an optimized release bundle
+	@echo   make prepare-release VERSION=x.y.z  Validate and package a release candidate
 	@echo   make clean             Remove generated build output
 	@echo Configuration defaults to Debug. Example: make run CONFIG=Release
 
@@ -78,6 +79,10 @@ analyze:
 release:
 	$(POWERSHELL) -File .\scripts\build.ps1 -Configuration Release
 	$(POWERSHELL) -File .\scripts\stage.ps1 -Configuration Release
+
+prepare-release:
+	$(POWERSHELL) -Command "if ([string]::IsNullOrWhiteSpace('$(VERSION)')) { throw 'Set VERSION, for example: make prepare-release VERSION=0.1.0' }"
+	$(POWERSHELL) -File .\scripts\prepare-release.ps1 -Version $(VERSION)
 
 clean:
 	$(POWERSHELL) -Command "$$paths = @('.\out', '.\src\manager\BTD5ModLoader.Manager\bin', '.\src\manager\BTD5ModLoader.Manager\obj', '.\src\manager\BTD5ModLoader.Manager.Core\bin', '.\src\manager\BTD5ModLoader.Manager.Core\obj', '.\tests\managed\BTD5ModLoader.Manager.Core.Tests\bin', '.\tests\managed\BTD5ModLoader.Manager.Core.Tests\obj', '.\tests\managed\BTD5ModLoader.LiveSmoke\bin', '.\tests\managed\BTD5ModLoader.LiveSmoke\obj'); foreach ($$path in $$paths) { if (Test-Path -LiteralPath $$path) { Remove-Item -LiteralPath $$path -Recurse -Force } }"
