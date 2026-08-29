@@ -11,6 +11,7 @@
 /.vs/
 /.cache/
 /.nuget/
+/.vscode/
 
 # Local integration settings and game-owned data
 /.local/

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <vector>
+#include <chrono>
 
 #include <btd5loader/runtime_api.hpp>
 #include <btd5loader/version.hpp>
@@ -268,10 +269,39 @@ bool load_active_mods(const std::string& build_id) {
     using btd5loader::runtime::LuaModOptions;
     using btd5loader::runtime::State;
 
-    const auto handoff_path = environment_value(L"BTD5ML_ACTIVE_PROFILE");
+    auto handoff_path = environment_value(L"BTD5ML_ACTIVE_PROFILE");
+
     if (handoff_path.empty()) {
-        g_logger.info("mods", "no_active_profile");
-        return true;
+        const auto fallback_path =
+            data_root() / L"runtime" / L"active-profile.json";
+
+        std::error_code ec;
+
+        if (std::filesystem::is_regular_file(fallback_path, ec) && !ec) {
+            const auto modified_time =
+                std::filesystem::last_write_time(fallback_path, ec);
+
+            if (!ec) {
+                const auto now =
+                    std::filesystem::file_time_type::clock::now();
+
+                const auto age = now - modified_time;
+
+                if (age <= std::chrono::seconds(60)) {
+                    handoff_path = fallback_path.wstring();
+                    g_logger.info("mods", "active_profile_fallback");
+                } else {
+                    g_logger.info("mods", "active_profile_fallback_stale");
+                    return true;
+                }
+            } else {
+                g_logger.info("mods", "active_profile_fallback_timestamp_failed");
+                return true;
+            }
+        } else {
+            g_logger.info("mods", "no_active_profile");
+            return true;
+        }
     }
     std::string error;
     const auto active = btd5loader::runtime::load_active_profile(handoff_path, error);
