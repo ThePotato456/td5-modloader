@@ -39,37 +39,50 @@ Copy-Item -LiteralPath (Join-Path $repositoryRoot 'symbols') `
 
 $samplesRoot = Join-Path $stageRoot 'samples'
 New-Item -ItemType Directory -Path $samplesRoot -Force | Out-Null
-$samplePackage = Join-Path $samplesRoot 'lifecycle-sample.btd5mod'
-if (Test-Path -LiteralPath $samplePackage) {
-    Remove-Item -LiteralPath $samplePackage -Force
-}
-$sampleSource = Join-Path $repositoryRoot 'samples\lifecycle-mod'
-$packageStream = [System.IO.File]::Open(
-    $samplePackage,
-    [System.IO.FileMode]::CreateNew,
-    [System.IO.FileAccess]::Write,
-    [System.IO.FileShare]::None)
-$archive = $null
-try {
-    $archive = New-Object System.IO.Compression.ZipArchive(
-        $packageStream,
-        [System.IO.Compression.ZipArchiveMode]::Create,
-        $false)
-    foreach ($file in Get-ChildItem -LiteralPath $sampleSource -File -Recurse | Sort-Object FullName) {
-        $relativePath = $file.FullName.Substring($sampleSource.Length).TrimStart('\', '/') -replace '\\', '/'
-        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-            $archive,
-            $file.FullName,
-            $relativePath,
-            [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+$sampleDefinitions = @(
+    @{ Source = 'lifecycle-mod'; Output = 'lifecycle-sample.btd5mod' },
+    @{ Source = 'hello-world-mod'; Output = 'hello-world.btd5mod' },
+    @{ Source = 'event-monitor-mod'; Output = 'event-monitor.btd5mod' },
+    @{ Source = 'lives-guardian-mod'; Output = 'lives-guardian.btd5mod' }
+)
+$stagedSamplePackages = @()
+foreach ($definition in $sampleDefinitions) {
+    $sampleSource = Join-Path $repositoryRoot (Join-Path 'samples' $definition.Source)
+    $samplePackage = Join-Path $samplesRoot $definition.Output
+    if (Test-Path -LiteralPath $samplePackage) {
+        Remove-Item -LiteralPath $samplePackage -Force
     }
-}
-finally {
-    if ($null -ne $archive) {
-        $archive.Dispose()
+    $packageStream = [System.IO.File]::Open(
+        $samplePackage,
+        [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::None)
+    $archive = $null
+    try {
+        $archive = New-Object System.IO.Compression.ZipArchive(
+            $packageStream,
+            [System.IO.Compression.ZipArchiveMode]::Create,
+            $false)
+        foreach ($file in Get-ChildItem -LiteralPath $sampleSource -File -Recurse | Sort-Object FullName) {
+            $relativePath = $file.FullName.Substring($sampleSource.Length).TrimStart('\', '/') `
+                -replace '\\', '/'
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive,
+                $file.FullName,
+                $relativePath,
+                [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+        }
     }
-    $packageStream.Dispose()
+    finally {
+        if ($null -ne $archive) {
+            $archive.Dispose()
+        }
+        $packageStream.Dispose()
+    }
+    $stagedSamplePackages += $samplePackage
 }
 
 Write-Host "Staged manager bundle: $stageRoot"
-Write-Host "Staged sample package: $samplePackage"
+foreach ($samplePackage in $stagedSamplePackages) {
+    Write-Host "Staged sample package: $samplePackage"
+}

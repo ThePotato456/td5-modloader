@@ -95,8 +95,9 @@ the originating bloon leak or reward action, and a cancelled transition does
 not emit `lives.changed`.
 
 Start with the [Lua API reference](lua-api/README.md), the
-[gameplay event contract](docs/gameplay-events.md), and the complete
-[lifecycle sample](samples/lifecycle-mod/README.md).
+[gameplay event contract](docs/gameplay-events.md), and the runnable
+[example mod catalog](samples/README.md). The examples range from a minimal
+Hello World mod to event monitoring and supported lives-change cancellation.
 
 ## Mod package layout
 
@@ -156,7 +157,7 @@ From PowerShell:
 ./scripts/stage.ps1 -Configuration Debug
 ```
 
-The staged manager, runtime, compatibility maps, and sample package are written
+The staged manager, runtime, compatibility maps, and example packages are written
 to `out/stage/debug`. Use `-Configuration Release` for optimized artifacts.
 Native targets are always Win32/x86 because they load into BTD5's 32-bit
 process; the manager itself is architecture-neutral.

@@ -1,88 +1,281 @@
-# Lua API v1
+# BTD5 Mod Loader Lua API v1
 
-Each enabled mod receives its own Lua 5.4 state. States do not share globals,
-registry entries, timers, configuration, or storage.
+Lua 5.4 is the public modding API. Every enabled mod runs in an isolated,
+sandboxed Lua state with its own globals, subscriptions, timers, configuration,
+storage, and resource directory.
 
-## Lifecycle
+This reference describes features implemented in the supported Steam Win32 4.8
+build. Custom towers and general gameplay-property setters are planned but are
+not part of the current API.
 
-A mod may define `on_load()`, `on_ready()`, and `on_shutdown()`. A callback
-error is annotated with the mod ID and callback name. The failing callback is
-disabled; other callbacks and other mod states remain available.
+## Quick start
 
-The live manager-to-runtime bridge invokes `on_load()` during profile loading.
-It invokes `on_ready()` once on the first rendered frame after all enabled mods
-load, then advances deterministic timers once per rendered frame. Mods must not
-infer that the game scene is ready from `on_load()`.
+A minimal mod contains two files:
 
-## Sandboxed host API
+```text
+hello-world/
+├── mod.json
+└── lua/
+    └── main.lua
+```
 
-- `btd5.log(level, message)` writes through the loader log sink.
-- `btd5.config.get(key)` reads profile-provided configuration.
-- `btd5.storage.get(key)` and `set(key, value)` access private string storage.
-- `btd5.localization.get(key)` resolves a localized string or returns the key.
-- `btd5.resource.read_text(path)` reads a packaged text resource up to 1 MiB.
-- `btd5.timer.after(ticks, callback)` schedules a deterministic one-shot timer.
-  In the current live host, one tick is one rendered frame rather than one game
-  simulation step.
-- `btd5.events.on(name, callback)` subscribes and returns an integer token.
-- `btd5.events.off(token)` removes a subscription and reports whether it existed.
+`mod.json`:
 
-## Gameplay events and object wrappers
+```json
+{
+  "$schema": "../../schemas/mod-manifest.schema.json",
+  "id": "example.hello-world",
+  "name": "Hello World",
+  "author": "Your name",
+  "version": "1.0.0",
+  "entry_point": "lua/main.lua",
+  "loader_api": 1,
+  "supported_game_builds": ["steam-win32-4.8"],
+  "dependencies": [],
+  "load_order": { "before": [], "after": [] },
+  "capabilities": []
+}
+```
 
-The v1 event names and wrapper lifetime rules are specified in the
-[gameplay event contract](../docs/gameplay-events.md). Handlers run in mod load
-order and then subscription order. A handler added during dispatch begins with
-the next event; removing a handler takes effect immediately. A failing handler
-is disabled without stopping later handlers.
+`lua/main.lua`:
 
-Game objects are opaque userdata. `object:is_valid()` is the only operation
-allowed on a stale object. `object:id()` and `object:kind()` reject handles whose
-native object was destroyed, reused, or belonged to an earlier scene.
+```lua
+function on_load()
+    btd5.log("info", "Hello World loaded")
+end
 
-The event bus and wrappers are mock-host validated. `match.starting`,
-`match.started`, `match.ending`, and `match.ended` currently fire in the
-supported game. `round.starting`, `round.started`, `round.ending`, and
-`round.ended` are also live. `cash.changing` and `cash.changed` fire around the
-native money-update observer dispatch, but currently have no balance payload or
-mutation support. `lives.changed` fires only after a native gain or loss is
-confirmed by comparing the stored value. `lives.changing` fires at the exact
-accepted native write boundary. Both carry integer `old_lives` and `new_lives`
-fields. They are currently read-only, but `lives.changing` is cancellable by
-setting `event.cancelled = true`. Cancellation skips the pending lives write
-without undoing the originating action, and suppresses `lives.changed` for that
-transition.
-`tower.placing` fires immediately before verified tower-manager ownership.
-`tower.placed`, `tower.upgraded`, and `tower.sold` fire after their corresponding
-native observer dispatches. All carry `event.tower`. The opaque wrapper keeps
-the same ID across placing, placement, upgrades, and sale. It is valid during
-`tower.sold` handlers and becomes stale after they return. `tower.placing` is
-read-only and not yet cancellable. `tower.upgrading` is live after the native
-eligibility check and immediately before the first upgrade mutation.
-`tower.selling` is live after sale eligibility succeeds and before sale side
-effects begin. All three tower pre-events are read-only and not yet cancellable.
-`bloon.spawning`, `bloon.popping`, and `bloon.leaking` are live at verified
-native action boundaries, while `bloon.spawned`, `bloon.popped`, and
-`bloon.leaked` are live post-notifications. All carry `event.bloon`. The opaque
-wrapper keeps the spawned object's ID through its pop or leak callback, then
-becomes stale after handlers return. A popped parent and newly spawned child
-layers have different IDs. Bloon pre-events are read-only and not yet
-cancellable.
+function on_ready()
+    btd5.log("info", "The game render loop is ready")
+end
+```
 
-Resource paths must use `/`, remain relative, and contain no `.` or `..`
-components. Mods never receive a general filesystem path.
+Package the contents—not the containing directory—as a ZIP archive and rename
+it to `.btd5mod`. The manager validates and installs the package. See the
+[package specification](../docs/mod-packages.md) for manifest and archive rules.
 
-## Removed facilities
+## Execution model
 
-The sandbox does not open `io`, `os`, `package`, or `debug`. It also removes
-`require`, `load`, `loadfile`, `dofile`, and `collectgarbage`. Consequently a
-mod has no host-provided route to arbitrary files, processes, networking,
-Windows APIs, or native DLL loading.
+The host opens Lua's base, table, string, math, UTF-8, and coroutine libraries.
+Use `btd5.log` instead of relying on console output.
 
-## Default limits
+The following lifecycle functions are optional:
 
-- 16 MiB memory per state.
-- 250,000 virtual-machine instructions and 100 milliseconds per callback.
-- 32 Lua frames per callback.
-- 128-byte storage keys and 64 KiB storage values.
+| Callback | Timing |
+| --- | --- |
+| `on_load()` | Runs while the enabled profile is loading. The game scene is not ready. |
+| `on_ready()` | Runs once on the first rendered frame after all enabled mods load. |
+| `on_shutdown()` | Runs during an orderly loader shutdown. |
 
-A limit violation becomes a normal contained callback error.
+A callback error is logged with the mod ID and callback name. The failing
+callback is disabled when continuing is safe; other callbacks and mods continue.
+
+## Host API reference
+
+### Logging
+
+```lua
+btd5.log(level, message)
+```
+
+`level` and `message` must be strings. `"error"` produces an error record;
+other levels currently produce an informational record.
+
+### Configuration
+
+```lua
+local value = btd5.config.get(key)
+```
+
+Returns the profile configuration value as a string, or `nil` when the key is
+missing. JSON booleans and numbers are serialized as strings, so parse them
+explicitly:
+
+```lua
+local enabled = btd5.config.get("enabled") == "true"
+local threshold = tonumber(btd5.config.get("threshold") or "10")
+```
+
+Defaults are declared in `mod.json` under `configuration_defaults`.
+
+### Private storage
+
+```lua
+local value = btd5.storage.get(key)
+btd5.storage.set(key, value)
+```
+
+Keys and values are strings. Missing keys return `nil`. Storage is private to
+the mod ID and persists between launches. Keys are limited to 128 bytes and
+values to 64 KiB. Mods using this API should declare the `storage` capability.
+
+### Localization
+
+```lua
+local text = btd5.localization.get(key)
+```
+
+Returns the active localized value, or the key itself when no value exists.
+Localization files are declared by the manifest and stored under
+`localization/`.
+
+### Packaged text resources
+
+```lua
+local contents = btd5.resource.read_text("assets/example.txt")
+```
+
+Reads a file from the extracted mod package. Paths must use `/`, remain
+relative, and contain no `.` or `..` components. The file must exist and be no
+larger than 1 MiB. This API never exposes a general filesystem path.
+
+### Deterministic timers
+
+```lua
+btd5.timer.after(ticks, callback)
+```
+
+Schedules a one-shot callback after a non-negative number of ticks. Currently,
+one tick is one rendered frame, not one simulation step or a fixed duration.
+Timers with the same due tick run in registration order.
+
+```lua
+btd5.timer.after(60, function()
+    btd5.log("info", "approximately 60 rendered frames passed")
+end)
+```
+
+### Event subscriptions
+
+```lua
+local token = btd5.events.on(name, callback)
+local removed = btd5.events.off(token)
+```
+
+`on` returns a positive integer subscription token. `off` returns `true` when
+the active subscription was removed and `false` for an unknown or previously
+removed token. A mod may have at most 256 active handlers.
+
+Handlers run in enabled-mod load order, then subscription order. A handler added
+during dispatch starts with the next event. Removing a handler takes effect
+immediately. A failing handler is disabled without stopping later handlers.
+
+```lua
+local token
+token = btd5.events.on("match.started", function(event)
+    btd5.log("info", event.name)
+    btd5.events.off(token)
+end)
+```
+
+## Live gameplay events
+
+Every handler receives one shared event table. It always contains `name` and
+`cancelled`. Payload fields depend on the event.
+
+| Event | Payload | Timing | Cancellable |
+| --- | --- | --- | --- |
+| `match.starting` | none | Before game-screen initialization | No |
+| `match.started` | none | After game-screen initialization | No |
+| `match.ending` | none | Before game-screen teardown | No |
+| `match.ended` | none | After game-screen teardown | No |
+| `round.starting` | none | Before native round-start observer dispatch | No |
+| `round.started` | none | After native round-start observer dispatch | No |
+| `round.ending` | none | Before native round-end observer dispatch | No |
+| `round.ended` | none | After native round-end observer dispatch | No |
+| `cash.changing` | none | Before native money-update observer dispatch | No |
+| `cash.changed` | none | After native money-update observer dispatch | No |
+| `lives.changing` | `old_lives`, `new_lives` | At the accepted native lives write | **Yes** |
+| `lives.changed` | `old_lives`, `new_lives` | After a verified lives change | No |
+| `tower.placing` | `tower` | Before tower-manager ownership | No |
+| `tower.placed` | `tower` | After placement observer dispatch | No |
+| `tower.upgrading` | `tower` | After eligibility and before upgrade mutation | No |
+| `tower.upgraded` | `tower` | After upgrade observer dispatch | No |
+| `tower.selling` | `tower` | After eligibility and before sale side effects | No |
+| `tower.sold` | `tower` | After sale observer dispatch | No |
+| `bloon.spawning` | `bloon` | Before bloon-manager ownership | No |
+| `bloon.spawned` | `bloon` | After spawn observer dispatch | No |
+| `bloon.popping` | `bloon` | After acceptance and before pop side effects | No |
+| `bloon.popped` | `bloon` | After pop observer dispatch | No |
+| `bloon.leaking` | `bloon` | After track-end acceptance and before leak side effects | No |
+| `bloon.leaked` | `bloon` | After leak observer dispatch | No |
+
+`old_lives` and `new_lives` are Lua integers. Tower and bloon payloads are
+opaque game-object userdata.
+
+### Cancelling a lives change
+
+Only `lives.changing` currently honors `event.cancelled`:
+
+```lua
+btd5.events.on("lives.changing", function(event)
+    if event.new_lives < event.old_lives then
+        event.cancelled = true
+    end
+end)
+```
+
+Cancellation skips the pending lives write and suppresses `lives.changed` for
+that transition. It does not undo the originating bloon leak or reward action.
+Setting `cancelled` on any other event currently has no gameplay effect.
+
+The detailed ordering contract is maintained in
+[Gameplay event contract v1](../docs/gameplay-events.md).
+
+## Game-object wrappers
+
+Tower and bloon event payloads expose three methods:
+
+```lua
+object:is_valid()  -- boolean
+object:id()        -- positive integer while valid
+object:kind()      -- "tower" or "bloon" while valid
+```
+
+IDs are stable for one native object's lifetime. A tower keeps the same ID from
+placing through sale. A bloon keeps the same ID from spawning through pop or
+leak. Popped parent bloons and newly created child layers have different IDs.
+
+`tower.sold`, `bloon.popped`, and `bloon.leaked` receive a valid wrapper during
+the handler. The wrapper becomes stale after every handler for that event
+returns. Match teardown invalidates remaining scene objects.
+
+Always call `is_valid()` before using a wrapper retained beyond its immediate
+handler. Calling `id()` or `kind()` on a stale wrapper raises a contained Lua
+error. Raw native addresses are never exposed.
+
+## Sandbox and limits
+
+The sandbox does not expose `io`, `os`, `package`, or `debug`. It removes
+`require`, `load`, `loadfile`, `dofile`, and `collectgarbage`. Mods have no
+host-provided route to arbitrary files, processes, networking, Windows APIs, or
+native DLL loading.
+
+Default per-mod limits:
+
+- 16 MiB of Lua-state memory;
+- 250,000 virtual-machine instructions per callback;
+- 100 milliseconds per callback;
+- 32 Lua frames per callback;
+- eight nested event dispatches; and
+- 256 active event handlers.
+
+A limit violation is handled as a normal contained callback error.
+
+## Current limitations
+
+- Tower and bloon pre-events are read-only and not yet cancellable.
+- Cash events do not yet expose balance values.
+- Game-object wrappers do not yet expose gameplay getters or setters.
+- `btd5.towers.register` and custom tower content are planned for Phase 7 and do
+  not exist yet.
+- No networking or native plugin API is exposed to Lua.
+
+## Example mods
+
+- [Hello World](../samples/hello-world-mod/README.md): lifecycle and timers.
+- [Event Monitor](../samples/event-monitor-mod/README.md): subscriptions,
+  object identity, counters, configuration, and storage.
+- [Lives Guardian](../samples/lives-guardian-mod/README.md): the currently
+  supported cancellation API.
+- [Lifecycle Sample](../samples/lifecycle-mod/README.md): comprehensive runtime
+  validation and every live event.
