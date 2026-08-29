@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 
 #include "active_profile.hpp"
+#include "bloon_action_hook.hpp"
 #include "compatibility.hpp"
 #include "frame_hook.hpp"
 #include "hook_transaction.hpp"
@@ -39,6 +40,7 @@ std::filesystem::path g_session_directory;
 std::vector<std::unique_ptr<btd5loader::runtime::LuaMod>> g_mods;
 std::mutex g_mods_mutex;
 btd5loader::runtime::GameObjectRegistry g_game_objects;
+btd5loader::runtime::BloonActionHook g_bloon_action_hook;
 btd5loader::runtime::FrameHook g_frame_hook;
 btd5loader::runtime::LivesHook g_lives_hook;
 btd5loader::runtime::LivesWriteHook g_lives_write_hook;
@@ -525,6 +527,30 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "event.bloon.escaped.vtable";
         });
+    const auto bloon_spawn_primary = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "bloon.manager.spawn.primary";
+        });
+    const auto bloon_spawn_secondary = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "bloon.manager.spawn.secondary";
+        });
+    const auto bloon_pop_commit = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "bloon.pop.commit";
+        });
+    const auto bloon_leak_commit = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "bloon.leak.commit";
+        });
     const auto lives_gain_handler = std::find_if(
         resolution.resolved.begin(),
         resolution.resolved.end(),
@@ -565,6 +591,10 @@ DWORD WINAPI initialize_worker(LPVOID) {
         bloon_spawned_vtable == resolution.resolved.end() ||
         bloon_popped_vtable == resolution.resolved.end() ||
         bloon_escaped_vtable == resolution.resolved.end() ||
+        bloon_spawn_primary == resolution.resolved.end() ||
+        bloon_spawn_secondary == resolution.resolved.end() ||
+        bloon_pop_commit == resolution.resolved.end() ||
+        bloon_leak_commit == resolution.resolved.end() ||
         lives_gain_handler == resolution.resolved.end() ||
         lives_loss_handler == resolution.resolved.end() ||
         lives_gain_write == resolution.resolved.end() ||
@@ -603,6 +633,14 @@ DWORD WINAPI initialize_worker(LPVOID) {
         reinterpret_cast<std::uintptr_t>(executable) + bloon_popped_vtable->relative_virtual_address);
     void* const bloon_escaped_vtable_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + bloon_escaped_vtable->relative_virtual_address);
+    void* const bloon_spawn_primary_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + bloon_spawn_primary->relative_virtual_address);
+    void* const bloon_spawn_secondary_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + bloon_spawn_secondary->relative_virtual_address);
+    void* const bloon_pop_commit_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + bloon_pop_commit->relative_virtual_address);
+    void* const bloon_leak_commit_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + bloon_leak_commit->relative_virtual_address);
     void* const lives_gain_handler_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + lives_gain_handler->relative_virtual_address);
     void* const lives_loss_handler_target = reinterpret_cast<void*>(
@@ -693,6 +731,29 @@ DWORD WINAPI initialize_worker(LPVOID) {
             return installed;
         },
         []() { g_tower_sale_hook.remove(); }});
+    g_hooks.add({
+        "bloon.pre_actions",
+        true,
+        [bloon_spawn_primary_target,
+         bloon_spawn_secondary_target,
+         bloon_pop_commit_target,
+         bloon_leak_commit_target]() {
+            std::string error;
+            const bool installed = g_bloon_action_hook.install(
+                bloon_spawn_primary_target,
+                bloon_spawn_secondary_target,
+                bloon_pop_commit_target,
+                bloon_leak_commit_target,
+                [](void* bloon) { dispatch_bloon_event("bloon.spawning", bloon, false); },
+                [](void* bloon) { dispatch_bloon_event("bloon.popping", bloon, false); },
+                [](void* bloon) { dispatch_bloon_event("bloon.leaking", bloon, false); },
+                error);
+            if (!installed) {
+                g_logger.error("hooks", error);
+            }
+            return installed;
+        },
+        []() { g_bloon_action_hook.remove(); }});
     g_hooks.add({
         "event.gameplay.lifecycle",
         true,
@@ -823,7 +884,8 @@ DWORD WINAPI initialize_worker(LPVOID) {
     g_logger.info(
         "runtime",
         "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit,event.gameplay.lifecycle,"
-        "tower.placing,tower.upgrading,tower.selling,player.lives.changing,player.lives.changed");
+        "tower.placing,tower.upgrading,tower.selling,bloon.spawning,bloon.popping,bloon.leaking,"
+        "player.lives.changing,player.lives.changed");
     if (!load_active_mods(detection.build->id)) {
         g_hooks.rollback();
         g_logger.error("runtime", "active_mod_loading_failed");

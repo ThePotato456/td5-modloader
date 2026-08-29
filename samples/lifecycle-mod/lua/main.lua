@@ -115,25 +115,57 @@ btd5.events.on("tower.sold", function(event)
     end)
 end)
 
+local pending_bloon_spawns = {}
+
+btd5.events.on("bloon.spawning", function(event)
+    assert(event.bloon:is_valid())
+    local id = event.bloon:id()
+    pending_bloon_spawns[id] = true
+    log("Lifecycle Sample observed bloon.spawning id=" .. id)
+end)
+
 btd5.events.on("bloon.spawned", function(event)
     assert(event.bloon:is_valid())
-    log("Lifecycle Sample observed bloon.spawned id=" .. event.bloon:id())
+    local id = event.bloon:id()
+    assert(pending_bloon_spawns[id])
+    pending_bloon_spawns[id] = nil
+    log("Lifecycle Sample observed bloon.spawned id=" .. id)
+end)
+
+local pending_bloon_pop
+
+btd5.events.on("bloon.popping", function(event)
+    assert(event.bloon:is_valid())
+    pending_bloon_pop = event.bloon:id()
+    log("Lifecycle Sample observed bloon.popping id=" .. pending_bloon_pop)
 end)
 
 btd5.events.on("bloon.popped", function(event)
     local popped = event.bloon
     assert(popped:is_valid())
+    assert(popped:id() == pending_bloon_pop)
     log("Lifecycle Sample observed bloon.popped id=" .. popped:id())
+    pending_bloon_pop = nil
     btd5.timer.after(1, function()
         assert(not popped:is_valid())
         log("Lifecycle Sample confirmed popped bloon became stale")
     end)
 end)
 
+local pending_bloon_leak
+
+btd5.events.on("bloon.leaking", function(event)
+    assert(event.bloon:is_valid())
+    pending_bloon_leak = event.bloon:id()
+    log("Lifecycle Sample observed bloon.leaking id=" .. pending_bloon_leak)
+end)
+
 btd5.events.on("bloon.leaked", function(event)
     local leaked = event.bloon
     assert(leaked:is_valid())
+    assert(leaked:id() == pending_bloon_leak)
     log("Lifecycle Sample observed bloon.leaked id=" .. leaked:id())
+    pending_bloon_leak = nil
     btd5.timer.after(1, function()
         assert(not leaked:is_valid())
         log("Lifecycle Sample confirmed leaked bloon became stale")

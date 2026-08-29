@@ -2,9 +2,9 @@
 
 Date: 2026-08-29
 
-This validation covers read-only post-action Lua notifications and
-lifetime-checked wrappers for native bloon spawning, popping, and leaking. It
-does not make bloon pre-events live or expose native addresses.
+This validation covers read-only pre/post Lua notifications and lifetime-checked
+wrappers for native bloon spawning, popping, and leaking. It does not expose
+native addresses.
 
 ## Binary research and symbol validation
 
@@ -14,6 +14,10 @@ native event-manager dispatches. The symbol inspector resolved all targets
 uniquely:
 
 - `event.manager.dispatch` at RVA `0x5AC020`;
+- `bloon.manager.spawn.primary` at RVA `0x203650`;
+- `bloon.manager.spawn.secondary` at RVA `0x203750`;
+- `bloon.pop.commit` at RVA `0x204780`;
+- `bloon.leak.commit` at RVA `0x203B9A`;
 - `event.bloon.spawned.vtable` at RVA `0x7CE970`;
 - `event.bloon.popped.vtable` at RVA `0x7CE958`; and
 - `event.bloon.escaped.vtable` at RVA `0x7CE920`.
@@ -24,6 +28,13 @@ child layers are created as separately spawned native objects. The leak path
 likewise retains the escaped object through observer dispatch before cleanup. A
 missing signature or failed detour rolls back the complete gameplay-event hook
 transaction and prevents Lua mods from loading.
+
+The two spawn routines take the new bloon pointer and begin by inserting it into
+the manager collection. Their entries are therefore the verified pre-ownership
+boundaries. The pop routine receives the accepted parent bloon before rewards,
+observer dispatch, and child-layer creation. The leak instruction boundary runs
+only after the track-end comparison succeeds and before escaped-event dispatch,
+lives loss, and cleanup.
 
 ## Hook contract and automated coverage
 
@@ -41,6 +52,13 @@ event after dispatch. The x86 fixtures cover payload capture, post-only ordering
 stable handle reuse, stale-handle rejection, original dispatch behavior,
 unrelated-event filtering, exception containment, and clean hook removal.
 
+The dedicated bloon-action hook emits `bloon.spawning` at both manager-entry
+paths, `bloon.popping` at the pop routine entry, and `bloon.leaking` at the
+accepted track-end branch. All signatures and displaced leak instructions are
+validated before activation. The Release build and static analysis compile this
+hook, while the interactive test below provides the current behavioral coverage
+for these new mid-action boundaries.
+
 ## Interactive copied-game acceptance
 
 The strengthened Release smoke workflow launched the ignored copied game
@@ -57,7 +75,20 @@ stable identities:
 
 Each native event had a matching lifecycle-sample Lua observation. The harness
 reported `LIVE_SMOKE_PASS`, closed only its exact process, and left no BTD5
-process running. The copied game retained its supported hashes:
+process running.
+
+A second Release run verified the full pre/post sequence with stable identities:
+
+- `bloon.spawning` and `bloon.spawned`, ID `1`, at
+  `2026-08-29T16:21:36.952Z`;
+- `bloon.popping`, ID `2`, at `2026-08-29T16:22:02.819Z`, followed by
+  `bloon.popped`, ID `2`, at `2026-08-29T16:22:02.820Z`; and
+- `bloon.leaking`, ID `1`, at `2026-08-29T16:22:03.087Z`, followed by
+  `bloon.leaked`, ID `1`, at `2026-08-29T16:22:03.088Z`.
+
+The strengthened harness required every observed spawn post-event to have a
+matching pre-event, plus ordered and identity-matched pop and leak pairs, before
+reporting `LIVE_SMOKE_PASS`. The copied game retained its supported hashes:
 
 | File | SHA-256 |
 | --- | --- |
@@ -68,6 +99,6 @@ process running. The copied game retained its supported hashes:
 
 These wrappers support only `is_valid()`, `id()`, and `kind()`. They expose no
 native address, gameplay properties, or mutation. `bloon.spawning`,
-`bloon.popping`, and `bloon.leaking` remain pending until true pre-action
-boundaries and validation rules are verified. This result does not claim custom
-content, an on-screen overlay, or online safety enforcement.
+`bloon.popping`, and `bloon.leaking` are not yet cancellable or mutable. This
+result does not claim custom content, an on-screen overlay, or online safety
+enforcement.

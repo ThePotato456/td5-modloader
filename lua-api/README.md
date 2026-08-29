@@ -60,12 +60,13 @@ read-only and not yet cancellable. `tower.upgrading` is live after the native
 eligibility check and immediately before the first upgrade mutation.
 `tower.selling` is live after sale eligibility succeeds and before sale side
 effects begin. All three tower pre-events are read-only and not yet cancellable.
-The bloon pre-event names do not yet have live hooks.
-`bloon.spawned`, `bloon.popped`, and `bloon.leaked` are live post-notifications
-and carry `event.bloon`. The opaque wrapper keeps the spawned object's ID through
-its pop or leak callback, then becomes stale after handlers return. A popped
-parent and newly spawned child layers have different IDs. Mods must not infer
-support for an event merely because the API accepts its name.
+`bloon.spawning`, `bloon.popping`, and `bloon.leaking` are live at verified
+native action boundaries, while `bloon.spawned`, `bloon.popped`, and
+`bloon.leaked` are live post-notifications. All carry `event.bloon`. The opaque
+wrapper keeps the spawned object's ID through its pop or leak callback, then
+becomes stale after handlers return. A popped parent and newly spawned child
+layers have different IDs. Bloon pre-events are read-only and not yet
+cancellable.
 
 Resource paths must use `/`, remain relative, and contain no `.` or `..`
 components. Mods never receive a general filesystem path.

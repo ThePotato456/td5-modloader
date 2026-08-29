@@ -2,6 +2,7 @@ add_library(
     btd5loader_runtime
     SHARED
         logger.cpp
+        bloon_action_hook.cpp
         lives_hook.cpp
         lives_write_hook.cpp
         match_hook.cpp

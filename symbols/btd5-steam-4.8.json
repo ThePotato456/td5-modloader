@@ -149,6 +149,46 @@
       "validation": { "offset": 0, "pattern": "30 1A 60 00" }
     },
     {
+      "name": "bloon.manager.spawn.primary",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "55 8B EC 6A FF 68 ?? ?? ?? ?? 64 A1 00 00 00 00 50 83 EC 08 53 56 57 A1 34 00 D8 00 33 C5 50 8D 45 F4 64 A3 00 00 00 00 8B F9 8B 5D 08 8D 45 08 50 8D 4F 04 89 5D 08",
+      "result_offset": 0,
+      "required": true,
+      "prerequisites": ["event.bloon.spawned.vtable"],
+      "validation": { "offset": 0, "pattern": "55 8B EC 6A FF" }
+    },
+    {
+      "name": "bloon.manager.spawn.secondary",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "55 8B EC 6A FF 68 ?? ?? ?? ?? 64 A1 00 00 00 00 50 83 EC 08 53 56 57 A1 34 00 D8 00 33 C5 50 8D 45 F4 64 A3 00 00 00 00 8B D9 8B 7D 08 8D 45 08 50 8D 4B 04 89 7D 08",
+      "result_offset": 0,
+      "required": true,
+      "prerequisites": ["event.bloon.spawned.vtable"],
+      "validation": { "offset": 0, "pattern": "55 8B EC 6A FF" }
+    },
+    {
+      "name": "bloon.pop.commit",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "55 8B EC 6A FF 68 ?? ?? ?? ?? 64 A1 00 00 00 00 50 83 EC 64 56 57 A1 34 00 D8 00 33 C5 50 8D 45 F4 64 A3 00 00 00 00 8B F1 8B 7D 08 32 C0 88 45 F3 F7 87 04 02 00 00 00 08 00 00",
+      "result_offset": 0,
+      "required": true,
+      "prerequisites": ["event.bloon.popped.vtable"],
+      "validation": { "offset": 0, "pattern": "55 8B EC 6A FF" }
+    },
+    {
+      "name": "bloon.leak.commit",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "F3 0F 10 83 6C 02 00 00 0F 2F C1 0F 82 ?? ?? ?? ?? 6A 08 E8 ?? ?? ?? ?? 8B D0 83 C4 04",
+      "result_offset": 17,
+      "required": true,
+      "prerequisites": ["event.bloon.escaped.vtable"],
+      "validation": { "offset": 0, "pattern": "6A 08 E8 ?? ?? ?? ??" }
+    },
+    {
       "name": "player.lives.gain.handler",
       "module": "BTD5-Win.exe",
       "section": ".text",

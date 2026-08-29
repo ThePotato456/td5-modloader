@@ -27,6 +27,10 @@ section and passed their validation patterns:
 - `event.bloon.spawned.vtable`
 - `event.bloon.popped.vtable`
 - `event.bloon.escaped.vtable`
+- `bloon.manager.spawn.primary`
+- `bloon.manager.spawn.secondary`
+- `bloon.pop.commit`
+- `bloon.leak.commit`
 - `player.lives.gain.handler`
 - `player.lives.loss.handler`
 - `player.lives.gain.write`

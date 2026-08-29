@@ -218,12 +218,22 @@ try
             upgradedTower.Groups[1].Value == sellingTower.Groups[1].Value &&
             placedTower.Groups[1].Value == soldTower.Groups[1].Value &&
             log.Contains("Lifecycle Sample confirmed sold tower became stale", StringComparison.Ordinal);
+        var spawningBloons = Regex.Matches(log, "Lifecycle Sample observed bloon\\.spawning id=(\\d+)")
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
         var spawnedBloons = Regex.Matches(log, "Lifecycle Sample observed bloon\\.spawned id=(\\d+)")
             .Select(match => match.Groups[1].Value)
             .ToHashSet(StringComparer.Ordinal);
+        var poppingBloon = Regex.Match(log, "Lifecycle Sample observed bloon\\.popping id=(\\d+)");
         var poppedBloon = Regex.Match(log, "Lifecycle Sample observed bloon\\.popped id=(\\d+)");
+        var leakingBloon = Regex.Match(log, "Lifecycle Sample observed bloon\\.leaking id=(\\d+)");
         var leakedBloon = Regex.Match(log, "Lifecycle Sample observed bloon\\.leaked id=(\\d+)");
-        var bloonActions = poppedBloon.Success && leakedBloon.Success &&
+        var bloonActions = spawnedBloons.Count > 0 &&
+            spawnedBloons.All(spawningBloons.Contains) &&
+            poppingBloon.Success && poppedBloon.Success && leakingBloon.Success && leakedBloon.Success &&
+            poppingBloon.Index < poppedBloon.Index && leakingBloon.Index < leakedBloon.Index &&
+            poppingBloon.Groups[1].Value == poppedBloon.Groups[1].Value &&
+            leakingBloon.Groups[1].Value == leakedBloon.Groups[1].Value &&
             spawnedBloons.Contains(poppedBloon.Groups[1].Value) &&
             spawnedBloons.Contains(leakedBloon.Groups[1].Value) &&
             log.Contains("Lifecycle Sample confirmed popped bloon became stale", StringComparison.Ordinal) &&
@@ -237,7 +247,7 @@ try
         {
             Console.WriteLine("LIVE_SMOKE_PASS");
             Console.WriteLine(expectBloonActions
-                ? "Lua observed bloon spawn, pop, and leak notifications in BTD5."
+                ? "Lua observed bloon pre/post spawn, pop, and leak notifications in BTD5."
                 : expectTowerActions
                 ? "Lua observed tower pre-placement, placement, upgrade, and sale notifications in BTD5."
                 : expectLivesCancel

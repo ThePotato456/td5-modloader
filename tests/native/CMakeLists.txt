@@ -1,6 +1,7 @@
 add_executable(
     btd5loader_native_tests
     foundation_tests.cpp
+    ../../src/native/runtime/bloon_action_hook.cpp
     ../../src/native/runtime/active_profile.cpp
     ../../src/native/runtime/compatibility.cpp
     ../../src/native/runtime/game_object.cpp

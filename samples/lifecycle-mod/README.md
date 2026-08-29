@@ -6,8 +6,9 @@ localization, schedules a deterministic timer, and logs all live match and
 round lifecycle events plus cash, lives, and tower
 placing/placed/upgrading/upgraded/selling/sold notifications. The tower handlers
 demonstrate stable wrapper identity and pre/post action ordering as well as
-post-sale invalidation. Bloon handlers log spawned, popped, and leaked
-identities and verify post-pop and post-leak invalidation.
+post-sale invalidation. Bloon handlers log pre/post spawn, pop, and leak
+identities, verify action ordering, and verify post-pop and post-leak
+invalidation.
 Lives handlers verify matching `old_lives` and `new_lives` values across the
 exact pre-write and post-change notifications.
 
