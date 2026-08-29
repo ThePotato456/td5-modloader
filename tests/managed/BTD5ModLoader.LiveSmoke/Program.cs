@@ -7,13 +7,14 @@ if (args.Length is < 4 or > 5 ||
         !string.Equals(args[4], "--expect-match-exit", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-round", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-cash", StringComparison.Ordinal) &&
-        !string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal)))
+        !string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-lives-loss", StringComparison.Ordinal)))
 {
     Console.Error.WriteLine(
         "Usage: BTD5ModLoader.LiveSmoke <game-directory> <artifact-directory> " +
         "<package> <state-root> " +
         "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
-        "--expect-cash-action]");
+        "--expect-cash-action|--expect-lives-loss]");
     return 2;
 }
 
@@ -31,6 +32,8 @@ var expectCash = args.Length == 5 &&
         string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal));
 var expectCashAction = args.Length == 5 &&
     string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal);
+var expectLivesLoss = args.Length == 5 &&
+    string.Equals(args[4], "--expect-lives-loss", StringComparison.Ordinal);
 const string profileName = "Live Smoke";
 Process? gameProcess = null;
 try
@@ -112,7 +115,7 @@ try
     }
     gameProcess = Process.GetProcessById(launch.ProcessId.Value);
     var deadline = DateTimeOffset.UtcNow.AddSeconds(
-        expectMatchExit || expectRound ? 240 : expectMatch || expectCash ? 180 : 20);
+        expectMatchExit || expectRound || expectLivesLoss ? 240 : expectMatch || expectCash ? 180 : 20);
     while (DateTimeOffset.UtcNow < deadline)
     {
         await Task.Delay(250);
@@ -143,11 +146,15 @@ try
         var cashChanged = CountOccurrences(log, "Lifecycle Sample observed cash.changing") >=
                 requiredCashUpdates &&
             CountOccurrences(log, "Lifecycle Sample observed cash.changed") >= requiredCashUpdates;
+        var livesChanged = log.Contains("Lifecycle Sample observed lives.changed", StringComparison.Ordinal);
         if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
-            (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)))
+            (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)) &&
+            (!expectLivesLoss || (matchReady && livesChanged)))
         {
             Console.WriteLine("LIVE_SMOKE_PASS");
-            Console.WriteLine(expectCashAction
+            Console.WriteLine(expectLivesLoss
+                ? "Lua observed a verified lives loss after match entry in BTD5."
+                : expectCashAction
                 ? "Lua observed a cash update after match entry in BTD5."
                 : expectCash
                 ? "Lua observed a complete cash notification lifecycle in BTD5."
@@ -161,7 +168,9 @@ try
             return 0;
         }
     }
-    return Fail(expectCashAction
+    return Fail(expectLivesLoss
+        ? "Timed out waiting for a verified lives loss and Lua event evidence."
+        : expectCashAction
         ? "Timed out waiting for a cash update after match entry and Lua event evidence."
         : expectCash
         ? "Timed out waiting for a cash update and Lua event evidence."

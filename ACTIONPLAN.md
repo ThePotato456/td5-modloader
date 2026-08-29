@@ -138,7 +138,8 @@ Initial supported build fingerprints:
 - [x] Add match start/end events.
 - [x] Add round start/end events.
 - [x] Add cash change events.
-- [ ] Add lives change events.
+- [x] Add a post-change lives notification for verified gains and losses.
+- [ ] Add a verified lives pre-change event.
 - [ ] Add tower placement, placed, upgrade, upgraded, sale, and sold events.
 - [ ] Add bloon spawn, spawned, pop, popped, leak, and leaked events.
 - [ ] Make verified pre-events cancellable and mutable.

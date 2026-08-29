@@ -1,6 +1,6 @@
 # Steam Win32 4.8 validation record
 
-Date: 2026-08-28
+Date: 2026-08-29
 
 The developer-only inspector performed a read-only check of a legally obtained
 Steam installation. It did not launch or modify the game.
@@ -21,6 +21,8 @@ section and passed their validation patterns:
 - `event.round.started.vtable`
 - `event.round.ended.vtable`
 - `event.money.updated.vtable`
+- `player.lives.gain.handler`
+- `player.lives.loss.handler`
 - `tower.factory.constructor`
 - `weapon.factory.constructor`
 

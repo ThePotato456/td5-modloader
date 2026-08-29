@@ -18,6 +18,7 @@
 #include "../../src/native/runtime/compatibility.hpp"
 #include "../../src/native/runtime/active_profile.hpp"
 #include "../../src/native/runtime/hook_transaction.hpp"
+#include "../../src/native/runtime/lives_hook.hpp"
 #include "../../src/native/runtime/lua_mod.hpp"
 #include "../../src/native/runtime/match_hook.hpp"
 #include "../../src/native/runtime/mod_manifest.hpp"
@@ -89,6 +90,43 @@ struct FakeEventManager final {
 struct FakeNativeEvent final {
     void* vtable{};
 };
+
+struct FakeLivesState final {
+    std::array<std::byte, 0x88> padding{};
+    std::int32_t lives{};
+};
+
+struct FakeGainLivesObserver final {
+    std::array<std::byte, 0x40C> padding{};
+    FakeLivesState* state{};
+};
+
+struct FakeLossLivesObserver final {
+    std::array<std::byte, 0x42C> padding{};
+    FakeLivesState* state{};
+};
+
+__declspec(noinline) void __fastcall fake_gain_lives_handler(
+    void* const instance,
+    void*,
+    void* const event,
+    bool) {
+    auto* const observer = static_cast<FakeGainLivesObserver*>(instance);
+    if (observer != nullptr && observer->state != nullptr && event != nullptr) {
+        observer->state->lives += *static_cast<const std::int32_t*>(event);
+    }
+}
+
+__declspec(noinline) void __fastcall fake_loss_lives_handler(
+    void* const instance,
+    void*,
+    void* const event,
+    bool) {
+    auto* const observer = static_cast<FakeLossLivesObserver*>(instance);
+    if (observer != nullptr && observer->state != nullptr && event != nullptr) {
+        observer->state->lives -= *static_cast<const std::int32_t*>(event);
+    }
+}
 
 __declspec(noinline) bool __fastcall fake_event_dispatch(
     void* const instance,
@@ -532,6 +570,49 @@ TEST_CASE("native event hook filters vtables and preserves dispatch ordering", "
     started_event.vtable = &started_type;
     REQUIRE(fake_event_dispatch(&manager, nullptr, &started_event, false));
     REQUIRE(calls == std::vector<std::string>{"original"});
+}
+
+TEST_CASE("lives hook reports only verified gain and loss mutations", "[hooks]") {
+    FakeLivesState state{{}, 100};
+    FakeGainLivesObserver gain_observer{{}, &state};
+    FakeLossLivesObserver loss_observer{{}, &state};
+    std::vector<std::pair<std::int32_t, std::int32_t>> changes;
+    btd5loader::runtime::LivesHook hook;
+    std::string error;
+    REQUIRE(hook.install(
+        reinterpret_cast<void*>(&fake_gain_lives_handler),
+        reinterpret_cast<void*>(&fake_loss_lives_handler),
+        [&changes](const std::int32_t before, const std::int32_t after) {
+            changes.emplace_back(before, after);
+        },
+        error));
+    REQUIRE(error.empty());
+    REQUIRE(hook.installed());
+
+    std::int32_t amount = 5;
+    fake_gain_lives_handler(&gain_observer, nullptr, &amount, false);
+    REQUIRE(state.lives == 105);
+    REQUIRE(changes == std::vector<std::pair<std::int32_t, std::int32_t>>{{100, 105}});
+
+    amount = 0;
+    fake_gain_lives_handler(&gain_observer, nullptr, &amount, false);
+    REQUIRE(changes.size() == 1);
+
+    amount = 7;
+    fake_loss_lives_handler(&loss_observer, nullptr, &amount, false);
+    REQUIRE(state.lives == 98);
+    REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{105, 98});
+
+    loss_observer.state = nullptr;
+    fake_loss_lives_handler(&loss_observer, nullptr, &amount, false);
+    REQUIRE(changes.size() == 2);
+
+    hook.remove();
+    REQUIRE_FALSE(hook.installed());
+    gain_observer.state = &state;
+    fake_gain_lives_handler(&gain_observer, nullptr, &amount, false);
+    REQUIRE(state.lives == 105);
+    REQUIRE(changes.size() == 2);
 }
 
 TEST_CASE("an unknown executable and asset pair fails closed", "[compatibility]") {

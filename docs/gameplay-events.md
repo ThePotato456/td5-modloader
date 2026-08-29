@@ -17,12 +17,17 @@ Currently live in the supported Steam Win32 4.8 build:
 - `round.ended`, after native `CRoundEndedEvent` dispatch;
 - `cash.changing`, immediately before native `CMoneyUpdatedEvent` observer
   dispatch; and
-- `cash.changed`, after native `CMoneyUpdatedEvent` observer dispatch.
+- `cash.changed`, after native `CMoneyUpdatedEvent` observer dispatch; and
+- `lives.changed`, after a verified native gain or loss changed the stored lives
+  value.
 
-Lives, tower, and bloon events remain mock-host only. The cash events currently
-carry no old/new balance fields and cannot cancel or modify the balance. The
-game has already updated its internal balance when `cash.changing` runs; the
-pre/post distinction describes the native observer-dispatch boundary.
+`lives.changing`, tower events, and bloon events remain mock-host only. The cash
+and lives events currently carry no old/new value fields and cannot cancel or
+modify a value. The game has already updated its internal balance when
+`cash.changing` runs; the pre/post distinction describes the native
+observer-dispatch boundary. `lives.changed` is deliberately post-only until a
+pre-mutation boundary can distinguish a real change from a mode-suppressed
+attempt.
 
 ## Subscription
 
@@ -54,7 +59,7 @@ feedback loops.
 | --- | --- | --- |
 | Match | `match.starting` (live), `match.ending` (live) | `match.started` (live), `match.ended` (live) |
 | Round | `round.starting` (live), `round.ending` (live) | `round.started` (live), `round.ended` (live) |
-| Economy | `cash.changing` (live), `lives.changing` | `cash.changed` (live), `lives.changed` |
+| Economy | `cash.changing` (live), `lives.changing` | `cash.changed` (live), `lives.changed` (live) |
 | Tower placement | `tower.placing` | `tower.placed` |
 | Tower upgrade | `tower.upgrading` | `tower.upgraded` |
 | Tower sale | `tower.selling` | `tower.sold` |

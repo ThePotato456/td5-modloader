@@ -15,7 +15,8 @@ mods use isolated, sandboxed Lua 5.4 environments.
 > This project is under active development and is not ready for normal gameplay.
 > Network blocking, save backups, crash recovery, gameplay mutation, and custom
 > towers are roadmap features and must not be treated as complete yet. A limited
-> set of lifecycle and cash-notification events is live for development testing.
+> set of lifecycle, cash, and post-change lives notifications is live for
+> development testing.
 
 BTD5 Mod Loader is an unofficial community project. It is not affiliated with,
 endorsed by, or sponsored by Ninja Kiwi. Bloons TD 5 and its assets remain the
@@ -50,7 +51,8 @@ The repository currently includes:
   dependency-safe operations, and bounded launch history;
 - a validated manager-to-runtime handoff that loads packages, invokes Lua
   `on_load` and `on_ready`, and advances timers from a transactional render hook;
-- live Lua match, round, and cash-notification events on the supported build;
+- live Lua match, round, cash-notification, and verified lives-changed events on
+  the supported build;
 - native and managed integration tests that do not redistribute game files.
 
 Detailed progress and mandatory implementation gates are maintained in the
@@ -137,8 +139,8 @@ Start with:
 
 The current sample demonstrates lifecycle callbacks, logging, configuration,
 localization, deterministic timers, private mod storage, and the currently live
-match, round, and cash events. A custom-tower example will be added when its
-implementation gate passes.
+match, round, cash, and post-change lives events. A custom-tower example will be
+added when its implementation gate passes.
 
 ## Documentation
 
@@ -157,6 +159,7 @@ implementation gate passes.
 | [Phase 6 match lifecycle validation](docs/validation-phase6-match-lifecycle.md) | Live match entry and teardown acceptance evidence |
 | [Phase 6 round lifecycle validation](docs/validation-phase6-round-lifecycle.md) | Live native round-event acceptance evidence |
 | [Phase 6 cash validation](docs/validation-phase6-cash.md) | Live native cash-notification acceptance evidence |
+| [Phase 6 lives validation](docs/validation-phase6-lives-changed.md) | Verified post-change lives notification evidence |
 | [Upstream code provenance](docs/upstream-code-provenance.md) | Auditable record of GPL-covered adaptations |
 | [Upstream research policy](docs/upstream-research.md) | Boundaries for research-only upstream material |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Pinned dependencies and their licenses |

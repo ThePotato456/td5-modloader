@@ -5,6 +5,10 @@ Date: 2026-08-29
 This validation covers read-only Lua notification of native cash updates. It
 does not add a balance payload, cash mutation, or lives events.
 
+This is the historical cash-only result. A verified post-change lives
+notification was implemented and accepted later in the
+[lives validation](validation-phase6-lives-changed.md).
+
 ## Binary research and symbol validation
 
 The supported Steam Win32 4.8 executable retains RTTI for

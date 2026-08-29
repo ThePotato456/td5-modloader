@@ -17,6 +17,7 @@
 #include "compatibility.hpp"
 #include "frame_hook.hpp"
 #include "hook_transaction.hpp"
+#include "lives_hook.hpp"
 #include "logger.hpp"
 #include "lua_mod.hpp"
 #include "match_hook.hpp"
@@ -35,6 +36,7 @@ std::vector<std::unique_ptr<btd5loader::runtime::LuaMod>> g_mods;
 std::mutex g_mods_mutex;
 btd5loader::runtime::GameObjectRegistry g_game_objects;
 btd5loader::runtime::FrameHook g_frame_hook;
+btd5loader::runtime::LivesHook g_lives_hook;
 btd5loader::runtime::MatchHook g_match_hook;
 btd5loader::runtime::NativeEventHook g_native_event_hook;
 btd5loader::runtime::HookTransaction g_hooks;
@@ -365,13 +367,27 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "event.money.updated.vtable";
         });
+    const auto lives_gain_handler = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "player.lives.gain.handler";
+        });
+    const auto lives_loss_handler = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "player.lives.loss.handler";
+        });
     const HMODULE executable = GetModuleHandleW(nullptr);
     if (game_screen_init == resolution.resolved.end() ||
         game_screen_uninit == resolution.resolved.end() ||
         event_dispatch == resolution.resolved.end() ||
         round_started_vtable == resolution.resolved.end() ||
         round_ended_vtable == resolution.resolved.end() ||
-        money_updated_vtable == resolution.resolved.end() || executable == nullptr) {
+        money_updated_vtable == resolution.resolved.end() ||
+        lives_gain_handler == resolution.resolved.end() ||
+        lives_loss_handler == resolution.resolved.end() || executable == nullptr) {
         g_logger.error("hooks", "gameplay lifecycle target unavailable");
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_ADDRESS;
@@ -388,6 +404,10 @@ DWORD WINAPI initialize_worker(LPVOID) {
         reinterpret_cast<std::uintptr_t>(executable) + round_ended_vtable->relative_virtual_address);
     void* const money_updated_vtable_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + money_updated_vtable->relative_virtual_address);
+    void* const lives_gain_handler_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + lives_gain_handler->relative_virtual_address);
+    void* const lives_loss_handler_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + lives_loss_handler->relative_virtual_address);
     g_hooks.add({
         "render.swap_buffers",
         true,
@@ -453,6 +473,22 @@ DWORD WINAPI initialize_worker(LPVOID) {
             return installed;
         },
         []() { g_native_event_hook.remove(); }});
+    g_hooks.add({
+        "player.lives.changed",
+        true,
+        [lives_gain_handler_target, lives_loss_handler_target]() {
+            std::string error;
+            const bool installed = g_lives_hook.install(
+                lives_gain_handler_target,
+                lives_loss_handler_target,
+                [](std::int32_t, std::int32_t) { dispatch_game_event("lives.changed"); },
+                error);
+            if (!installed) {
+                g_logger.error("hooks", error);
+            }
+            return installed;
+        },
+        []() { g_lives_hook.remove(); }});
     std::string hook_error;
     if (!g_hooks.commit(hook_error)) {
         g_logger.error("hooks", hook_error);
@@ -467,7 +503,8 @@ DWORD WINAPI initialize_worker(LPVOID) {
     }
     g_logger.info(
         "runtime",
-        "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit,event.gameplay.lifecycle");
+        "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit,event.gameplay.lifecycle,"
+        "player.lives.changed");
     if (!load_active_mods(detection.build->id)) {
         g_hooks.rollback();
         g_logger.error("runtime", "active_mod_loading_failed");

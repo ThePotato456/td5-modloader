@@ -44,8 +44,10 @@ The event bus and wrappers are mock-host validated. `match.starting`,
 supported game. `round.starting`, `round.started`, `round.ending`, and
 `round.ended` are also live. `cash.changing` and `cash.changed` fire around the
 native money-update observer dispatch, but currently have no balance payload or
-mutation support. The remaining names do not yet have live hooks. Mods must not
-infer support for an event merely because the API accepts its name.
+mutation support. `lives.changed` fires only after a native gain or loss is
+confirmed by comparing the stored value; it currently has no value payload.
+`lives.changing` and the remaining names do not yet have live hooks. Mods must
+not infer support for an event merely because the API accepts its name.
 
 Resource paths must use `/`, remain relative, and contain no `.` or `..`
 components. Mods never receive a general filesystem path.
