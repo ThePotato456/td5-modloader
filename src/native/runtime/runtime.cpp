@@ -418,6 +418,24 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "event.tower.sold.vtable";
         });
+    const auto bloon_spawned_vtable = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "event.bloon.spawned.vtable";
+        });
+    const auto bloon_popped_vtable = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "event.bloon.popped.vtable";
+        });
+    const auto bloon_escaped_vtable = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "event.bloon.escaped.vtable";
+        });
     const auto lives_gain_handler = std::find_if(
         resolution.resolved.begin(),
         resolution.resolved.end(),
@@ -440,6 +458,9 @@ DWORD WINAPI initialize_worker(LPVOID) {
         tower_spawned_vtable == resolution.resolved.end() ||
         tower_upgraded_vtable == resolution.resolved.end() ||
         tower_sold_vtable == resolution.resolved.end() ||
+        bloon_spawned_vtable == resolution.resolved.end() ||
+        bloon_popped_vtable == resolution.resolved.end() ||
+        bloon_escaped_vtable == resolution.resolved.end() ||
         lives_gain_handler == resolution.resolved.end() ||
         lives_loss_handler == resolution.resolved.end() || executable == nullptr) {
         g_logger.error("hooks", "gameplay lifecycle target unavailable");
@@ -464,6 +485,12 @@ DWORD WINAPI initialize_worker(LPVOID) {
         reinterpret_cast<std::uintptr_t>(executable) + tower_upgraded_vtable->relative_virtual_address);
     void* const tower_sold_vtable_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + tower_sold_vtable->relative_virtual_address);
+    void* const bloon_spawned_vtable_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + bloon_spawned_vtable->relative_virtual_address);
+    void* const bloon_popped_vtable_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + bloon_popped_vtable->relative_virtual_address);
+    void* const bloon_escaped_vtable_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + bloon_escaped_vtable->relative_virtual_address);
     void* const lives_gain_handler_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + lives_gain_handler->relative_virtual_address);
     void* const lives_loss_handler_target = reinterpret_cast<void*>(
@@ -514,7 +541,10 @@ DWORD WINAPI initialize_worker(LPVOID) {
          money_updated_vtable_target,
          tower_spawned_vtable_target,
          tower_upgraded_vtable_target,
-         tower_sold_vtable_target]() {
+         tower_sold_vtable_target,
+         bloon_spawned_vtable_target,
+         bloon_popped_vtable_target,
+         bloon_escaped_vtable_target]() {
             std::string error;
             const bool installed = g_native_event_hook.install(
                 event_dispatch_target,
@@ -554,6 +584,24 @@ DWORD WINAPI initialize_worker(LPVOID) {
                         &capture_tower_event,
                         {},
                         [](void* tower) { dispatch_tower_event("tower.sold", tower, true); },
+                    },
+                    {
+                        bloon_spawned_vtable_target,
+                        {},
+                        {},
+                        [](void*) { dispatch_game_event("bloon.spawned"); },
+                    },
+                    {
+                        bloon_popped_vtable_target,
+                        {},
+                        {},
+                        [](void*) { dispatch_game_event("bloon.popped"); },
+                    },
+                    {
+                        bloon_escaped_vtable_target,
+                        {},
+                        {},
+                        [](void*) { dispatch_game_event("bloon.leaked"); },
                     },
                 },
                 error);

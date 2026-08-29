@@ -66,6 +66,18 @@ btd5.events.on("tower.sold", function(event)
     end)
 end)
 
+btd5.events.on("bloon.spawned", function()
+    log("Lifecycle Sample observed bloon.spawned")
+end)
+
+btd5.events.on("bloon.popped", function()
+    log("Lifecycle Sample observed bloon.popped")
+end)
+
+btd5.events.on("bloon.leaked", function()
+    log("Lifecycle Sample observed bloon.leaked")
+end)
+
 function on_load()
     local launches = tonumber(btd5.storage.get("launches") or "0") + 1
     btd5.storage.set("launches", tostring(launches))

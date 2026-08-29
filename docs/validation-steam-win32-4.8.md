@@ -24,6 +24,9 @@ section and passed their validation patterns:
 - `event.tower.spawned.vtable`
 - `event.tower.upgraded.vtable`
 - `event.tower.sold.vtable`
+- `event.bloon.spawned.vtable`
+- `event.bloon.popped.vtable`
+- `event.bloon.escaped.vtable`
 - `player.lives.gain.handler`
 - `player.lives.loss.handler`
 - `tower.factory.constructor`

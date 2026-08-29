@@ -15,8 +15,8 @@ mods use isolated, sandboxed Lua 5.4 environments.
 > This project is under active development and is not ready for normal gameplay.
 > Network blocking, save backups, crash recovery, gameplay mutation, and custom
 > towers are roadmap features and must not be treated as complete yet. A limited
-> set of lifecycle, cash, lives, and post-action tower notifications is live
-> for development testing.
+> set of lifecycle, cash, lives, tower, and bloon notifications is live for
+> development testing.
 
 BTD5 Mod Loader is an unofficial community project. It is not affiliated with,
 endorsed by, or sponsored by Ninja Kiwi. Bloons TD 5 and its assets remain the
@@ -53,6 +53,7 @@ The repository currently includes:
   `on_load` and `on_ready`, and advances timers from a transactional render hook;
 - live Lua match, round, cash, verified lives-changed, and post-action tower
   events with lifetime-checked tower wrappers on the supported build;
+- live post-action bloon spawned, popped, and leaked notifications;
 - native and managed integration tests that do not redistribute game files.
 
 Detailed progress and mandatory implementation gates are maintained in the
@@ -139,9 +140,10 @@ Start with:
 
 The current sample demonstrates lifecycle callbacks, logging, configuration,
 localization, deterministic timers, private mod storage, and the currently live
-match, round, cash, post-change lives, and tower placed/upgraded/sold events.
-Tower events include a stable, opaque tower wrapper. A custom-tower example
-will be added when its implementation gate passes.
+match, round, cash, post-change lives, tower placed/upgraded/sold, and bloon
+spawned/popped/leaked events. Tower events include a stable, opaque tower
+wrapper. A custom-tower example will be added when its implementation gate
+passes.
 
 ## Documentation
 
@@ -162,6 +164,7 @@ will be added when its implementation gate passes.
 | [Phase 6 cash validation](docs/validation-phase6-cash.md) | Live native cash-notification acceptance evidence |
 | [Phase 6 lives validation](docs/validation-phase6-lives-changed.md) | Verified post-change lives notification evidence |
 | [Phase 6 tower-action validation](docs/validation-phase6-tower-actions.md) | Live tower placed, upgraded, and sold evidence |
+| [Phase 6 bloon-action validation](docs/validation-phase6-bloon-actions.md) | Live bloon spawned, popped, and leaked evidence |
 | [Upstream code provenance](docs/upstream-code-provenance.md) | Auditable record of GPL-covered adaptations |
 | [Upstream research policy](docs/upstream-research.md) | Boundaries for research-only upstream material |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Pinned dependencies and their licenses |

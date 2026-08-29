@@ -119,6 +119,36 @@
       "validation": { "offset": 0, "pattern": "30 1A 60 00" }
     },
     {
+      "name": "event.bloon.spawned.vtable",
+      "module": "BTD5-Win.exe",
+      "section": ".rdata",
+      "pattern": "68 90 C4 00 30 1A 60 00 50 D1 5A 00 D4 8F C4 00 10 1D 60 00 50 36 60 00 F0 F6 5B 00",
+      "result_offset": 4,
+      "required": true,
+      "prerequisites": ["event.manager.dispatch"],
+      "validation": { "offset": 0, "pattern": "30 1A 60 00" }
+    },
+    {
+      "name": "event.bloon.popped.vtable",
+      "module": "BTD5-Win.exe",
+      "section": ".rdata",
+      "pattern": "C0 8F C4 00 90 1A 60 00 50 D1 5A 00 88 91 C4 00 20 CA 5C 00 50 D1 5A 00 68 90 C4 00",
+      "result_offset": 4,
+      "required": true,
+      "prerequisites": ["event.manager.dispatch"],
+      "validation": { "offset": 0, "pattern": "90 1A 60 00" }
+    },
+    {
+      "name": "event.bloon.escaped.vtable",
+      "module": "BTD5-Win.exe",
+      "section": ".rdata",
+      "pattern": "44 90 C4 00 30 1A 60 00 50 D1 5A 00 04 90 C4 00 20 55 60 00 B0 A7 5B 00 F0 F6 5B 00",
+      "result_offset": 4,
+      "required": true,
+      "prerequisites": ["event.manager.dispatch"],
+      "validation": { "offset": 0, "pattern": "30 1A 60 00" }
+    },
+    {
       "name": "player.lives.gain.handler",
       "module": "BTD5-Win.exe",
       "section": ".text",

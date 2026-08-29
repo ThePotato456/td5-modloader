@@ -22,17 +22,23 @@ Currently live in the supported Steam Win32 4.8 build:
   value;
 - `tower.placed`, after native `CTowerSpawnedEvent` observer dispatch;
 - `tower.upgraded`, after native `CTowerUpgradedEvent` observer dispatch; and
-- `tower.sold`, after native `CTowerSoldEvent` observer dispatch.
+- `tower.sold`, after native `CTowerSoldEvent` observer dispatch;
+- `bloon.spawned`, after native `CBloonSpawnedEvent` observer dispatch;
+- `bloon.popped`, after native `CBloonPoppedEvent` observer dispatch; and
+- `bloon.leaked`, after native `CBloonEscapedEvent` observer dispatch.
 
-`lives.changing`, tower pre-events, and bloon events remain mock-host only. Cash
-and lives events currently carry no value fields. Each live tower notification
-carries `event.tower`, but no fields are mutable and no live event can cancel or
-modify an action. The game has already updated its internal balance when
+`lives.changing`, tower pre-events, and bloon pre-events remain mock-host only.
+Cash and lives events currently carry no value fields. Each live tower
+notification carries `event.tower`; live bloon notifications do not yet carry a
+bloon wrapper. No fields are mutable and no live event can cancel or modify an
+action. The game has already updated its internal balance when
 `cash.changing` runs; the pre/post distinction describes the native observer
 dispatch boundary. `lives.changed` is deliberately post-only until a
 pre-mutation boundary can distinguish a real change from a mode-suppressed
 attempt. Tower notifications are deliberately post-only because the native
 spawned, upgraded, and sold events occur after their actions are committed.
+Bloon notifications are likewise post-only until spawn, layer-pop, and final
+destruction lifetimes can be distinguished safely.
 
 ## Subscription
 
@@ -68,9 +74,9 @@ feedback loops.
 | Tower placement | `tower.placing` | `tower.placed` (live) |
 | Tower upgrade | `tower.upgrading` | `tower.upgraded` (live) |
 | Tower sale | `tower.selling` | `tower.sold` (live) |
-| Bloon spawn | `bloon.spawning` | `bloon.spawned` |
-| Bloon pop | `bloon.popping` | `bloon.popped` |
-| Bloon leak | `bloon.leaking` | `bloon.leaked` |
+| Bloon spawn | `bloon.spawning` | `bloon.spawned` (live) |
+| Bloon pop | `bloon.popping` | `bloon.popped` (live) |
+| Bloon leak | `bloon.leaking` | `bloon.leaked` (live) |
 
 Pre-event cancellation and field mutation are represented by a shared event
 table, so earlier handler changes are visible to later handlers. A hook may

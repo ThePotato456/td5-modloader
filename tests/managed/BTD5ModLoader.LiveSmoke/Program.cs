@@ -10,13 +10,15 @@ if (args.Length is < 4 or > 5 ||
         !string.Equals(args[4], "--expect-cash", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-lives-loss", StringComparison.Ordinal) &&
-        !string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal)))
+        !string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal)))
 {
     Console.Error.WriteLine(
         "Usage: BTD5ModLoader.LiveSmoke <game-directory> <artifact-directory> " +
         "<package> <state-root> " +
         "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
-        "--expect-cash-action|--expect-lives-loss|--expect-tower-actions]");
+        "--expect-cash-action|--expect-lives-loss|--expect-tower-actions|" +
+        "--expect-bloon-actions]");
     return 2;
 }
 
@@ -38,6 +40,8 @@ var expectLivesLoss = args.Length == 5 &&
     string.Equals(args[4], "--expect-lives-loss", StringComparison.Ordinal);
 var expectTowerActions = args.Length == 5 &&
     string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal);
+var expectBloonActions = args.Length == 5 &&
+    string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal);
 const string profileName = "Live Smoke";
 Process? gameProcess = null;
 try
@@ -119,7 +123,7 @@ try
     }
     gameProcess = Process.GetProcessById(launch.ProcessId.Value);
     var deadline = DateTimeOffset.UtcNow.AddSeconds(
-        expectMatchExit || expectRound || expectLivesLoss || expectTowerActions
+        expectMatchExit || expectRound || expectLivesLoss || expectTowerActions || expectBloonActions
             ? 240
             : expectMatch || expectCash ? 180 : 20);
     while (DateTimeOffset.UtcNow < deadline)
@@ -160,13 +164,19 @@ try
             placedTower.Groups[1].Value == upgradedTower.Groups[1].Value &&
             placedTower.Groups[1].Value == soldTower.Groups[1].Value &&
             log.Contains("Lifecycle Sample confirmed sold tower became stale", StringComparison.Ordinal);
+        var bloonActions = log.Contains("Lifecycle Sample observed bloon.spawned", StringComparison.Ordinal) &&
+            log.Contains("Lifecycle Sample observed bloon.popped", StringComparison.Ordinal) &&
+            log.Contains("Lifecycle Sample observed bloon.leaked", StringComparison.Ordinal);
         if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
             (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)) &&
             (!expectLivesLoss || (matchReady && livesChanged)) &&
-            (!expectTowerActions || (matchReady && towerActions)))
+            (!expectTowerActions || (matchReady && towerActions)) &&
+            (!expectBloonActions || (matchReady && bloonActions)))
         {
             Console.WriteLine("LIVE_SMOKE_PASS");
-            Console.WriteLine(expectTowerActions
+            Console.WriteLine(expectBloonActions
+                ? "Lua observed bloon spawn, pop, and leak notifications in BTD5."
+                : expectTowerActions
                 ? "Lua observed tower placement, upgrade, and sale notifications in BTD5."
                 : expectLivesLoss
                 ? "Lua observed a verified lives loss after match entry in BTD5."
@@ -184,7 +194,9 @@ try
             return 0;
         }
     }
-    return Fail(expectTowerActions
+    return Fail(expectBloonActions
+        ? "Timed out waiting for bloon spawn, pop, leak, and Lua event evidence."
+        : expectTowerActions
         ? "Timed out waiting for tower placement, upgrade, sale, and Lua event evidence."
         : expectLivesLoss
         ? "Timed out waiting for a verified lives loss and Lua event evidence."
