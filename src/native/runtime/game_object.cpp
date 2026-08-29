@@ -28,6 +28,42 @@ GameObjectHandle GameObjectRegistry::add(const GameObjectKind kind, void* const 
     return {id, slot.generation, slot.scene, kind};
 }
 
+GameObjectHandle GameObjectRegistry::find_or_add(
+    const GameObjectKind kind,
+    void* const object) {
+    if (object == nullptr) {
+        return {};
+    }
+    std::scoped_lock lock(mutex_);
+    for (std::size_t index = 0; index < slots_.size(); ++index) {
+        const auto& slot = slots_[index];
+        if (slot.object == object && slot.scene == scene_ && slot.kind == kind) {
+            return {
+                static_cast<std::uint32_t>(index + 1),
+                slot.generation,
+                slot.scene,
+                slot.kind};
+        }
+    }
+
+    std::uint32_t id = 0;
+    if (free_ids_.empty()) {
+        if (slots_.size() >= (std::numeric_limits<std::uint32_t>::max)()) {
+            return {};
+        }
+        slots_.push_back({});
+        id = static_cast<std::uint32_t>(slots_.size());
+    } else {
+        id = free_ids_.back();
+        free_ids_.pop_back();
+    }
+    auto& slot = slots_[id - 1];
+    slot.scene = scene_;
+    slot.kind = kind;
+    slot.object = object;
+    return {id, slot.generation, slot.scene, kind};
+}
+
 bool GameObjectRegistry::invalidate(const GameObjectHandle& handle) noexcept {
     std::scoped_lock lock(mutex_);
     if (handle.id == 0 || handle.id > slots_.size()) {

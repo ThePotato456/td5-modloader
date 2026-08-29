@@ -41,7 +41,9 @@ btd5loader::runtime::MatchHook g_match_hook;
 btd5loader::runtime::NativeEventHook g_native_event_hook;
 btd5loader::runtime::HookTransaction g_hooks;
 
-void dispatch_game_event(const std::string_view name) {
+void dispatch_game_event(
+    const std::string_view name,
+    const btd5loader::runtime::LuaEventFields& fields = {}) {
     using btd5loader::runtime::State;
 
     if (g_state.current() != State::GameReady) {
@@ -50,7 +52,38 @@ void dispatch_game_event(const std::string_view name) {
     std::scoped_lock lock(g_mods_mutex);
     g_logger.info("events", std::string(name));
     for (const auto& mod : g_mods) {
-        (void)mod->dispatch_event(name);
+        (void)mod->dispatch_event(name, fields);
+    }
+}
+
+void* capture_tower_event(void* const event) noexcept {
+    return event != nullptr ? static_cast<void**>(event)[1] : nullptr;
+}
+
+void dispatch_tower_event(
+    const std::string_view name,
+    void* const tower,
+    const bool invalidate_after) {
+    using btd5loader::runtime::GameObjectKind;
+
+    if (tower == nullptr) {
+        return;
+    }
+    const auto handle = g_game_objects.find_or_add(GameObjectKind::Tower, tower);
+    if (handle.id == 0) {
+        g_logger.error("events", "tower_handle_unavailable");
+        return;
+    }
+    try {
+        dispatch_game_event(name, {{"tower", handle}});
+    } catch (...) {
+        if (invalidate_after) {
+            (void)g_game_objects.invalidate(handle);
+        }
+        throw;
+    }
+    if (invalidate_after) {
+        (void)g_game_objects.invalidate(handle);
     }
 }
 
@@ -455,10 +488,16 @@ DWORD WINAPI initialize_worker(LPVOID) {
             const bool installed = g_match_hook.install(
                 game_screen_init_target,
                 game_screen_uninit_target,
-                []() { dispatch_game_event("match.starting"); },
+                []() {
+                    g_game_objects.begin_scene();
+                    dispatch_game_event("match.starting");
+                },
                 []() { dispatch_game_event("match.started"); },
                 []() { dispatch_game_event("match.ending"); },
-                []() { dispatch_game_event("match.ended"); },
+                []() {
+                    g_game_objects.begin_scene();
+                    dispatch_game_event("match.ended");
+                },
                 error);
             if (!installed) {
                 g_logger.error("hooks", error);
@@ -482,33 +521,39 @@ DWORD WINAPI initialize_worker(LPVOID) {
                 {
                     {
                         round_started_vtable_target,
-                        []() { dispatch_game_event("round.starting"); },
-                        []() { dispatch_game_event("round.started"); },
+                        {},
+                        [](void*) { dispatch_game_event("round.starting"); },
+                        [](void*) { dispatch_game_event("round.started"); },
                     },
                     {
                         round_ended_vtable_target,
-                        []() { dispatch_game_event("round.ending"); },
-                        []() { dispatch_game_event("round.ended"); },
+                        {},
+                        [](void*) { dispatch_game_event("round.ending"); },
+                        [](void*) { dispatch_game_event("round.ended"); },
                     },
                     {
                         money_updated_vtable_target,
-                        []() { dispatch_game_event("cash.changing"); },
-                        []() { dispatch_game_event("cash.changed"); },
+                        {},
+                        [](void*) { dispatch_game_event("cash.changing"); },
+                        [](void*) { dispatch_game_event("cash.changed"); },
                     },
                     {
                         tower_spawned_vtable_target,
+                        &capture_tower_event,
                         {},
-                        []() { dispatch_game_event("tower.placed"); },
+                        [](void* tower) { dispatch_tower_event("tower.placed", tower, false); },
                     },
                     {
                         tower_upgraded_vtable_target,
+                        &capture_tower_event,
                         {},
-                        []() { dispatch_game_event("tower.upgraded"); },
+                        [](void* tower) { dispatch_tower_event("tower.upgraded", tower, false); },
                     },
                     {
                         tower_sold_vtable_target,
+                        &capture_tower_event,
                         {},
-                        []() { dispatch_game_event("tower.sold"); },
+                        [](void* tower) { dispatch_tower_event("tower.sold", tower, true); },
                     },
                 },
                 error);

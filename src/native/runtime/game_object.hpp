@@ -31,6 +31,7 @@ struct GameObjectHandle final {
 class GameObjectRegistry final {
 public:
     [[nodiscard]] GameObjectHandle add(GameObjectKind kind, void* object);
+    [[nodiscard]] GameObjectHandle find_or_add(GameObjectKind kind, void* object);
     [[nodiscard]] bool invalidate(const GameObjectHandle& handle) noexcept;
     void begin_scene() noexcept;
 

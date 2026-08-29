@@ -114,9 +114,17 @@ bool __fastcall NativeEventHook::hooked_dispatch(
             binding = &*found;
         }
     }
+    void* captured = nullptr;
+    if (binding != nullptr && binding->capture) {
+        try {
+            captured = binding->capture(event);
+        } catch (...) {
+            // Treat failed payload capture as an unavailable optional payload.
+        }
+    }
     if (binding != nullptr && binding->before) {
         try {
-            binding->before();
+            binding->before(captured);
         } catch (...) {
             // Keep the native event boundary exception-safe.
         }
@@ -124,7 +132,7 @@ bool __fastcall NativeEventHook::hooked_dispatch(
     const bool result = original != nullptr && original(manager, event, queued);
     if (binding != nullptr && binding->after) {
         try {
-            binding->after();
+            binding->after(captured);
         } catch (...) {
             // The game may destroy the event during dispatch; never inspect it here.
         }

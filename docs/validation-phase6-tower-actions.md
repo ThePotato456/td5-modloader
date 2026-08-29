@@ -2,9 +2,9 @@
 
 Date: 2026-08-29
 
-This validation covers post-action Lua notifications for an ordinary tower
-placement, upgrade, and sale. It does not make tower pre-events live and does
-not yet expose the affected tower as a Lua wrapper.
+This validation covers post-action Lua notifications and lifetime-checked tower
+wrappers for an ordinary placement, upgrade, and sale. It does not make tower
+pre-events live or expose native addresses.
 
 ## Binary research and symbol validation
 
@@ -32,20 +32,28 @@ callback, or both. The three tower bindings use only an after callback and emit:
 - `tower.upgraded` after native `CTowerUpgradedEvent` observer dispatch; and
 - `tower.sold` after native `CTowerSoldEvent` observer dispatch.
 
-The hook classifies the event before native dispatch and never reads the event
-object afterward because an observer may destroy it. The x86 fixture verifies
-post-only ordering, original dispatch behavior, unrelated-event filtering, and
-clean hook removal.
+The hook classifies the event and captures its tower pointer before native
+dispatch, then never reads the event object afterward because an observer may
+destroy it. The runtime maps the pointer to a generation- and scene-checked
+opaque handle. Placement creates the handle, upgrades reuse it, and sale
+invalidates it after every mod handler returns. Match teardown invalidates any
+remaining handles. The x86 fixtures verify pre-dispatch payload capture,
+post-only ordering, stable handle reuse, stale-handle rejection, original
+dispatch behavior, unrelated-event filtering, and clean hook removal.
 
 ## Interactive copied-game acceptance
 
-The Release smoke workflow launched the ignored copied game through Steam with
-the lifecycle sample enabled. In an ordinary offline single-player match, one
-tower was placed, upgraded once, and sold. The runtime and Lua sample recorded:
+The strengthened Release smoke workflow launched the ignored copied game
+through Steam with the lifecycle sample enabled. In an ordinary offline
+single-player match, one tower was placed, upgraded once, and sold. The runtime
+and Lua sample recorded the same opaque ID for all three actions:
 
-- `tower.placed` at `2026-08-29T09:36:10.396Z`;
-- `tower.upgraded` at `2026-08-29T09:36:16.332Z`; and
-- `tower.sold` at `2026-08-29T09:36:17.920Z`.
+- `tower.placed`, ID `1`, at `2026-08-29T09:43:00.156Z`;
+- `tower.upgraded`, ID `1`, at `2026-08-29T09:43:01.612Z`; and
+- `tower.sold`, ID `1`, at `2026-08-29T09:43:05.748Z`.
+
+On the next rendered frame at `2026-08-29T09:43:05.764Z`, the Lua sample
+confirmed that the saved sold-tower wrapper's `is_valid()` result was `false`.
 
 The harness reported `LIVE_SMOKE_PASS`, closed only its exact process, and left
 no BTD5 process running. The copied game retained its supported hashes:
@@ -57,9 +65,9 @@ no BTD5 process running. The copied game retained its supported hashes:
 
 ## Scope
 
-These are read-only post-action notifications. They currently carry only the
-event name and cannot identify a tower, cancel an action, or mutate gameplay.
-`tower.placing`, `tower.upgrading`, and `tower.selling` remain pending until
-true pre-action boundaries and validation rules exist. This result does not
-claim custom-tower registration, bloon events, an on-screen overlay, or online
-safety enforcement.
+These are read-only post-action notifications. The wrapper supports only
+`is_valid()`, `id()`, and `kind()`; it exposes no native address, gameplay
+properties, or mutation. `tower.placing`, `tower.upgrading`, and `tower.selling`
+remain pending until true pre-action boundaries and validation rules exist. This
+result does not claim custom-tower registration, bloon events, an on-screen
+overlay, or online safety enforcement.

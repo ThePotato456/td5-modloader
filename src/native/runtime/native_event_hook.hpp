@@ -9,8 +9,9 @@ namespace btd5loader::runtime {
 
 struct NativeEventBinding final {
     void* event_vtable{};
-    std::function<void()> before;
-    std::function<void()> after;
+    std::function<void*(void*)> capture;
+    std::function<void(void*)> before;
+    std::function<void(void*)> after;
 };
 
 class NativeEventHook final {

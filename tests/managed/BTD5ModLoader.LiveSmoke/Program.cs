@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using BTD5ModLoader.Manager.Core;
 
 if (args.Length is < 4 or > 5 ||
@@ -152,9 +153,13 @@ try
                 requiredCashUpdates &&
             CountOccurrences(log, "Lifecycle Sample observed cash.changed") >= requiredCashUpdates;
         var livesChanged = log.Contains("Lifecycle Sample observed lives.changed", StringComparison.Ordinal);
-        var towerActions = log.Contains("Lifecycle Sample observed tower.placed", StringComparison.Ordinal) &&
-            log.Contains("Lifecycle Sample observed tower.upgraded", StringComparison.Ordinal) &&
-            log.Contains("Lifecycle Sample observed tower.sold", StringComparison.Ordinal);
+        var placedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.placed id=(\\d+)");
+        var upgradedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.upgraded id=(\\d+)");
+        var soldTower = Regex.Match(log, "Lifecycle Sample observed tower\\.sold id=(\\d+)");
+        var towerActions = placedTower.Success && upgradedTower.Success && soldTower.Success &&
+            placedTower.Groups[1].Value == upgradedTower.Groups[1].Value &&
+            placedTower.Groups[1].Value == soldTower.Groups[1].Value &&
+            log.Contains("Lifecycle Sample confirmed sold tower became stale", StringComparison.Ordinal);
         if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
             (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)) &&
             (!expectLivesLoss || (matchReady && livesChanged)) &&

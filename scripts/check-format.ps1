@@ -12,7 +12,9 @@ Set-ProjectToolEnvironment
 & $dotnet format (Join-Path $root 'BTD5ModLoader.slnx') --verify-no-changes --no-restore
 if ($LASTEXITCODE -ne 0) { throw 'Managed formatting check failed.' }
 
-$trackedTextFiles = & git -C $root ls-files --cached --others --exclude-standard -- '*.cpp' '*.hpp' '*.cs' '*.xaml' '*.ps1' '*.json' '*.md' '*.cmake' 'CMakeLists.txt'
+$safeRoot = $root.Replace('\', '/')
+$trackedTextFiles = & git -c "safe.directory=$safeRoot" -C $root ls-files --cached --others --exclude-standard -- '*.cpp' '*.hpp' '*.cs' '*.xaml' '*.ps1' '*.json' '*.md' '*.cmake' 'CMakeLists.txt'
+if ($LASTEXITCODE -ne 0) { throw 'Unable to enumerate files for formatting checks.' }
 $errors = @()
 foreach ($relativePath in $trackedTextFiles) {
     $path = Join-Path $root $relativePath

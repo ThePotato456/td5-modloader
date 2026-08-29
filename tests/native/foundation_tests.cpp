@@ -268,6 +268,7 @@ TEST_CASE("game object handles reject invalidation, reuse, and scene changes", "
     }
 
     const auto stale = handles[3];
+    REQUIRE(registry.find_or_add(GameObjectKind::Tower, &objects[3]) == stale);
     REQUIRE(registry.invalidate(stale));
     REQUIRE_FALSE(registry.invalidate(stale));
     REQUIRE(registry.resolve(stale, GameObjectKind::Tower) == nullptr);
@@ -538,18 +539,24 @@ TEST_CASE("native event hook filters vtables and preserves dispatch ordering", "
         {
             {
                 &started_type,
-                [&calls]() { calls.emplace_back("starting"); },
-                [&calls]() { calls.emplace_back("started"); },
+                {},
+                [&calls](void*) { calls.emplace_back("starting"); },
+                [&calls](void*) { calls.emplace_back("started"); },
             },
             {
                 &ended_type,
-                [&calls]() { calls.emplace_back("ending"); },
-                [&calls]() { calls.emplace_back("ended"); },
+                {},
+                [&calls](void*) { calls.emplace_back("ending"); },
+                [&calls](void*) { calls.emplace_back("ended"); },
             },
             {
                 &post_only_type,
+                [](void* event) { return static_cast<FakeNativeEvent*>(event)->vtable; },
                 {},
-                [&calls]() { calls.emplace_back("completed"); },
+                [&calls, &post_only_type](void* captured) {
+                    REQUIRE(captured == &post_only_type);
+                    calls.emplace_back("completed");
+                },
             },
         },
         error));

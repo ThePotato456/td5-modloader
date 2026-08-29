@@ -52,7 +52,7 @@ The repository currently includes:
 - a validated manager-to-runtime handoff that loads packages, invokes Lua
   `on_load` and `on_ready`, and advances timers from a transactional render hook;
 - live Lua match, round, cash, verified lives-changed, and post-action tower
-  events on the supported build;
+  events with lifetime-checked tower wrappers on the supported build;
 - native and managed integration tests that do not redistribute game files.
 
 Detailed progress and mandatory implementation gates are maintained in the
@@ -139,8 +139,9 @@ Start with:
 
 The current sample demonstrates lifecycle callbacks, logging, configuration,
 localization, deterministic timers, private mod storage, and the currently live
-match, round, cash, post-change lives, and tower placed/upgraded/sold events. A
-custom-tower example will be added when its implementation gate passes.
+match, round, cash, post-change lives, and tower placed/upgraded/sold events.
+Tower events include a stable, opaque tower wrapper. A custom-tower example
+will be added when its implementation gate passes.
 
 ## Documentation
 

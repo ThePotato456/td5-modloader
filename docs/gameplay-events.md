@@ -24,11 +24,12 @@ Currently live in the supported Steam Win32 4.8 build:
 - `tower.upgraded`, after native `CTowerUpgradedEvent` observer dispatch; and
 - `tower.sold`, after native `CTowerSoldEvent` observer dispatch.
 
-`lives.changing`, tower pre-events, and bloon events remain mock-host only. The
-cash, lives, and tower events currently carry no object/value fields and cannot
-cancel or modify an action. The game has already updated its internal balance
-when `cash.changing` runs; the pre/post distinction describes the native
-observer-dispatch boundary. `lives.changed` is deliberately post-only until a
+`lives.changing`, tower pre-events, and bloon events remain mock-host only. Cash
+and lives events currently carry no value fields. Each live tower notification
+carries `event.tower`, but no fields are mutable and no live event can cancel or
+modify an action. The game has already updated its internal balance when
+`cash.changing` runs; the pre/post distinction describes the native observer
+dispatch boundary. `lives.changed` is deliberately post-only until a
 pre-mutation boundary can distinguish a real change from a mode-suppressed
 attempt. Tower notifications are deliberately post-only because the native
 spawned, upgraded, and sold events occur after their actions are committed.
@@ -95,6 +96,12 @@ Destroying an object invalidates its generation. Starting a new scene
 invalidates every wrapper from the previous scene. IDs may be reused, but a new
 generation prevents an old wrapper from resolving to the replacement object.
 Calling `id()` or `kind()` on a stale wrapper raises a contained Lua error.
+
+For live tower notifications, placement creates or reuses the tower's stable
+handle, upgrades retain that identity, and sale invalidates the handle after all
+`tower.sold` handlers return. The sold wrapper is valid during the callback so a
+handler can identify it, then `is_valid()` returns `false`. Match teardown also
+invalidates every remaining tower handle before `match.ended` is dispatched.
 
 Game-specific getters and validated setters will be added with the corresponding
 live hooks. Raw addresses are never part of the public Lua API.

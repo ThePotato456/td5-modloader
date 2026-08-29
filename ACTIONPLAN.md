@@ -141,6 +141,7 @@ Initial supported build fingerprints:
 - [x] Add a post-change lives notification for verified gains and losses.
 - [ ] Add a verified lives pre-change event.
 - [x] Add post-action tower placed, upgraded, and sold notifications.
+- [x] Attach stable, lifetime-checked tower wrappers to live tower notifications.
 - [ ] Add verified tower placing, upgrading, and selling pre-events.
 - [ ] Add bloon spawn, spawned, pop, popped, leak, and leaked events.
 - [ ] Make verified pre-events cancellable and mutable.

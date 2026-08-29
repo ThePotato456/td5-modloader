@@ -47,10 +47,11 @@ native money-update observer dispatch, but currently have no balance payload or
 mutation support. `lives.changed` fires only after a native gain or loss is
 confirmed by comparing the stored value; it currently has no value payload.
 `tower.placed`, `tower.upgraded`, and `tower.sold` fire after their corresponding
-native observer dispatches, but do not yet carry a tower wrapper. Their pre-event
-counterparts, `lives.changing`, and all bloon names do not yet have live hooks.
-Mods must not infer support for an event merely because the API accepts its
-name.
+native observer dispatches and carry `event.tower`. The opaque wrapper keeps the
+same ID across placement, upgrades, and sale. It is valid during `tower.sold`
+handlers and becomes stale after they return. Their pre-event counterparts,
+`lives.changing`, and all bloon names do not yet have live hooks. Mods must not
+infer support for an event merely because the API accepts its name.
 
 Resource paths must use `/`, remain relative, and contain no `.` or `..`
 components. Mods never receive a general filesystem path.
