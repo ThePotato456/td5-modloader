@@ -95,10 +95,20 @@ btd5.events.on("tower.upgraded", function(event)
     pending_tower_upgrade = nil
 end)
 
+local pending_tower_sale
+
+btd5.events.on("tower.selling", function(event)
+    assert(event.tower:is_valid())
+    pending_tower_sale = event.tower:id()
+    log("Lifecycle Sample observed tower.selling id=" .. pending_tower_sale)
+end)
+
 btd5.events.on("tower.sold", function(event)
     local sold = event.tower
     assert(sold:is_valid())
+    assert(sold:id() == pending_tower_sale)
     log("Lifecycle Sample observed tower.sold id=" .. sold:id())
+    pending_tower_sale = nil
     btd5.timer.after(1, function()
         assert(not sold:is_valid())
         log("Lifecycle Sample confirmed sold tower became stale")

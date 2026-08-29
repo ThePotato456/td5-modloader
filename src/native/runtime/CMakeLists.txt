@@ -17,6 +17,7 @@ add_library(
         pattern.cpp
         symbol_resolver.cpp
         tower_placement_hook.cpp
+        tower_sale_hook.cpp
         tower_upgrade_hook.cpp
         runtime.cpp
         runtime.def

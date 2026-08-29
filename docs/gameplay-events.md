@@ -25,13 +25,15 @@ Currently live in the supported Steam Win32 4.8 build:
 - `tower.placing`, immediately before the tower manager takes ownership;
 - `tower.placed`, after native `CTowerSpawnedEvent` observer dispatch;
 - `tower.upgrading`, after native eligibility succeeds and before mutation;
-- `tower.upgraded`, after native `CTowerUpgradedEvent` observer dispatch; and
+- `tower.upgraded`, after native `CTowerUpgradedEvent` observer dispatch;
+- `tower.selling`, after native sale eligibility succeeds and before sale side
+  effects begin; and
 - `tower.sold`, after native `CTowerSoldEvent` observer dispatch;
 - `bloon.spawned`, after native `CBloonSpawnedEvent` observer dispatch;
 - `bloon.popped`, after native `CBloonPoppedEvent` observer dispatch; and
 - `bloon.leaked`, after native `CBloonEscapedEvent` observer dispatch.
 
-Tower sale and all bloon pre-events remain mock-host only. Lives events carry
+All bloon pre-events remain mock-host only. Lives events carry
 `old_lives` and `new_lives`; cash events currently carry no value fields. Each
 live tower notification carries `event.tower`, and each live bloon notification
 carries `event.bloon`. Payload fields are not yet mutable. `lives.changing` is
@@ -43,10 +45,9 @@ dispatch boundary. `lives.changing` runs at the exact add/subtract instruction,
 after the game has accepted the update, and `new_lives` reflects the clamped
 result for losses. Cancellation affects only the lives delta: it does not undo
 the originating reward or bloon leak. When cancelled, `lives.changed` does not
-run because the stored value remains unchanged. `tower.placing` is a read-only
-pre-event at the verified manager insertion boundary. It is not yet cancellable.
-Tower upgrade and sale notifications remain post-only because their native
-events occur after those actions are committed.
+run because the stored value remains unchanged. `tower.placing`,
+`tower.upgrading`, and `tower.selling` are read-only pre-events at verified
+native boundaries. They are not yet cancellable.
 Bloon notifications are likewise post-only because the native events occur
 after spawning, popping, or leaking has been committed.
 
@@ -83,7 +84,7 @@ feedback loops.
 | Economy | `cash.changing` (live), `lives.changing` (live) | `cash.changed` (live), `lives.changed` (live) |
 | Tower placement | `tower.placing` (live) | `tower.placed` (live) |
 | Tower upgrade | `tower.upgrading` (live) | `tower.upgraded` (live) |
-| Tower sale | `tower.selling` | `tower.sold` (live) |
+| Tower sale | `tower.selling` (live) | `tower.sold` (live) |
 | Bloon spawn | `bloon.spawning` | `bloon.spawned` (live) |
 | Bloon pop | `bloon.popping` | `bloon.popped` (live) |
 | Bloon leak | `bloon.leaking` | `bloon.leaked` (live) |

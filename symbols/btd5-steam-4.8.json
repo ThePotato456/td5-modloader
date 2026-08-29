@@ -189,6 +189,16 @@
       "validation": { "offset": 0, "pattern": "29 88 88 00 00 00" }
     },
     {
+      "name": "tower.sale.commit",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "8A 80 F2 00 00 00 84 C0 0F 85 ?? ?? ?? ?? 8D BB 14 FF FF FF 57 E8 ?? ?? ?? ??",
+      "result_offset": 14,
+      "required": true,
+      "prerequisites": ["event.tower.sold.vtable"],
+      "validation": { "offset": 0, "pattern": "8D BB 14 FF FF FF" }
+    },
+    {
       "name": "tower.upgrade.commit",
       "module": "BTD5-Win.exe",
       "section": ".text",
