@@ -34,6 +34,14 @@ btd5.events.on("round.ended", function()
     log("Lifecycle Sample observed round.ended")
 end)
 
+btd5.events.on("cash.changing", function()
+    log("Lifecycle Sample observed cash.changing")
+end)
+
+btd5.events.on("cash.changed", function()
+    log("Lifecycle Sample observed cash.changed")
+end)
+
 function on_load()
     local launches = tonumber(btd5.storage.get("launches") or "0") + 1
     btd5.storage.set("launches", tostring(launches))

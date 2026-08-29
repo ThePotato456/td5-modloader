@@ -42,9 +42,10 @@ native object was destroyed, reused, or belonged to an earlier scene.
 The event bus and wrappers are mock-host validated. `match.starting`,
 `match.started`, `match.ending`, and `match.ended` currently fire in the
 supported game. `round.starting`, `round.started`, `round.ending`, and
-`round.ended` are also live; the remaining names do not yet have live hooks.
-Mods must not infer support for an event merely because the API accepts its
-name.
+`round.ended` are also live. `cash.changing` and `cash.changed` fire around the
+native money-update observer dispatch, but currently have no balance payload or
+mutation support. The remaining names do not yet have live hooks. Mods must not
+infer support for an event merely because the API accepts its name.
 
 Resource paths must use `/`, remain relative, and contain no `.` or `..`
 components. Mods never receive a general filesystem path.

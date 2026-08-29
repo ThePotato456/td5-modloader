@@ -20,6 +20,7 @@ section and passed their validation patterns:
 - `event.manager.dispatch`
 - `event.round.started.vtable`
 - `event.round.ended.vtable`
+- `event.money.updated.vtable`
 - `tower.factory.constructor`
 - `weapon.factory.constructor`
 

@@ -16,6 +16,9 @@ $trackedTextFiles = & git -C $root ls-files --cached --others --exclude-standard
 $errors = @()
 foreach ($relativePath in $trackedTextFiles) {
     $path = Join-Path $root $relativePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        continue
+    }
     $lineNumber = 0
     foreach ($line in Get-Content -LiteralPath $path) {
         $lineNumber++

@@ -79,6 +79,16 @@
       "validation": { "offset": 0, "pattern": "20 CA 5C 00" }
     },
     {
+      "name": "event.money.updated.vtable",
+      "module": "BTD5-Win.exe",
+      "section": ".rdata",
+      "pattern": "70 BF C4 00 70 E9 5A 00 50 D1 5A 00 4D 69 73 63",
+      "result_offset": 4,
+      "required": true,
+      "prerequisites": ["event.manager.dispatch"],
+      "validation": { "offset": 0, "pattern": "70 E9 5A 00" }
+    },
+    {
       "name": "tower.factory.constructor",
       "module": "BTD5-Win.exe",
       "section": ".text",

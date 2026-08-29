@@ -21,7 +21,7 @@
 #include "lua_mod.hpp"
 #include "match_hook.hpp"
 #include "mod_package.hpp"
-#include "round_hook.hpp"
+#include "native_event_hook.hpp"
 #include "runtime_state.hpp"
 #include "symbol_resolver.hpp"
 
@@ -36,7 +36,7 @@ std::mutex g_mods_mutex;
 btd5loader::runtime::GameObjectRegistry g_game_objects;
 btd5loader::runtime::FrameHook g_frame_hook;
 btd5loader::runtime::MatchHook g_match_hook;
-btd5loader::runtime::RoundHook g_round_hook;
+btd5loader::runtime::NativeEventHook g_native_event_hook;
 btd5loader::runtime::HookTransaction g_hooks;
 
 void dispatch_game_event(const std::string_view name) {
@@ -359,12 +359,19 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "event.round.ended.vtable";
         });
+    const auto money_updated_vtable = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "event.money.updated.vtable";
+        });
     const HMODULE executable = GetModuleHandleW(nullptr);
     if (game_screen_init == resolution.resolved.end() ||
         game_screen_uninit == resolution.resolved.end() ||
         event_dispatch == resolution.resolved.end() ||
         round_started_vtable == resolution.resolved.end() ||
-        round_ended_vtable == resolution.resolved.end() || executable == nullptr) {
+        round_ended_vtable == resolution.resolved.end() ||
+        money_updated_vtable == resolution.resolved.end() || executable == nullptr) {
         g_logger.error("hooks", "gameplay lifecycle target unavailable");
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_ADDRESS;
@@ -379,6 +386,8 @@ DWORD WINAPI initialize_worker(LPVOID) {
         reinterpret_cast<std::uintptr_t>(executable) + round_started_vtable->relative_virtual_address);
     void* const round_ended_vtable_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + round_ended_vtable->relative_virtual_address);
+    void* const money_updated_vtable_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + money_updated_vtable->relative_virtual_address);
     g_hooks.add({
         "render.swap_buffers",
         true,
@@ -411,25 +420,39 @@ DWORD WINAPI initialize_worker(LPVOID) {
         },
         []() { g_match_hook.remove(); }});
     g_hooks.add({
-        "event.round.lifecycle",
+        "event.gameplay.lifecycle",
         true,
-        [event_dispatch_target, round_started_vtable_target, round_ended_vtable_target]() {
+        [event_dispatch_target,
+         round_started_vtable_target,
+         round_ended_vtable_target,
+         money_updated_vtable_target]() {
             std::string error;
-            const bool installed = g_round_hook.install(
+            const bool installed = g_native_event_hook.install(
                 event_dispatch_target,
-                round_started_vtable_target,
-                round_ended_vtable_target,
-                []() { dispatch_game_event("round.starting"); },
-                []() { dispatch_game_event("round.started"); },
-                []() { dispatch_game_event("round.ending"); },
-                []() { dispatch_game_event("round.ended"); },
+                {
+                    {
+                        round_started_vtable_target,
+                        []() { dispatch_game_event("round.starting"); },
+                        []() { dispatch_game_event("round.started"); },
+                    },
+                    {
+                        round_ended_vtable_target,
+                        []() { dispatch_game_event("round.ending"); },
+                        []() { dispatch_game_event("round.ended"); },
+                    },
+                    {
+                        money_updated_vtable_target,
+                        []() { dispatch_game_event("cash.changing"); },
+                        []() { dispatch_game_event("cash.changed"); },
+                    },
+                },
                 error);
             if (!installed) {
                 g_logger.error("hooks", error);
             }
             return installed;
         },
-        []() { g_round_hook.remove(); }});
+        []() { g_native_event_hook.remove(); }});
     std::string hook_error;
     if (!g_hooks.commit(hook_error)) {
         g_logger.error("hooks", hook_error);
@@ -444,7 +467,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
     }
     g_logger.info(
         "runtime",
-        "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit,event.round.lifecycle");
+        "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit,event.gameplay.lifecycle");
     if (!load_active_mods(detection.build->id)) {
         g_hooks.rollback();
         g_logger.error("runtime", "active_mod_loading_failed");

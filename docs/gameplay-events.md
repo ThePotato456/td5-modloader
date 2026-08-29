@@ -14,9 +14,15 @@ Currently live in the supported Steam Win32 4.8 build:
 - `round.starting`, immediately before native `CRoundStartedEvent` dispatch;
 - `round.started`, after native `CRoundStartedEvent` dispatch;
 - `round.ending`, immediately before native `CRoundEndedEvent` dispatch; and
-- `round.ended`, after native `CRoundEndedEvent` dispatch.
+- `round.ended`, after native `CRoundEndedEvent` dispatch;
+- `cash.changing`, immediately before native `CMoneyUpdatedEvent` observer
+  dispatch; and
+- `cash.changed`, after native `CMoneyUpdatedEvent` observer dispatch.
 
-Economy, tower, and bloon events remain mock-host only.
+Lives, tower, and bloon events remain mock-host only. The cash events currently
+carry no old/new balance fields and cannot cancel or modify the balance. The
+game has already updated its internal balance when `cash.changing` runs; the
+pre/post distinction describes the native observer-dispatch boundary.
 
 ## Subscription
 
@@ -48,7 +54,7 @@ feedback loops.
 | --- | --- | --- |
 | Match | `match.starting` (live), `match.ending` (live) | `match.started` (live), `match.ended` (live) |
 | Round | `round.starting` (live), `round.ending` (live) | `round.started` (live), `round.ended` (live) |
-| Economy | `cash.changing`, `lives.changing` | `cash.changed`, `lives.changed` |
+| Economy | `cash.changing` (live), `lives.changing` | `cash.changed` (live), `lives.changed` |
 | Tower placement | `tower.placing` | `tower.placed` |
 | Tower upgrade | `tower.upgrading` | `tower.upgraded` |
 | Tower sale | `tower.selling` | `tower.sold` |

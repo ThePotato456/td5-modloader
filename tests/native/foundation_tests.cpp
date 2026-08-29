@@ -23,7 +23,7 @@
 #include "../../src/native/runtime/mod_manifest.hpp"
 #include "../../src/native/runtime/mod_package.hpp"
 #include "../../src/native/runtime/pattern.hpp"
-#include "../../src/native/runtime/round_hook.hpp"
+#include "../../src/native/runtime/native_event_hook.hpp"
 #include "../../src/native/runtime/runtime_state.hpp"
 #include "../../src/native/runtime/symbol_resolver.hpp"
 
@@ -486,22 +486,28 @@ TEST_CASE("match hook preserves x86 lifecycle ordering and removes cleanly", "[h
     REQUIRE(calls == std::vector<std::string>{"original", "original_uninit"});
 }
 
-TEST_CASE("round hook filters native event vtables and preserves dispatch ordering", "[hooks]") {
+TEST_CASE("native event hook filters vtables and preserves dispatch ordering", "[hooks]") {
     std::vector<std::string> calls;
     FakeEventManager manager{&calls};
     int started_type = 1;
     int ended_type = 2;
     int unrelated_type = 3;
-    btd5loader::runtime::RoundHook hook;
+    btd5loader::runtime::NativeEventHook hook;
     std::string error;
     REQUIRE(hook.install(
         reinterpret_cast<void*>(&fake_event_dispatch),
-        &started_type,
-        &ended_type,
-        [&calls]() { calls.emplace_back("starting"); },
-        [&calls]() { calls.emplace_back("started"); },
-        [&calls]() { calls.emplace_back("ending"); },
-        [&calls]() { calls.emplace_back("ended"); },
+        {
+            {
+                &started_type,
+                [&calls]() { calls.emplace_back("starting"); },
+                [&calls]() { calls.emplace_back("started"); },
+            },
+            {
+                &ended_type,
+                [&calls]() { calls.emplace_back("ending"); },
+                [&calls]() { calls.emplace_back("ended"); },
+            },
+        },
         error));
     REQUIRE(error.empty());
     REQUIRE(hook.installed());

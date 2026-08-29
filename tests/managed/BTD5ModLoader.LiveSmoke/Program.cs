@@ -5,11 +5,15 @@ if (args.Length is < 4 or > 5 ||
     (args.Length == 5 &&
         !string.Equals(args[4], "--expect-match", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-match-exit", StringComparison.Ordinal) &&
-        !string.Equals(args[4], "--expect-round", StringComparison.Ordinal)))
+        !string.Equals(args[4], "--expect-round", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-cash", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal)))
 {
     Console.Error.WriteLine(
         "Usage: BTD5ModLoader.LiveSmoke <game-directory> <artifact-directory> " +
-        "<package> <state-root> [--expect-match|--expect-match-exit|--expect-round]");
+        "<package> <state-root> " +
+        "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
+        "--expect-cash-action]");
     return 2;
 }
 
@@ -22,6 +26,11 @@ var expectMatchExit = args.Length == 5 &&
     string.Equals(args[4], "--expect-match-exit", StringComparison.Ordinal);
 var expectRound = args.Length == 5 &&
     string.Equals(args[4], "--expect-round", StringComparison.Ordinal);
+var expectCash = args.Length == 5 &&
+    (string.Equals(args[4], "--expect-cash", StringComparison.Ordinal) ||
+        string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal));
+var expectCashAction = args.Length == 5 &&
+    string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal);
 const string profileName = "Live Smoke";
 Process? gameProcess = null;
 try
@@ -102,7 +111,8 @@ try
         return Fail("Modded launch failed: " + launch.Message + Format(launch.Errors));
     }
     gameProcess = Process.GetProcessById(launch.ProcessId.Value);
-    var deadline = DateTimeOffset.UtcNow.AddSeconds(expectMatchExit || expectRound ? 240 : expectMatch ? 180 : 20);
+    var deadline = DateTimeOffset.UtcNow.AddSeconds(
+        expectMatchExit || expectRound ? 240 : expectMatch || expectCash ? 180 : 20);
     while (DateTimeOffset.UtcNow < deadline)
     {
         await Task.Delay(250);
@@ -129,12 +139,20 @@ try
             log.Contains("Lifecycle Sample observed round.started", StringComparison.Ordinal) &&
             log.Contains("Lifecycle Sample observed round.ending", StringComparison.Ordinal) &&
             log.Contains("Lifecycle Sample observed round.ended", StringComparison.Ordinal);
+        var requiredCashUpdates = expectCashAction ? 2 : 1;
+        var cashChanged = CountOccurrences(log, "Lifecycle Sample observed cash.changing") >=
+                requiredCashUpdates &&
+            CountOccurrences(log, "Lifecycle Sample observed cash.changed") >= requiredCashUpdates;
         if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
-            (!expectRound || (matchReady && roundCompleted)))
+            (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)))
         {
             Console.WriteLine("LIVE_SMOKE_PASS");
-            Console.WriteLine(expectRound
-                ? "Lua observed a complete round lifecycle in BTD5."
+            Console.WriteLine(expectCashAction
+                ? "Lua observed a cash update after match entry in BTD5."
+                : expectCash
+                ? "Lua observed a complete cash notification lifecycle in BTD5."
+                : expectRound
+                    ? "Lua observed a complete round lifecycle in BTD5."
                 : expectMatchExit
                     ? "Lua observed the complete match entry and exit lifecycle in BTD5."
                 : expectMatch
@@ -143,8 +161,12 @@ try
             return 0;
         }
     }
-    return Fail(expectRound
-        ? "Timed out waiting for a complete round lifecycle and Lua event evidence."
+    return Fail(expectCashAction
+        ? "Timed out waiting for a cash update after match entry and Lua event evidence."
+        : expectCash
+        ? "Timed out waiting for a cash update and Lua event evidence."
+        : expectRound
+            ? "Timed out waiting for a complete round lifecycle and Lua event evidence."
         : expectMatchExit
             ? "Timed out waiting for a match to start, exit, and emit complete Lua lifecycle evidence."
         : expectMatch
@@ -177,3 +199,15 @@ static int Fail(string message)
 
 static string Format(IReadOnlyList<string> values) =>
     values.Count == 0 ? string.Empty : " (" + string.Join(", ", values) + ")";
+
+static int CountOccurrences(string value, string search)
+{
+    var count = 0;
+    var start = 0;
+    while ((start = value.IndexOf(search, start, StringComparison.Ordinal)) >= 0)
+    {
+        count++;
+        start += search.Length;
+    }
+    return count;
+}

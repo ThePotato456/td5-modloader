@@ -3,7 +3,7 @@ add_library(
     SHARED
         logger.cpp
         match_hook.cpp
-        round_hook.cpp
+        native_event_hook.cpp
         active_profile.cpp
         compatibility.cpp
         frame_hook.cpp

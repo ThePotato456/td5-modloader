@@ -3,27 +3,27 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace btd5loader::runtime {
 
-class RoundHook final {
+struct NativeEventBinding final {
+    void* event_vtable{};
+    std::function<void()> before;
+    std::function<void()> after;
+};
+
+class NativeEventHook final {
 public:
-    using Callback = std::function<void()>;
+    NativeEventHook() = default;
+    ~NativeEventHook();
 
-    RoundHook() = default;
-    ~RoundHook();
-
-    RoundHook(const RoundHook&) = delete;
-    RoundHook& operator=(const RoundHook&) = delete;
+    NativeEventHook(const NativeEventHook&) = delete;
+    NativeEventHook& operator=(const NativeEventHook&) = delete;
 
     [[nodiscard]] bool install(
         void* dispatch_target,
-        void* started_vtable,
-        void* ended_vtable,
-        Callback starting,
-        Callback started,
-        Callback ending,
-        Callback ended,
+        std::vector<NativeEventBinding> bindings,
         std::string& error);
     void remove() noexcept;
     [[nodiscard]] bool installed() const noexcept;
@@ -37,16 +37,11 @@ private:
         void* event,
         bool queued) noexcept;
 
-    static RoundHook* active_;
+    static NativeEventHook* active_;
     static DispatchFunction original_;
 
-    Callback starting_;
-    Callback started_;
-    Callback ending_;
-    Callback ended_;
+    std::vector<NativeEventBinding> bindings_;
     void* dispatch_target_{};
-    void* started_vtable_{};
-    void* ended_vtable_{};
     bool installed_{};
 };
 
