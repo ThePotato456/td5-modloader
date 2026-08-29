@@ -139,7 +139,7 @@ Initial supported build fingerprints:
 - [x] Add round start/end events.
 - [x] Add cash change events.
 - [x] Add a post-change lives notification for verified gains and losses.
-- [ ] Add a verified lives pre-change event.
+- [x] Add a verified lives pre-change event at the exact native write boundary.
 - [x] Add post-action tower placed, upgraded, and sold notifications.
 - [x] Attach stable, lifetime-checked tower wrappers to live tower notifications.
 - [ ] Add verified tower placing, upgrading, and selling pre-events.

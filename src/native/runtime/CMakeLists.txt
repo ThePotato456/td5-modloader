@@ -3,6 +3,7 @@ add_library(
     SHARED
         logger.cpp
         lives_hook.cpp
+        lives_write_hook.cpp
         match_hook.cpp
         native_event_hook.cpp
         active_profile.cpp

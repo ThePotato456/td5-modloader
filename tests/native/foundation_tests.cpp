@@ -19,6 +19,7 @@
 #include "../../src/native/runtime/active_profile.hpp"
 #include "../../src/native/runtime/hook_transaction.hpp"
 #include "../../src/native/runtime/lives_hook.hpp"
+#include "../../src/native/runtime/lives_write_hook.hpp"
 #include "../../src/native/runtime/lua_mod.hpp"
 #include "../../src/native/runtime/match_hook.hpp"
 #include "../../src/native/runtime/mod_manifest.hpp"
@@ -125,6 +126,41 @@ __declspec(noinline) void __fastcall fake_loss_lives_handler(
     auto* const observer = static_cast<FakeLossLivesObserver*>(instance);
     if (observer != nullptr && observer->state != nullptr && event != nullptr) {
         observer->state->lives -= *static_cast<const std::int32_t*>(event);
+    }
+}
+
+extern "C" __declspec(naked) void fake_gain_lives_write() {
+    __asm {
+        _emit 0x01
+        _emit 0x88
+        _emit 0x88
+        _emit 0x00
+        _emit 0x00
+        _emit 0x00
+        ret
+    }
+}
+
+extern "C" __declspec(naked) void fake_loss_lives_write() {
+    __asm {
+        _emit 0x29
+        _emit 0x88
+        _emit 0x88
+        _emit 0x00
+        _emit 0x00
+        _emit 0x00
+        ret
+    }
+}
+
+void invoke_fake_lives_write(
+    void* const state,
+    const std::int32_t amount,
+    void* const target) {
+    __asm {
+        mov eax, state
+        mov ecx, amount
+        call dword ptr [target]
     }
 }
 
@@ -671,6 +707,43 @@ TEST_CASE("lives hook reports only verified gain and loss mutations", "[hooks]")
     fake_gain_lives_handler(&gain_observer, nullptr, &amount, false);
     REQUIRE(state.lives == 105);
     REQUIRE(changes.size() == 2);
+}
+
+TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]") {
+    FakeLivesState state{{}, 100};
+    std::vector<std::pair<std::int32_t, std::int32_t>> changes;
+    btd5loader::runtime::LivesWriteHook hook;
+    std::string error;
+    REQUIRE(hook.install(
+        reinterpret_cast<void*>(&fake_gain_lives_write),
+        reinterpret_cast<void*>(&fake_loss_lives_write),
+        [&state, &changes](const std::int32_t before, const std::int32_t after) {
+            REQUIRE(state.lives == before);
+            changes.emplace_back(before, after);
+        },
+        error));
+    REQUIRE(error.empty());
+    REQUIRE(hook.installed());
+
+    invoke_fake_lives_write(&state, 5, reinterpret_cast<void*>(&fake_gain_lives_write));
+    REQUIRE(state.lives == 105);
+    REQUIRE(changes == std::vector<std::pair<std::int32_t, std::int32_t>>{{100, 105}});
+
+    invoke_fake_lives_write(&state, 7, reinterpret_cast<void*>(&fake_loss_lives_write));
+    REQUIRE(state.lives == 98);
+    REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{105, 98});
+
+    state.lives = 3;
+    invoke_fake_lives_write(&state, 7, reinterpret_cast<void*>(&fake_loss_lives_write));
+    REQUIRE(state.lives == -4);
+    REQUIRE(changes.back() == std::pair<std::int32_t, std::int32_t>{3, 0});
+
+    hook.remove();
+    REQUIRE_FALSE(hook.installed());
+    changes.clear();
+    invoke_fake_lives_write(&state, 4, reinterpret_cast<void*>(&fake_gain_lives_write));
+    REQUIRE(state.lives == 0);
+    REQUIRE(changes.empty());
 }
 
 TEST_CASE("an unknown executable and asset pair fails closed", "[compatibility]") {

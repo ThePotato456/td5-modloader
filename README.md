@@ -15,8 +15,8 @@ mods use isolated, sandboxed Lua 5.4 environments.
 > This project is under active development and is not ready for normal gameplay.
 > Network blocking, save backups, crash recovery, gameplay mutation, and custom
 > towers are roadmap features and must not be treated as complete yet. A limited
-> set of lifecycle, cash, lives, tower, and bloon notifications is live for
-> development testing.
+> set of lifecycle, cash, lives, tower, and bloon events is live for development
+> testing. Lives events now include a verified pre-write boundary and values.
 
 BTD5 Mod Loader is an unofficial community project. It is not affiliated with,
 endorsed by, or sponsored by Ninja Kiwi. Bloons TD 5 and its assets remain the
@@ -51,8 +51,8 @@ The repository currently includes:
   dependency-safe operations, and bounded launch history;
 - a validated manager-to-runtime handoff that loads packages, invokes Lua
   `on_load` and `on_ready`, and advances timers from a transactional render hook;
-- live Lua match, round, cash, verified lives-changed, and post-action tower
-  events with lifetime-checked tower wrappers on the supported build;
+- live Lua match, round, cash, verified lives-changing/changed, and post-action
+  tower events with lifetime-checked tower wrappers on the supported build;
 - live post-action bloon spawned, popped, and leaked events with
   lifetime-checked bloon wrappers;
 - native and managed integration tests that do not redistribute game files.

@@ -45,12 +45,14 @@ supported game. `round.starting`, `round.started`, `round.ending`, and
 `round.ended` are also live. `cash.changing` and `cash.changed` fire around the
 native money-update observer dispatch, but currently have no balance payload or
 mutation support. `lives.changed` fires only after a native gain or loss is
-confirmed by comparing the stored value; it currently has no value payload.
+confirmed by comparing the stored value. `lives.changing` fires at the exact
+accepted native write boundary. Both carry integer `old_lives` and `new_lives`
+fields; they are currently read-only and non-cancellable.
 `tower.placed`, `tower.upgraded`, and `tower.sold` fire after their corresponding
 native observer dispatches and carry `event.tower`. The opaque wrapper keeps the
 same ID across placement, upgrades, and sale. It is valid during `tower.sold`
-handlers and becomes stale after they return. Their pre-event counterparts,
-`lives.changing`, and all bloon pre-event names do not yet have live hooks.
+handlers and becomes stale after they return. Tower pre-event counterparts and
+all bloon pre-event names do not yet have live hooks.
 `bloon.spawned`, `bloon.popped`, and `bloon.leaked` are live post-notifications
 and carry `event.bloon`. The opaque wrapper keeps the spawned object's ID through
 its pop or leak callback, then becomes stale after handlers return. A popped

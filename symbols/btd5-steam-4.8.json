@@ -169,6 +169,26 @@
       "validation": { "offset": 0, "pattern": "55 8B EC 6A FF" }
     },
     {
+      "name": "player.lives.gain.write",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "00 03 74 6E 8B 45 08 8B 48 04 8B 82 0C 04 00 00 01 88 88 00 00 00 C7 45 E8 64 8C BC 00",
+      "result_offset": 16,
+      "required": true,
+      "prerequisites": ["player.lives.gain.handler"],
+      "validation": { "offset": 0, "pattern": "01 88 88 00 00 00" }
+    },
+    {
+      "name": "player.lives.loss.write",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "15 8B 81 FC 01 00 00 8B 48 2C 8B 86 2C 04 00 00 29 88 88 00 00 00 8B 86 2C 04 00 00 83 B8 88 00 00 00 00",
+      "result_offset": 16,
+      "required": true,
+      "prerequisites": ["player.lives.loss.handler"],
+      "validation": { "offset": 0, "pattern": "29 88 88 00 00 00" }
+    },
+    {
       "name": "tower.factory.constructor",
       "module": "BTD5-Win.exe",
       "section": ".text",

@@ -156,7 +156,16 @@ try
         var cashChanged = CountOccurrences(log, "Lifecycle Sample observed cash.changing") >=
                 requiredCashUpdates &&
             CountOccurrences(log, "Lifecycle Sample observed cash.changed") >= requiredCashUpdates;
-        var livesChanged = log.Contains("Lifecycle Sample observed lives.changed", StringComparison.Ordinal);
+        var livesChanging = Regex.Match(
+            log,
+            "Lifecycle Sample observed lives\\.changing (\\d+)->(\\d+)");
+        var livesChanged = Regex.Match(
+            log,
+            "Lifecycle Sample observed lives\\.changed (\\d+)->(\\d+)");
+        var livesLifecycle = livesChanging.Success && livesChanged.Success &&
+            livesChanging.Groups[1].Value == livesChanged.Groups[1].Value &&
+            livesChanging.Groups[2].Value == livesChanged.Groups[2].Value &&
+            livesChanging.Index < livesChanged.Index;
         var placedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.placed id=(\\d+)");
         var upgradedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.upgraded id=(\\d+)");
         var soldTower = Regex.Match(log, "Lifecycle Sample observed tower\\.sold id=(\\d+)");
@@ -176,7 +185,7 @@ try
             log.Contains("Lifecycle Sample confirmed leaked bloon became stale", StringComparison.Ordinal);
         if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
             (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)) &&
-            (!expectLivesLoss || (matchReady && livesChanged)) &&
+            (!expectLivesLoss || (matchReady && livesLifecycle)) &&
             (!expectTowerActions || (matchReady && towerActions)) &&
             (!expectBloonActions || (matchReady && bloonActions)))
         {

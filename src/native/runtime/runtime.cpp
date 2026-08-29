@@ -18,6 +18,7 @@
 #include "frame_hook.hpp"
 #include "hook_transaction.hpp"
 #include "lives_hook.hpp"
+#include "lives_write_hook.hpp"
 #include "logger.hpp"
 #include "lua_mod.hpp"
 #include "match_hook.hpp"
@@ -37,6 +38,7 @@ std::mutex g_mods_mutex;
 btd5loader::runtime::GameObjectRegistry g_game_objects;
 btd5loader::runtime::FrameHook g_frame_hook;
 btd5loader::runtime::LivesHook g_lives_hook;
+btd5loader::runtime::LivesWriteHook g_lives_write_hook;
 btd5loader::runtime::MatchHook g_match_hook;
 btd5loader::runtime::NativeEventHook g_native_event_hook;
 btd5loader::runtime::HookTransaction g_hooks;
@@ -54,6 +56,18 @@ void dispatch_game_event(
     for (const auto& mod : g_mods) {
         (void)mod->dispatch_event(name, fields);
     }
+}
+
+void dispatch_lives_event(
+    const std::string_view name,
+    const std::int32_t before,
+    const std::int32_t after) {
+    dispatch_game_event(
+        name,
+        {
+            {"old_lives", static_cast<std::int64_t>(before)},
+            {"new_lives", static_cast<std::int64_t>(after)},
+        });
 }
 
 void* capture_game_object_event(void* const event) noexcept {
@@ -475,6 +489,18 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "player.lives.loss.handler";
         });
+    const auto lives_gain_write = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "player.lives.gain.write";
+        });
+    const auto lives_loss_write = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "player.lives.loss.write";
+        });
     const HMODULE executable = GetModuleHandleW(nullptr);
     if (game_screen_init == resolution.resolved.end() ||
         game_screen_uninit == resolution.resolved.end() ||
@@ -489,7 +515,9 @@ DWORD WINAPI initialize_worker(LPVOID) {
         bloon_popped_vtable == resolution.resolved.end() ||
         bloon_escaped_vtable == resolution.resolved.end() ||
         lives_gain_handler == resolution.resolved.end() ||
-        lives_loss_handler == resolution.resolved.end() || executable == nullptr) {
+        lives_loss_handler == resolution.resolved.end() ||
+        lives_gain_write == resolution.resolved.end() ||
+        lives_loss_write == resolution.resolved.end() || executable == nullptr) {
         g_logger.error("hooks", "gameplay lifecycle target unavailable");
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_ADDRESS;
@@ -522,6 +550,10 @@ DWORD WINAPI initialize_worker(LPVOID) {
         reinterpret_cast<std::uintptr_t>(executable) + lives_gain_handler->relative_virtual_address);
     void* const lives_loss_handler_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + lives_loss_handler->relative_virtual_address);
+    void* const lives_gain_write_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + lives_gain_write->relative_virtual_address);
+    void* const lives_loss_write_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + lives_loss_write->relative_virtual_address);
     g_hooks.add({
         "render.swap_buffers",
         true,
@@ -639,6 +671,24 @@ DWORD WINAPI initialize_worker(LPVOID) {
         },
         []() { g_native_event_hook.remove(); }});
     g_hooks.add({
+        "player.lives.changing",
+        true,
+        [lives_gain_write_target, lives_loss_write_target]() {
+            std::string error;
+            const bool installed = g_lives_write_hook.install(
+                lives_gain_write_target,
+                lives_loss_write_target,
+                [](const std::int32_t before, const std::int32_t after) {
+                    dispatch_lives_event("lives.changing", before, after);
+                },
+                error);
+            if (!installed) {
+                g_logger.error("hooks", error);
+            }
+            return installed;
+        },
+        []() { g_lives_write_hook.remove(); }});
+    g_hooks.add({
         "player.lives.changed",
         true,
         [lives_gain_handler_target, lives_loss_handler_target]() {
@@ -646,7 +696,9 @@ DWORD WINAPI initialize_worker(LPVOID) {
             const bool installed = g_lives_hook.install(
                 lives_gain_handler_target,
                 lives_loss_handler_target,
-                [](std::int32_t, std::int32_t) { dispatch_game_event("lives.changed"); },
+                [](const std::int32_t before, const std::int32_t after) {
+                    dispatch_lives_event("lives.changed", before, after);
+                },
                 error);
             if (!installed) {
                 g_logger.error("hooks", error);
@@ -669,7 +721,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
     g_logger.info(
         "runtime",
         "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit,event.gameplay.lifecycle,"
-        "player.lives.changed");
+        "player.lives.changing,player.lives.changed");
     if (!load_active_mods(detection.build->id)) {
         g_hooks.rollback();
         g_logger.error("runtime", "active_mod_loading_failed");

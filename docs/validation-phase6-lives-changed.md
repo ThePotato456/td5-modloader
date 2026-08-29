@@ -1,10 +1,10 @@
-# Phase 6 live lives-changed validation
+# Phase 6 live lives lifecycle validation
 
 Date: 2026-08-29
 
-This validation covers a post-change Lua notification for verified lives gains
-and losses. It does not make `lives.changing` live and does not expose or mutate
-the lives value.
+This validation covers verified pre-write and post-change Lua notifications for
+lives gains and losses, including read-only old/new values. It does not yet make
+the pre-event cancellable or mutable.
 
 ## Binary research and symbol validation
 
@@ -16,36 +16,44 @@ two native observer handlers that write the same stored lives field:
 - `player.lives.loss.handler` at RVA `0x32CAE0`, reached from
   `CBloonEscapedEvent`.
 
+The same analysis identified the exact accepted mutation instructions:
+
+- `player.lives.gain.write` at RVA `0x32C4E2`; and
+- `player.lives.loss.write` at RVA `0x32CDF6`.
+
 The gain handler adds the event amount unless the active mode suppresses lives
 gains. The escaped-bloon handler conditionally subtracts the escaped bloon's
-damage and clamps the result at zero. The symbol inspector resolved both
-signatures uniquely. Either missing symbol or either failed detour rolls back
-the hook transaction and prevents Lua mods from loading.
+damage and clamps the result at zero. Both instructions occur only after those
+rules accept the update. The symbol inspector resolved all four signatures
+uniquely. A missing symbol or failed hook restores any instruction already
+patched, rolls back the hook transaction, and prevents Lua mods from loading.
 
 ## Hook contract and automated fixture
 
-The runtime snapshots the stored lives value immediately before a recognized
-gain or loss handler, invokes the original handler, and reads it again. It
-dispatches `lives.changed` only when both reads succeed and the values differ.
-The old and new values remain internal until the public payload schema and
-validation rules are implemented.
+The runtime validates the original six bytes before replacing each write with a
+five-byte x86 jump and padding byte. The shim preserves registers and flags,
+dispatches `lives.changing` while the stored value is still unchanged, executes
+the original add/subtract instruction, and resumes at the following instruction.
+For a loss, `new_lives` reflects the game's subsequent zero clamp.
 
-The x86 fixture verifies gain and loss detection, old/new comparison, zero-value
-suppression, unavailable-state containment, original mutation behavior, and
-clean removal of both detours.
+The existing handler hooks snapshot the value before the complete native
+handler, invoke it, and read the value afterward. They dispatch `lives.changed`
+only when both reads succeed and the value differs. Both event tables contain
+integer `old_lives` and `new_lives` fields.
 
-`lives.changing` is intentionally not dispatched. At handler entry, game-mode
-rules may still reject the requested update; emitting a pre-event there would
-create false change notifications. A verified pre-mutation boundary remains a
-separate Phase 6 item.
+The x86 fixtures verify pre-write ordering, proposed gain and clamped-loss
+values, original instruction behavior, exact byte restoration, post-change
+detection, zero-value suppression, unavailable-state containment, and clean
+removal. Dispatching from the handler entry remains deliberately avoided because
+game-mode rules can still reject an attempted update there.
 
 ## Interactive copied-game acceptance
 
-The Release smoke workflow launched the ignored copied game through Steam with
-the lifecycle sample enabled. An ordinary offline single-player match and round
-were started, then a bloon was deliberately allowed to escape. After the game
-reduced its stored lives value, the runtime and Lua sample each recorded exactly
-one `lives.changed` notification at `2026-08-29T09:18:36.324Z`.
+The strengthened Release smoke workflow launched the ignored copied game
+through Steam with the lifecycle sample enabled. In an ordinary offline
+single-player match, a bloon was deliberately allowed to escape. Lua observed
+`lives.changing 200->199` and then `lives.changed 200->199`, in that order, at
+`2026-08-29T10:10:41.460Z`.
 
 The harness reported `LIVE_SMOKE_PASS`, closed only its exact process, and left
 no BTD5 process running. The copied game retained its supported hashes:
@@ -60,6 +68,6 @@ no BTD5 process running. The copied game retained its supported hashes:
 The live acceptance proves the loss path in an ordinary match. The gain path is
 installed through the second fingerprinted handler and is covered by the native
 fixture, but this record does not claim an interactive in-game gain test.
-`lives.changed` currently carries only the event name and cannot cancel or
-modify a change. This validation does not claim `lives.changing`, bloon payloads,
-an on-screen overlay, or online safety enforcement.
+The events expose values but cannot yet cancel or modify a change. This
+validation does not claim an interactive gain test, lives mutation, an on-screen
+overlay, or online safety enforcement.

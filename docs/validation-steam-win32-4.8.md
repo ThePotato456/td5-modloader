@@ -29,6 +29,8 @@ section and passed their validation patterns:
 - `event.bloon.escaped.vtable`
 - `player.lives.gain.handler`
 - `player.lives.loss.handler`
+- `player.lives.gain.write`
+- `player.lives.loss.write`
 - `tower.factory.constructor`
 - `weapon.factory.constructor`
 

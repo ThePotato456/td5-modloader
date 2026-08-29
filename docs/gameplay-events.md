@@ -18,8 +18,10 @@ Currently live in the supported Steam Win32 4.8 build:
 - `cash.changing`, immediately before native `CMoneyUpdatedEvent` observer
   dispatch; and
 - `cash.changed`, after native `CMoneyUpdatedEvent` observer dispatch; and
-- `lives.changed`, after a verified native gain or loss changed the stored lives
-  value;
+- `lives.changing`, immediately before a verified native gain or loss writes the
+  stored lives value;
+- `lives.changed`, after that native handler completes and the stored value is
+  verified to have changed;
 - `tower.placed`, after native `CTowerSpawnedEvent` observer dispatch;
 - `tower.upgraded`, after native `CTowerUpgradedEvent` observer dispatch; and
 - `tower.sold`, after native `CTowerSoldEvent` observer dispatch;
@@ -27,16 +29,17 @@ Currently live in the supported Steam Win32 4.8 build:
 - `bloon.popped`, after native `CBloonPoppedEvent` observer dispatch; and
 - `bloon.leaked`, after native `CBloonEscapedEvent` observer dispatch.
 
-`lives.changing`, tower pre-events, and bloon pre-events remain mock-host only.
-Cash and lives events currently carry no value fields. Each live tower
-notification carries `event.tower`, and each live bloon notification carries
-`event.bloon`. No fields are mutable and no live event can cancel or modify an
-action. The game has already updated its internal balance when
+Tower and bloon pre-events remain mock-host only. Lives events carry
+`old_lives` and `new_lives`; cash events currently carry no value fields. Each
+live tower notification carries `event.tower`, and each live bloon notification
+carries `event.bloon`. No fields are mutable and no live event can cancel or
+modify an action. The game has already updated its internal balance when
 `cash.changing` runs; the pre/post distinction describes the native observer
-dispatch boundary. `lives.changed` is deliberately post-only until a
-pre-mutation boundary can distinguish a real change from a mode-suppressed
-attempt. Tower notifications are deliberately post-only because the native
-spawned, upgraded, and sold events occur after their actions are committed.
+dispatch boundary. `lives.changing` runs at the exact add/subtract instruction,
+after the game has accepted the update, and `new_lives` reflects the clamped
+result for losses. Tower notifications are deliberately post-only because the
+native spawned, upgraded, and sold events occur after their actions are
+committed.
 Bloon notifications are likewise post-only because the native events occur
 after spawning, popping, or leaking has been committed.
 
@@ -70,7 +73,7 @@ feedback loops.
 | --- | --- | --- |
 | Match | `match.starting` (live), `match.ending` (live) | `match.started` (live), `match.ended` (live) |
 | Round | `round.starting` (live), `round.ending` (live) | `round.started` (live), `round.ended` (live) |
-| Economy | `cash.changing` (live), `lives.changing` | `cash.changed` (live), `lives.changed` (live) |
+| Economy | `cash.changing` (live), `lives.changing` (live) | `cash.changed` (live), `lives.changed` (live) |
 | Tower placement | `tower.placing` | `tower.placed` (live) |
 | Tower upgrade | `tower.upgrading` | `tower.upgraded` (live) |
 | Tower sale | `tower.selling` | `tower.sold` (live) |

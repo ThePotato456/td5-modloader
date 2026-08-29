@@ -7,6 +7,7 @@ add_executable(
     ../../src/native/runtime/hook_transaction.cpp
     ../../src/native/runtime/lua_mod.cpp
     ../../src/native/runtime/lives_hook.cpp
+    ../../src/native/runtime/lives_write_hook.cpp
     ../../src/native/runtime/match_hook.cpp
     ../../src/native/runtime/native_event_hook.cpp
     ../../src/native/runtime/mod_manifest.cpp

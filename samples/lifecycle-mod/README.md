@@ -7,3 +7,5 @@ round lifecycle events plus cash, lives, and tower placed/upgraded/sold
 notifications. The tower handlers demonstrate stable wrapper identity and
 post-sale invalidation. Bloon handlers log spawned, popped, and leaked
 identities and verify post-pop and post-leak invalidation.
+Lives handlers verify matching `old_lives` and `new_lives` values across the
+exact pre-write and post-change notifications.

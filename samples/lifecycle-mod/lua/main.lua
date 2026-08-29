@@ -42,8 +42,19 @@ btd5.events.on("cash.changed", function()
     log("Lifecycle Sample observed cash.changed")
 end)
 
-btd5.events.on("lives.changed", function()
-    log("Lifecycle Sample observed lives.changed")
+local pending_lives_change
+
+btd5.events.on("lives.changing", function(event)
+    assert(event.old_lives ~= event.new_lives)
+    pending_lives_change = tostring(event.old_lives) .. "->" .. tostring(event.new_lives)
+    log("Lifecycle Sample observed lives.changing " .. pending_lives_change)
+end)
+
+btd5.events.on("lives.changed", function(event)
+    local completed = tostring(event.old_lives) .. "->" .. tostring(event.new_lives)
+    assert(completed == pending_lives_change)
+    pending_lives_change = nil
+    log("Lifecycle Sample observed lives.changed " .. completed)
 end)
 
 btd5.events.on("tower.placed", function(event)
