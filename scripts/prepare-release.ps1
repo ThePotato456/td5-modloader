@@ -108,12 +108,16 @@ try {
         -Pattern 'inline constexpr std::string_view kVersion = "[^"]+";' `
         -Replacement "inline constexpr std::string_view kVersion = `"$Version`";"
 
-    Invoke-CheckedScript 'Formatting checks' `
-        (Join-Path $PSScriptRoot 'check-format.ps1')
-    Invoke-CheckedScript 'Release build and tests' `
-        (Join-Path $PSScriptRoot 'test.ps1') @('-Configuration', 'Release')
-    Invoke-CheckedScript 'Static analysis' `
-        (Join-Path $PSScriptRoot 'analyze.ps1')
+    Invoke-CheckedScript `
+        -Name 'Formatting checks' `
+        -Path (Join-Path $PSScriptRoot 'check-format.ps1')
+    Invoke-CheckedScript `
+        -Name 'Release build and tests' `
+        -Path (Join-Path $PSScriptRoot 'test.ps1') `
+        -Arguments @('-Configuration', 'Release')
+    Invoke-CheckedScript `
+        -Name 'Static analysis' `
+        -Path (Join-Path $PSScriptRoot 'analyze.ps1')
 
     Assert-SafeGeneratedPath $stageRoot
     Assert-SafeGeneratedPath $releaseRoot
@@ -124,8 +128,10 @@ try {
         Remove-Item -LiteralPath $releaseRoot -Recurse -Force
     }
 
-    Invoke-CheckedScript 'Release staging' `
-        (Join-Path $PSScriptRoot 'stage.ps1') @('-Configuration', 'Release')
+    Invoke-CheckedScript `
+        -Name 'Release staging' `
+        -Path (Join-Path $PSScriptRoot 'stage.ps1') `
+        -Arguments @('-Configuration', 'Release')
 
     $requiredArtifacts = @(
         'BTD5ModLoader.Manager.exe',
