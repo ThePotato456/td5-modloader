@@ -17,6 +17,9 @@ section and passed their validation patterns:
 - `game.load_assets`
 - `screen.game.init`
 - `screen.game.uninit`
+- `event.manager.dispatch`
+- `event.round.started.vtable`
+- `event.round.ended.vtable`
 - `tower.factory.constructor`
 - `weapon.factory.constructor`
 

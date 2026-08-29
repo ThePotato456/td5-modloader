@@ -23,6 +23,7 @@
 #include "../../src/native/runtime/mod_manifest.hpp"
 #include "../../src/native/runtime/mod_package.hpp"
 #include "../../src/native/runtime/pattern.hpp"
+#include "../../src/native/runtime/round_hook.hpp"
 #include "../../src/native/runtime/runtime_state.hpp"
 #include "../../src/native/runtime/symbol_resolver.hpp"
 
@@ -79,6 +80,30 @@ __declspec(noinline) void __fastcall fake_game_screen_uninit(void* const instanc
     if (screen != nullptr && screen->calls != nullptr) {
         screen->calls->emplace_back("original_uninit");
     }
+}
+
+struct FakeEventManager final {
+    std::vector<std::string>* calls{};
+};
+
+struct FakeNativeEvent final {
+    void* vtable{};
+};
+
+__declspec(noinline) bool __fastcall fake_event_dispatch(
+    void* const instance,
+    void*,
+    void* const event,
+    const bool queued) {
+    auto* const manager = static_cast<FakeEventManager*>(instance);
+    auto* const native_event = static_cast<FakeNativeEvent*>(event);
+    if (manager != nullptr && manager->calls != nullptr) {
+        manager->calls->emplace_back(queued ? "original_queued" : "original");
+    }
+    if (native_event != nullptr) {
+        native_event->vtable = nullptr;
+    }
+    return event != nullptr;
 }
 
 }  // namespace
@@ -459,6 +484,48 @@ TEST_CASE("match hook preserves x86 lifecycle ordering and removes cleanly", "[h
     fake_game_screen_init(&screen, nullptr, &screen_data);
     fake_game_screen_uninit(&screen, nullptr);
     REQUIRE(calls == std::vector<std::string>{"original", "original_uninit"});
+}
+
+TEST_CASE("round hook filters native event vtables and preserves dispatch ordering", "[hooks]") {
+    std::vector<std::string> calls;
+    FakeEventManager manager{&calls};
+    int started_type = 1;
+    int ended_type = 2;
+    int unrelated_type = 3;
+    btd5loader::runtime::RoundHook hook;
+    std::string error;
+    REQUIRE(hook.install(
+        reinterpret_cast<void*>(&fake_event_dispatch),
+        &started_type,
+        &ended_type,
+        [&calls]() { calls.emplace_back("starting"); },
+        [&calls]() { calls.emplace_back("started"); },
+        [&calls]() { calls.emplace_back("ending"); },
+        [&calls]() { calls.emplace_back("ended"); },
+        error));
+    REQUIRE(error.empty());
+    REQUIRE(hook.installed());
+
+    FakeNativeEvent started_event{&started_type};
+    REQUIRE(fake_event_dispatch(&manager, nullptr, &started_event, false));
+    REQUIRE(calls == std::vector<std::string>{"starting", "original", "started"});
+
+    calls.clear();
+    FakeNativeEvent ended_event{&ended_type};
+    REQUIRE(fake_event_dispatch(&manager, nullptr, &ended_event, true));
+    REQUIRE(calls == std::vector<std::string>{"ending", "original_queued", "ended"});
+
+    calls.clear();
+    FakeNativeEvent unrelated_event{&unrelated_type};
+    REQUIRE(fake_event_dispatch(&manager, nullptr, &unrelated_event, false));
+    REQUIRE(calls == std::vector<std::string>{"original"});
+
+    hook.remove();
+    REQUIRE_FALSE(hook.installed());
+    calls.clear();
+    started_event.vtable = &started_type;
+    REQUIRE(fake_event_dispatch(&manager, nullptr, &started_event, false));
+    REQUIRE(calls == std::vector<std::string>{"original"});
 }
 
 TEST_CASE("an unknown executable and asset pair fails closed", "[compatibility]") {

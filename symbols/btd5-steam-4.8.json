@@ -49,6 +49,36 @@
       "validation": { "offset": 0, "pattern": "55 8B EC 6A" }
     },
     {
+      "name": "event.manager.dispatch",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "55 8B EC 6A ?? 68 ?? ?? ?? ?? 64 A1 ?? ?? ?? ?? 50 83 EC ?? 53 56 57 A1 34 ?? ?? ?? 33 C5 50 8D 45 ?? 64 A3 ?? ?? ?? ?? 8B F1 89 75 ?? 8B 5D 08 FF 46 20",
+      "result_offset": 0,
+      "required": true,
+      "prerequisites": ["game.main"],
+      "validation": { "offset": 0, "pattern": "55 8B EC 6A" }
+    },
+    {
+      "name": "event.round.started.vtable",
+      "module": "BTD5-Win.exe",
+      "section": ".rdata",
+      "pattern": "74 96 C4 00 20 CA 5C 00 50 D1 5A 00 44 96 C4 00",
+      "result_offset": 4,
+      "required": true,
+      "prerequisites": ["event.manager.dispatch"],
+      "validation": { "offset": 0, "pattern": "20 CA 5C 00" }
+    },
+    {
+      "name": "event.round.ended.vtable",
+      "module": "BTD5-Win.exe",
+      "section": ".rdata",
+      "pattern": "BC 16 C5 00 20 CA 5C 00 50 D1 5A 00 9C 25 C5 00 E8 78 73 00 C0 4E 73 00",
+      "result_offset": 4,
+      "required": true,
+      "prerequisites": ["event.manager.dispatch"],
+      "validation": { "offset": 0, "pattern": "20 CA 5C 00" }
+    },
+    {
       "name": "tower.factory.constructor",
       "module": "BTD5-Win.exe",
       "section": ".text",

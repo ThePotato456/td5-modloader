@@ -136,7 +136,7 @@ Initial supported build fingerprints:
 - [x] Prevent wrappers from accessing game objects after those objects have been destroyed or their scene has changed.
 - [x] Implement event subscription/unsubscription and deterministic handler ordering.
 - [x] Add match start/end events.
-- [ ] Add round start/end events.
+- [x] Add round start/end events.
 - [ ] Add cash and lives change events.
 - [ ] Add tower placement, placed, upgrade, upgraded, sale, and sold events.
 - [ ] Add bloon spawn, spawned, pop, popped, leak, and leaked events.

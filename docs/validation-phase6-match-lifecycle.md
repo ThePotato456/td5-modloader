@@ -5,6 +5,10 @@ Date: 2026-08-29
 This validation extends the live match-entry boundary through game-screen
 teardown. Round lifecycle events remain open Phase 6 work.
 
+This is the historical match-only result. Round lifecycle was implemented and
+accepted later in the
+[round lifecycle validation](validation-phase6-round-lifecycle.md).
+
 ## Symbol and hook validation
 
 The read-only inspector resolved both required symbols uniquely in the
