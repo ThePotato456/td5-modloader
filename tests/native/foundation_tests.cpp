@@ -428,6 +428,46 @@ TEST_CASE("Lua game object userdata rejects stale host objects", "[lua][objects]
     REQUIRE(mod.last_error().find("game object is stale") != std::string_view::npos);
 }
 
+TEST_CASE("Lua bloon event wrappers preserve identity and reject removal", "[lua][objects]") {
+    using btd5loader::runtime::GameObjectKind;
+    btd5loader::runtime::GameObjectRegistry registry;
+    int bloon = 0;
+    const auto spawned_handle = registry.find_or_add(GameObjectKind::Bloon, &bloon);
+    const auto popped_handle = registry.find_or_add(GameObjectKind::Bloon, &bloon);
+    REQUIRE(spawned_handle == popped_handle);
+
+    std::vector<std::string> logs;
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.bloon-objects";
+    options.object_registry = &registry;
+    options.log = [&logs](const std::string_view, const std::string_view message) {
+        logs.emplace_back(message);
+    };
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        local spawned
+        btd5.events.on("bloon.spawned", function(event)
+            spawned = event.bloon
+            assert(spawned:is_valid())
+            assert(spawned:kind() == "bloon")
+        end)
+        btd5.events.on("bloon.popped", function(event)
+            assert(event.bloon:is_valid())
+            assert(event.bloon:id() == spawned:id())
+            btd5.log("info", "same-bloon")
+        end)
+    )lua", "bloon-objects.lua"));
+
+    REQUIRE(mod.dispatch_event("bloon.spawned", {{"bloon", spawned_handle}}).succeeded);
+    REQUIRE(mod.dispatch_event("bloon.popped", {{"bloon", popped_handle}}).succeeded);
+    REQUIRE(logs == std::vector<std::string>{"same-bloon"});
+    REQUIRE(registry.invalidate(popped_handle));
+    REQUIRE(registry.resolve(popped_handle, GameObjectKind::Bloon) == nullptr);
+    const auto stale = mod.dispatch_event("bloon.leaked", {{"bloon", popped_handle}});
+    REQUIRE_FALSE(stale.succeeded);
+    REQUIRE(mod.last_error().find("event payload is invalid or stale") != std::string_view::npos);
+}
+
 TEST_CASE("SHA-256 fingerprints are stable", "[compatibility]") {
     const auto test_root = std::filesystem::temp_directory_path() /
                            (L"btd5ml-hash-test-" + std::to_wstring(GetCurrentProcessId()));

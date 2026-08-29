@@ -56,7 +56,7 @@ void dispatch_game_event(
     }
 }
 
-void* capture_tower_event(void* const event) noexcept {
+void* capture_game_object_event(void* const event) noexcept {
     return event != nullptr ? static_cast<void**>(event)[1] : nullptr;
 }
 
@@ -76,6 +76,33 @@ void dispatch_tower_event(
     }
     try {
         dispatch_game_event(name, {{"tower", handle}});
+    } catch (...) {
+        if (invalidate_after) {
+            (void)g_game_objects.invalidate(handle);
+        }
+        throw;
+    }
+    if (invalidate_after) {
+        (void)g_game_objects.invalidate(handle);
+    }
+}
+
+void dispatch_bloon_event(
+    const std::string_view name,
+    void* const bloon,
+    const bool invalidate_after) {
+    using btd5loader::runtime::GameObjectKind;
+
+    if (bloon == nullptr) {
+        return;
+    }
+    const auto handle = g_game_objects.find_or_add(GameObjectKind::Bloon, bloon);
+    if (handle.id == 0) {
+        g_logger.error("events", "bloon_handle_unavailable");
+        return;
+    }
+    try {
+        dispatch_game_event(name, {{"bloon", handle}});
     } catch (...) {
         if (invalidate_after) {
             (void)g_game_objects.invalidate(handle);
@@ -569,39 +596,39 @@ DWORD WINAPI initialize_worker(LPVOID) {
                     },
                     {
                         tower_spawned_vtable_target,
-                        &capture_tower_event,
+                        &capture_game_object_event,
                         {},
                         [](void* tower) { dispatch_tower_event("tower.placed", tower, false); },
                     },
                     {
                         tower_upgraded_vtable_target,
-                        &capture_tower_event,
+                        &capture_game_object_event,
                         {},
                         [](void* tower) { dispatch_tower_event("tower.upgraded", tower, false); },
                     },
                     {
                         tower_sold_vtable_target,
-                        &capture_tower_event,
+                        &capture_game_object_event,
                         {},
                         [](void* tower) { dispatch_tower_event("tower.sold", tower, true); },
                     },
                     {
                         bloon_spawned_vtable_target,
+                        &capture_game_object_event,
                         {},
-                        {},
-                        [](void*) { dispatch_game_event("bloon.spawned"); },
+                        [](void* bloon) { dispatch_bloon_event("bloon.spawned", bloon, false); },
                     },
                     {
                         bloon_popped_vtable_target,
+                        &capture_game_object_event,
                         {},
-                        {},
-                        [](void*) { dispatch_game_event("bloon.popped"); },
+                        [](void* bloon) { dispatch_bloon_event("bloon.popped", bloon, true); },
                     },
                     {
                         bloon_escaped_vtable_target,
+                        &capture_game_object_event,
                         {},
-                        {},
-                        [](void*) { dispatch_game_event("bloon.leaked"); },
+                        [](void* bloon) { dispatch_bloon_event("bloon.leaked", bloon, true); },
                     },
                 },
                 error);

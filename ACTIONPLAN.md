@@ -144,7 +144,8 @@ Initial supported build fingerprints:
 - [x] Attach stable, lifetime-checked tower wrappers to live tower notifications.
 - [ ] Add verified tower placing, upgrading, and selling pre-events.
 - [x] Add post-action bloon spawned, popped, and leaked notifications.
-- [ ] Add verified bloon spawning, popping, and leaking pre-events and wrappers.
+- [x] Attach stable, lifetime-checked bloon wrappers to live bloon notifications.
+- [ ] Add verified bloon spawning, popping, and leaking pre-events.
 - [ ] Make verified pre-events cancellable and mutable.
 - [ ] Make supported live-object properties mutable through validated setters; reject invalid types, ranges, phases, and stale objects.
 - [x] Guard against recursive event loops when a mod mutation triggers another game event.

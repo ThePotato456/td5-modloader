@@ -2,9 +2,9 @@
 
 Date: 2026-08-29
 
-This validation covers read-only post-action Lua notifications for native bloon
-spawning, popping, and leaking. It does not make bloon pre-events live or expose
-a bloon wrapper.
+This validation covers read-only post-action Lua notifications and
+lifetime-checked wrappers for native bloon spawning, popping, and leaking. It
+does not make bloon pre-events live or expose native addresses.
 
 ## Binary research and symbol validation
 
@@ -18,10 +18,11 @@ uniquely:
 - `event.bloon.popped.vtable` at RVA `0x7CE958`; and
 - `event.bloon.escaped.vtable` at RVA `0x7CE920`.
 
-Each native event carries the affected bloon pointer. The public events remain
-payload-free because a pop may change a bloon layer without destroying the
-underlying object, while leak and full-pop cleanup use different lifetime paths.
-A missing signature or failed detour rolls back the complete gameplay-event hook
+Each native event carries the affected bloon pointer. Disassembly of the pop
+path confirmed the popped parent remains alive through observer dispatch, then
+child layers are created as separately spawned native objects. The leak path
+likewise retains the escaped object through observer dispatch before cleanup. A
+missing signature or failed detour rolls back the complete gameplay-event hook
 transaction and prevents Lua mods from loading.
 
 ## Hook contract and automated coverage
@@ -33,21 +34,26 @@ dispatch. After native observers return, it emits:
 - `bloon.popped` for `CBloonPoppedEvent`; and
 - `bloon.leaked` for `CBloonEscapedEvent`.
 
-It never reads the native event after dispatch. The existing x86 fixture covers
-post-only ordering, original dispatch behavior, unrelated-event filtering,
-exception containment, and clean hook removal. The Lua event-catalog fixture
-confirms all three public names remain accepted.
+Before dispatch, the hook captures the bloon pointer and maps it to a
+generation- and scene-checked opaque handle. Spawn retains the handle; pop and
+leak invalidate it after every mod handler returns. It never reads the native
+event after dispatch. The x86 fixtures cover payload capture, post-only ordering,
+stable handle reuse, stale-handle rejection, original dispatch behavior,
+unrelated-event filtering, exception containment, and clean hook removal.
 
 ## Interactive copied-game acceptance
 
-The Release smoke workflow launched the ignored copied game through Steam with
-the lifecycle sample enabled. In an ordinary offline single-player match, a
-round produced native spawn, pop, and leak events. The first observation of each
-kind was:
+The strengthened Release smoke workflow launched the ignored copied game
+through Steam with the lifecycle sample enabled. In an ordinary offline
+single-player match, a round produced native spawn, pop, and leak events with
+stable identities:
 
-- `bloon.spawned` at `2026-08-29T09:51:37.405Z`;
-- `bloon.popped` at `2026-08-29T09:51:57.253Z`; and
-- `bloon.leaked` at `2026-08-29T09:52:40.880Z`.
+- spawned ID `2` at `2026-08-29T09:59:11.481Z`, then popped ID `2` at
+  `2026-08-29T09:59:24.202Z`;
+- spawned ID `18` at `2026-08-29T09:59:16.161Z`, then leaked ID `18` at
+  `2026-08-29T09:59:44.572Z`; and
+- saved popped and leaked wrappers both reported stale on the next rendered
+  frame after their respective callback.
 
 Each native event had a matching lifecycle-sample Lua observation. The harness
 reported `LIVE_SMOKE_PASS`, closed only its exact process, and left no BTD5
@@ -60,8 +66,8 @@ process running. The copied game retained its supported hashes:
 
 ## Scope
 
-These notifications carry only the event name. They cannot identify or mutate a
-bloon, cancel an action, or distinguish a layer pop from final destruction.
-`bloon.spawning`, `bloon.popping`, and `bloon.leaking` remain pending until true
-pre-action boundaries and lifetime rules are verified. This result does not
-claim custom content, an on-screen overlay, or online safety enforcement.
+These wrappers support only `is_valid()`, `id()`, and `kind()`. They expose no
+native address, gameplay properties, or mutation. `bloon.spawning`,
+`bloon.popping`, and `bloon.leaking` remain pending until true pre-action
+boundaries and validation rules are verified. This result does not claim custom
+content, an on-screen overlay, or online safety enforcement.

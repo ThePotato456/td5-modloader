@@ -52,9 +52,10 @@ same ID across placement, upgrades, and sale. It is valid during `tower.sold`
 handlers and becomes stale after they return. Their pre-event counterparts,
 `lives.changing`, and all bloon pre-event names do not yet have live hooks.
 `bloon.spawned`, `bloon.popped`, and `bloon.leaked` are live post-notifications
-but intentionally carry no wrapper while layer-pop and destruction lifetimes
-remain under validation. Mods must not infer support for an event merely because
-the API accepts its name.
+and carry `event.bloon`. The opaque wrapper keeps the spawned object's ID through
+its pop or leak callback, then becomes stale after handlers return. A popped
+parent and newly spawned child layers have different IDs. Mods must not infer
+support for an event merely because the API accepts its name.
 
 Resource paths must use `/`, remain relative, and contain no `.` or `..`
 components. Mods never receive a general filesystem path.

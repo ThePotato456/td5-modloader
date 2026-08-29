@@ -29,16 +29,16 @@ Currently live in the supported Steam Win32 4.8 build:
 
 `lives.changing`, tower pre-events, and bloon pre-events remain mock-host only.
 Cash and lives events currently carry no value fields. Each live tower
-notification carries `event.tower`; live bloon notifications do not yet carry a
-bloon wrapper. No fields are mutable and no live event can cancel or modify an
+notification carries `event.tower`, and each live bloon notification carries
+`event.bloon`. No fields are mutable and no live event can cancel or modify an
 action. The game has already updated its internal balance when
 `cash.changing` runs; the pre/post distinction describes the native observer
 dispatch boundary. `lives.changed` is deliberately post-only until a
 pre-mutation boundary can distinguish a real change from a mode-suppressed
 attempt. Tower notifications are deliberately post-only because the native
 spawned, upgraded, and sold events occur after their actions are committed.
-Bloon notifications are likewise post-only until spawn, layer-pop, and final
-destruction lifetimes can be distinguished safely.
+Bloon notifications are likewise post-only because the native events occur
+after spawning, popping, or leaking has been committed.
 
 ## Subscription
 
@@ -108,6 +108,12 @@ handle, upgrades retain that identity, and sale invalidates the handle after all
 `tower.sold` handlers return. The sold wrapper is valid during the callback so a
 handler can identify it, then `is_valid()` returns `false`. Match teardown also
 invalidates every remaining tower handle before `match.ended` is dispatched.
+
+For live bloon notifications, spawn creates a stable handle. The same handle is
+used when that native bloon later pops or leaks. A popped parent and its spawned
+child layers are distinct objects with distinct handles. Popped and leaked
+wrappers remain valid during their callbacks, then become stale after all
+handlers return. Match teardown invalidates any remaining bloon handles.
 
 Game-specific getters and validated setters will be added with the corresponding
 live hooks. Raw addresses are never part of the public Lua API.

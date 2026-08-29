@@ -53,7 +53,8 @@ The repository currently includes:
   `on_load` and `on_ready`, and advances timers from a transactional render hook;
 - live Lua match, round, cash, verified lives-changed, and post-action tower
   events with lifetime-checked tower wrappers on the supported build;
-- live post-action bloon spawned, popped, and leaked notifications;
+- live post-action bloon spawned, popped, and leaked events with
+  lifetime-checked bloon wrappers;
 - native and managed integration tests that do not redistribute game files.
 
 Detailed progress and mandatory implementation gates are maintained in the
@@ -142,7 +143,8 @@ The current sample demonstrates lifecycle callbacks, logging, configuration,
 localization, deterministic timers, private mod storage, and the currently live
 match, round, cash, post-change lives, tower placed/upgraded/sold, and bloon
 spawned/popped/leaked events. Tower events include a stable, opaque tower
-wrapper. A custom-tower example will be added when its implementation gate
+wrapper, and bloon events include an opaque wrapper with verified removal
+invalidation. A custom-tower example will be added when its implementation gate
 passes.
 
 ## Documentation

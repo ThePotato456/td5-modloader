@@ -164,9 +164,16 @@ try
             placedTower.Groups[1].Value == upgradedTower.Groups[1].Value &&
             placedTower.Groups[1].Value == soldTower.Groups[1].Value &&
             log.Contains("Lifecycle Sample confirmed sold tower became stale", StringComparison.Ordinal);
-        var bloonActions = log.Contains("Lifecycle Sample observed bloon.spawned", StringComparison.Ordinal) &&
-            log.Contains("Lifecycle Sample observed bloon.popped", StringComparison.Ordinal) &&
-            log.Contains("Lifecycle Sample observed bloon.leaked", StringComparison.Ordinal);
+        var spawnedBloons = Regex.Matches(log, "Lifecycle Sample observed bloon\\.spawned id=(\\d+)")
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+        var poppedBloon = Regex.Match(log, "Lifecycle Sample observed bloon\\.popped id=(\\d+)");
+        var leakedBloon = Regex.Match(log, "Lifecycle Sample observed bloon\\.leaked id=(\\d+)");
+        var bloonActions = poppedBloon.Success && leakedBloon.Success &&
+            spawnedBloons.Contains(poppedBloon.Groups[1].Value) &&
+            spawnedBloons.Contains(leakedBloon.Groups[1].Value) &&
+            log.Contains("Lifecycle Sample confirmed popped bloon became stale", StringComparison.Ordinal) &&
+            log.Contains("Lifecycle Sample confirmed leaked bloon became stale", StringComparison.Ordinal);
         if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
             (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)) &&
             (!expectLivesLoss || (matchReady && livesChanged)) &&
