@@ -8,6 +8,11 @@ This reference describes features implemented in the supported Steam Win32 4.8
 build. Custom towers and general gameplay-property setters are planned but are
 not part of the current API.
 
+Use the compact [Markdown signature reference](reference.md) while authoring a
+mod. For editor autocomplete and diagnostics, add the documentation-only
+[`btd5.lua`](btd5.lua) definition file to your Lua Language Server workspace.
+Do not package or execute that file with a mod.
+
 ## Quick start
 
 A minimal mod contains two files:
@@ -269,6 +274,52 @@ A limit violation is handled as a normal contained callback error.
 - `btd5.towers.register` and custom tower content are planned for Phase 7 and do
   not exist yet.
 - No networking or native plugin API is exposed to Lua.
+
+## Editor setup
+
+With the Lua Language Server extension installed, copy or link `lua-api/btd5.lua`
+into a documentation folder in your mod workspace and add that folder to
+`Lua.workspace.library`. The file is marked `---@meta`, so the language server
+uses it for completion without treating it as normal runtime source.
+
+Example `.luarc.json` for a mod developed inside this repository:
+
+```json
+{
+  "runtime.version": "Lua 5.4",
+  "workspace.library": ["../../lua-api"],
+  "diagnostics.globals": ["btd5"]
+}
+```
+
+The definitions intentionally describe only implemented v1 methods. If an API
+is absent from `btd5.lua`, mods should not depend on it.
+
+## Troubleshooting mod startup
+
+The manager writes the selected profile to
+`%LocalAppData%\BTD5ModLoader\runtime\active-profile.json` immediately before a
+modded launch. It normally passes that path to the runtime through the
+`BTD5ML_ACTIVE_PROFILE` environment variable.
+
+Steam can start the game in a process that does not inherit the manager's
+environment. Commit `c950737` fixed that launch path: when the environment
+variable is absent, the runtime may use the manager-owned active-profile file
+only if its modification time is no more than 60 seconds old. The freshness
+limit prevents a later ordinary launch from silently reusing an old modded
+profile.
+
+Useful runtime log records:
+
+- `active_profile_fallback`: the fresh manager handoff was recovered;
+- `active_profile_fallback_stale`: an old handoff was deliberately ignored;
+- `active_profile_fallback_timestamp_failed`: freshness could not be verified;
+- `no_active_profile`: no manager handoff was available, so no Lua mods loaded.
+
+Therefore, an installed mod producing no `on_load` record is first a profile
+handoff/enablement issue, not necessarily a Lua script failure. Launch the
+enabled profile from the manager and inspect these records before debugging the
+script itself.
 
 ## Example mods
 

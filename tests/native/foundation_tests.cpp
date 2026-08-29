@@ -994,6 +994,83 @@ TEST_CASE("sample mod manifest satisfies the v1 contract", "[packages]") {
     REQUIRE(manifest->loader_api == 1);
 }
 
+TEST_CASE("published Lua example manifests and entry points load", "[packages][lua]") {
+    struct Example final {
+        const wchar_t* directory;
+        const char* id;
+    };
+    constexpr std::array examples{
+        Example{L"hello-world-mod", "example.hello-world"},
+        Example{L"event-monitor-mod", "example.event-monitor"},
+        Example{L"lives-guardian-mod", "example.lives-guardian"},
+    };
+    const auto samples = std::filesystem::path(BTD5ML_SOURCE_DIR) / L"samples";
+    const auto test_root = std::filesystem::temp_directory_path() /
+                           (L"btd5ml-example-mods-" + std::to_wstring(GetCurrentProcessId()));
+    std::filesystem::create_directories(test_root);
+
+    for (const auto& example : examples) {
+        const auto source = samples / example.directory;
+        std::string error;
+        const auto manifest = btd5loader::runtime::parse_mod_manifest(
+            read_test_file(source / L"mod.json"), error);
+        REQUIRE(manifest.has_value());
+        REQUIRE(error.empty());
+        REQUIRE(manifest->id == example.id);
+
+        btd5loader::runtime::LuaModOptions options;
+        options.mod_id = manifest->id;
+        options.storage_directory = test_root / std::filesystem::path(manifest->id);
+        options.resource_directory = source;
+        options.configuration.emplace("enabled", "true");
+        options.configuration.emplace("minimum_lives", "1");
+        options.configuration.emplace("log_each_action", "false");
+        btd5loader::runtime::LuaMod mod(std::move(options));
+        REQUIRE(mod.load_script(
+            read_test_file(source / std::filesystem::path(manifest->entry_point)),
+            manifest->entry_point));
+        REQUIRE(mod.invoke("on_load"));
+        REQUIRE(mod.invoke("on_ready"));
+        mod.advance_timers(60);
+        REQUIRE(mod.invoke("on_shutdown"));
+    }
+
+    std::filesystem::remove_all(test_root);
+}
+
+TEST_CASE("Lives Guardian example cancels only losses below its floor", "[samples][lua]") {
+    const auto source = std::filesystem::path(BTD5ML_SOURCE_DIR) /
+                        L"samples" / L"lives-guardian-mod";
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "example.lives-guardian";
+    options.configuration.emplace("enabled", "true");
+    options.configuration.emplace("minimum_lives", "1");
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(read_test_file(source / L"lua" / L"main.lua"), "lua/main.lua"));
+    REQUIRE(mod.invoke("on_load"));
+
+    const auto safe_loss = mod.dispatch_event(
+        "lives.changing",
+        {{"old_lives", std::int64_t{2}}, {"new_lives", std::int64_t{1}}},
+        true);
+    REQUIRE(safe_loss.succeeded);
+    REQUIRE_FALSE(safe_loss.cancelled);
+
+    const auto protected_loss = mod.dispatch_event(
+        "lives.changing",
+        {{"old_lives", std::int64_t{1}}, {"new_lives", std::int64_t{0}}},
+        true);
+    REQUIRE(protected_loss.succeeded);
+    REQUIRE(protected_loss.cancelled);
+
+    const auto gain = mod.dispatch_event(
+        "lives.changing",
+        {{"old_lives", std::int64_t{1}}, {"new_lives", std::int64_t{2}}},
+        true);
+    REQUIRE(gain.succeeded);
+    REQUIRE_FALSE(gain.cancelled);
+}
+
 TEST_CASE("manifest rejects traversal and unsupported API versions", "[packages]") {
     const std::string invalid = R"json({
         "id":"sample.invalid","name":"Invalid","author":"Tester","version":"1.0.0",
