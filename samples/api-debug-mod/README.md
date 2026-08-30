@@ -6,9 +6,11 @@ and gameplay events, inspects live object properties, verifies terminal wrapper
 invalidation, exercises localization and packaged-resource access, runs a
 deterministic timer, and persists session counters in mod-owned storage.
 
-Install `api-debug-console.btd5mod`, enable it in a profile, launch BTD5, and
-watch the manager's live Runtime Log. Every record from this package starts
-with `[API Debug]`.
+Install `api-debug-console.btd5mod`, enable its newest version in a profile,
+launch BTD5, and watch the manager's live Runtime Log. Every record from this
+package starts with `[API Debug]`. Package versions are immutable: if an older
+debug package is already installed, install this newer version and select it in
+the profile instead of copying over the existing archive.
 
 ## Demonstrated APIs
 

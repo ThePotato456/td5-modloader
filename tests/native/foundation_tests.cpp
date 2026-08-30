@@ -1558,7 +1558,9 @@ TEST_CASE("API Debug sample exercises opt-in mutations and cancellations", "[sam
 
     btd5loader::runtime::LuaMod mod(std::move(options));
     REQUIRE(mod.load_script(read_test_file(source / L"lua" / L"main.lua"), "lua/main.lua"));
-    REQUIRE(mod.invoke("on_load"));
+    const bool loaded = mod.invoke("on_load");
+    INFO("API Debug on_load error: " << mod.last_error());
+    REQUIRE(loaded);
     REQUIRE(mod.invoke("on_ready"));
 
     REQUIRE(mod.dispatch_event("tower.placed", {{"tower", tower_handle}}).succeeded);
