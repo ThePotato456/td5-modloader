@@ -150,9 +150,9 @@ event = {
 }
 ```
 
-`cancelled` is shared between handlers for the same mod. Only
-`lives.changing` currently consumes it. Assigning it on another event has no
-gameplay effect.
+`cancelled` is shared between handlers for the same mod. It is consumed by
+`lives.changing`, `tower.upgrading`, `tower.selling`, and `bloon.leaking`.
+Assigning it on another event currently has no gameplay effect.
 
 ## Event payloads
 

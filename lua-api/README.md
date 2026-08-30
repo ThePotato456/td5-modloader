@@ -205,7 +205,8 @@ Every handler receives one shared event table. It always contains `name` and
 | `bloon.leaked` | `bloon` | After leak observer dispatch | No |
 
 `old_lives` and `new_lives` are Lua integers. Tower and bloon payloads are
-opaque game-object userdata.
+lifetime-checked game-object userdata with only the validated methods described
+below; raw native addresses are never exposed.
 
 ### Changing the pending lives value
 
@@ -274,7 +275,7 @@ The detailed ordering contract is maintained in
 
 ## Game-object wrappers
 
-Tower and bloon event payloads expose three methods:
+All tower and bloon event payloads expose these identity and lifetime methods:
 
 ```lua
 object:is_valid()  -- boolean
@@ -293,6 +294,35 @@ returns. Match teardown invalidates remaining scene objects.
 Always call `is_valid()` before using a wrapper retained beyond its immediate
 handler. Calling `id()` or `kind()` on a stale wrapper raises a contained Lua
 error. Raw native addresses are never exposed.
+
+Tower wrappers also expose:
+
+```lua
+tower:pop_count()                 -- nonnegative integer
+tower:set_pop_count(value)        -- boolean
+tower:sell_price()                -- nonnegative integer base sale value
+tower:set_sell_price(value)       -- boolean
+```
+
+Both setters require a Lua integer in `0..2147483647` and take effect
+immediately. `sell_price` is the base value read by BTD5's verified sale payout
+routine before its normal refund multiplier. Changing either property does not
+synthesize a tower event.
+
+Bloon wrappers also expose:
+
+```lua
+bloon:health()                    -- finite nonnegative number
+bloon:set_health(value)           -- boolean
+```
+
+Health replacements must be finite, nonnegative, and representable as a
+32-bit float. They take effect immediately, but do not directly dispatch damage
+or pop events; BTD5 observes the value through its normal gameplay paths.
+
+Every getter and setter validates the wrapper kind and lifetime. Invalid types,
+out-of-range values, wrong object kinds, unsupported builds, and stale wrappers
+raise a contained Lua callback error instead of performing a write.
 
 ## Sandbox and limits
 
@@ -314,9 +344,10 @@ A limit violation is handled as a normal contained callback error.
 
 ## Current limitations
 
-- Tower and bloon pre-events are read-only and not yet cancellable.
+- `tower.placing`, `bloon.spawning`, and `bloon.popping` are not yet
+  cancellable; tower and bloon event-table payload fields remain read-only.
 - Cash events do not yet expose balance values.
-- Game-object wrappers do not yet expose gameplay getters or setters.
+- Game-object wrappers expose only the validated properties documented above.
 - `btd5.towers.register` and custom tower content are planned for Phase 7 and do
   not exist yet.
 - No networking or native plugin API is exposed to Lua.

@@ -436,12 +436,17 @@ TEST_CASE("documented v1 Lua event names are accepted", "[lua][events]") {
             btd5.events.on(name, function() end)
         end
     )lua", "event-catalog.lua"));
-    REQUIRE(mod.dispatch_event("match.starting").handlers_invoked == 1);
-    REQUIRE(mod.dispatch_event("round.ended").handlers_invoked == 1);
-    REQUIRE(mod.dispatch_event("cash.changing").handlers_invoked == 1);
-    REQUIRE(mod.dispatch_event("lives.changed").handlers_invoked == 1);
-    REQUIRE(mod.dispatch_event("tower.upgraded").handlers_invoked == 1);
-    REQUIRE(mod.dispatch_event("bloon.leaked").handlers_invoked == 1);
+    constexpr std::array names{
+        "match.starting", "match.started", "match.ending", "match.ended",
+        "round.starting", "round.started", "round.ending", "round.ended",
+        "cash.changing", "cash.changed", "lives.changing", "lives.changed",
+        "tower.placing", "tower.placed", "tower.upgrading", "tower.upgraded",
+        "tower.selling", "tower.sold", "bloon.spawning", "bloon.spawned",
+        "bloon.popping", "bloon.popped", "bloon.leaking", "bloon.leaked"};
+    for (const auto* const name : names) {
+        INFO("Missing event coverage for " << name);
+        REQUIRE(mod.dispatch_event(name).handlers_invoked == 1);
+    }
 }
 
 TEST_CASE("failing and recursive Lua event handlers are contained", "[lua][events]") {
@@ -695,15 +700,25 @@ TEST_CASE("Lua tower sell price and bloon health support validated mutation", "[
     };
     btd5loader::runtime::LuaMod mod(std::move(options));
     REQUIRE(mod.load_script(R"lua(
+        local saved_tower
+        local saved_bloon
         btd5.events.on("tower.placed", function(event)
+            saved_tower = event.tower
             assert(event.tower:sell_price() == 100)
             assert(event.tower:set_sell_price(777))
             assert(event.tower:sell_price() == 777)
         end)
         btd5.events.on("bloon.spawned", function(event)
+            saved_bloon = event.bloon
             assert(event.bloon:health() == 1.0)
             assert(event.bloon:set_health(2.5))
             assert(event.bloon:health() == 2.5)
+        end)
+        btd5.events.on("tower.upgraded", function()
+            saved_tower:sell_price()
+        end)
+        btd5.events.on("bloon.popped", function()
+            saved_bloon:health()
         end)
     )lua", "direct-properties.lua"));
 
@@ -711,6 +726,12 @@ TEST_CASE("Lua tower sell price and bloon health support validated mutation", "[
     REQUIRE(mod.dispatch_event("bloon.spawned", {{"bloon", bloon_handle}}).succeeded);
     REQUIRE(tower.sell_price == 777);
     REQUIRE(bloon.health == 2.5F);
+    REQUIRE(registry.invalidate(tower_handle));
+    REQUIRE_FALSE(mod.dispatch_event("tower.upgraded").succeeded);
+    REQUIRE(mod.last_error().find("game object is stale") != std::string_view::npos);
+    REQUIRE(registry.invalidate(bloon_handle));
+    REQUIRE_FALSE(mod.dispatch_event("bloon.popped").succeeded);
+    REQUIRE(mod.last_error().find("game object is stale") != std::string_view::npos);
 }
 
 TEST_CASE("Lua direct properties reject invalid values", "[lua][objects]") {
@@ -732,15 +753,40 @@ TEST_CASE("Lua direct properties reject invalid values", "[lua][objects]") {
         btd5.events.on("tower.placed", function(event)
             event.tower:set_sell_price(-1)
         end)
+        btd5.events.on("tower.upgraded", function(event)
+            event.tower:set_sell_price(1.5)
+        end)
         btd5.events.on("bloon.spawned", function(event)
             event.bloon:set_health(math.huge)
+        end)
+        btd5.events.on("bloon.popping", function(event)
+            event.bloon:set_health(-1)
+        end)
+        btd5.events.on("bloon.leaking", function(event)
+            event.bloon:set_health("invalid")
+        end)
+        btd5.events.on("tower.sold", function(event)
+            event.tower:set_health(1)
+        end)
+        btd5.events.on("bloon.popped", function(event)
+            event.bloon:set_sell_price(1)
         end)
     )lua", "invalid-direct-properties.lua"));
 
     REQUIRE_FALSE(mod.dispatch_event("tower.placed", {{"tower", tower_handle}}).succeeded);
     REQUIRE(mod.last_error().find("supported range") != std::string_view::npos);
+    REQUIRE_FALSE(mod.dispatch_event("tower.upgraded", {{"tower", tower_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("must be an integer") != std::string_view::npos);
     REQUIRE_FALSE(mod.dispatch_event("bloon.spawned", {{"bloon", bloon_handle}}).succeeded);
     REQUIRE(mod.last_error().find("supported range") != std::string_view::npos);
+    REQUIRE_FALSE(mod.dispatch_event("bloon.popping", {{"bloon", bloon_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("supported range") != std::string_view::npos);
+    REQUIRE_FALSE(mod.dispatch_event("bloon.leaking", {{"bloon", bloon_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("must be a number") != std::string_view::npos);
+    REQUIRE_FALSE(mod.dispatch_event("tower.sold", {{"tower", tower_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("only on bloon") != std::string_view::npos);
+    REQUIRE_FALSE(mod.dispatch_event("bloon.popped", {{"bloon", bloon_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("only on tower") != std::string_view::npos);
 }
 
 TEST_CASE("SHA-256 fingerprints are stable", "[compatibility]") {

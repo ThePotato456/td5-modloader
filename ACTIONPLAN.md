@@ -222,11 +222,11 @@ Initial supported build fingerprints:
   - [x] Prove sell-price and health replacement in the copied game with the
     dedicated `--expect-direct-properties` smoke scenario.
 - [x] Guard against recursive event loops when a mod mutation triggers another game event.
-- [ ] Document which fields are mutable, when changes take effect, and which mutations may be rejected.
+- [x] Document which fields are mutable, when changes take effect, and which mutations may be rejected.
 
 ### Phase 6 implementation gate
 
-- [ ] Automated mock-host tests cover every event, mutable field, cancellation path, invalid mutation, stale wrapper, and recursive dispatch case.
+- [x] Automated mock-host tests cover every event, mutable field, cancellation path, invalid mutation, stale wrapper, and recursive dispatch case.
 - [ ] In-game smoke tests confirm event order and mutations across a complete match without hooks firing twice or surviving scene teardown.
 - [ ] Disabling the sample event mod restores unmodified gameplay on the next launch.
 

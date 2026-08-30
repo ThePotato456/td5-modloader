@@ -106,8 +106,9 @@ feedback loops.
 Pre-event cancellation and field mutation are represented by a shared event
 table, so earlier handler changes are visible to later handlers. A hook may
 honor `event.cancelled = true` only when that event is documented as
-cancellable. `lives.changing` currently honors cancellation. Its
-`old_lives` is read-only. `new_lives` accepts integers in
+cancellable. `lives.changing`, `tower.upgrading`, `tower.selling`, and
+`bloon.leaking` currently honor cancellation. For `lives.changing`, `old_lives`
+is read-only and `new_lives` accepts integers in
 `0..2147483647`, and an accepted replacement changes the pending native write.
 Other event fields remain read-only until their validators and exact commit
 boundaries are implemented.
