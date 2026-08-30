@@ -53,6 +53,23 @@ function Tower:pop_count() end
 ---@return boolean
 function Tower:set_pop_count(value) end
 
+---@return integer
+function Tower:sell_price() end
+
+---@param value integer # Accepted range is 0..2147483647.
+---@return boolean
+function Tower:set_sell_price(value) end
+
+---@class BTD5Bloon: BTD5GameObject
+local Bloon = {}
+
+---@return number
+function Bloon:health() end
+
+---@param value number # Must be finite and nonnegative.
+---@return boolean
+function Bloon:set_health(value) end
+
 ---@class BTD5Event
 ---@field name BTD5EventName
 ---@field cancelled boolean
@@ -67,7 +84,7 @@ function Tower:set_pop_count(value) end
 ---@field tower BTD5Tower
 
 ---@class BTD5BloonEvent: BTD5Event
----@field bloon BTD5GameObject
+---@field bloon BTD5Bloon
 
 ---@class BTD5ConfigApi
 ---@field get fun(key: string): string?

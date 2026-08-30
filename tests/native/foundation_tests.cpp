@@ -641,6 +641,108 @@ TEST_CASE("Lua tower pop count rejects invalid values and object kinds", "[lua][
     REQUIRE(tower == 3);
 }
 
+TEST_CASE("Lua tower sell price and bloon health support validated mutation", "[lua][objects]") {
+    using btd5loader::runtime::GameObjectKind;
+    struct TowerState final { std::int32_t sell_price{100}; } tower;
+    struct BloonState final { float health{1.0F}; } bloon;
+    btd5loader::runtime::GameObjectRegistry registry;
+    const auto tower_handle = registry.add(GameObjectKind::Tower, &tower);
+    const auto bloon_handle = registry.add(GameObjectKind::Bloon, &bloon);
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.direct-properties";
+    options.object_registry = &registry;
+    options.game_object_integer_get = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property) -> std::optional<std::int64_t> {
+        if (kind != GameObjectKind::Tower || property != "sell_price" || object == nullptr) {
+            return std::nullopt;
+        }
+        return static_cast<TowerState*>(object)->sell_price;
+    };
+    options.game_object_integer_set = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property,
+        const std::int64_t value,
+        std::string&) {
+        if (kind != GameObjectKind::Tower || property != "sell_price" || object == nullptr) {
+            return false;
+        }
+        static_cast<TowerState*>(object)->sell_price = static_cast<std::int32_t>(value);
+        return true;
+    };
+    options.game_object_number_get = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property) -> std::optional<double> {
+        if (kind != GameObjectKind::Bloon || property != "health" || object == nullptr) {
+            return std::nullopt;
+        }
+        return static_cast<BloonState*>(object)->health;
+    };
+    options.game_object_number_set = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property,
+        const double value,
+        std::string&) {
+        if (kind != GameObjectKind::Bloon || property != "health" || object == nullptr) {
+            return false;
+        }
+        static_cast<BloonState*>(object)->health = static_cast<float>(value);
+        return true;
+    };
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        btd5.events.on("tower.placed", function(event)
+            assert(event.tower:sell_price() == 100)
+            assert(event.tower:set_sell_price(777))
+            assert(event.tower:sell_price() == 777)
+        end)
+        btd5.events.on("bloon.spawned", function(event)
+            assert(event.bloon:health() == 1.0)
+            assert(event.bloon:set_health(2.5))
+            assert(event.bloon:health() == 2.5)
+        end)
+    )lua", "direct-properties.lua"));
+
+    REQUIRE(mod.dispatch_event("tower.placed", {{"tower", tower_handle}}).succeeded);
+    REQUIRE(mod.dispatch_event("bloon.spawned", {{"bloon", bloon_handle}}).succeeded);
+    REQUIRE(tower.sell_price == 777);
+    REQUIRE(bloon.health == 2.5F);
+}
+
+TEST_CASE("Lua direct properties reject invalid values", "[lua][objects]") {
+    using btd5loader::runtime::GameObjectKind;
+    btd5loader::runtime::GameObjectRegistry registry;
+    std::int32_t tower{};
+    float bloon{};
+    const auto tower_handle = registry.add(GameObjectKind::Tower, &tower);
+    const auto bloon_handle = registry.add(GameObjectKind::Bloon, &bloon);
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.invalid-direct-properties";
+    options.object_registry = &registry;
+    options.game_object_integer_set = [](
+        GameObjectKind, void*, std::string_view, std::int64_t, std::string&) { return true; };
+    options.game_object_number_set = [](
+        GameObjectKind, void*, std::string_view, double, std::string&) { return true; };
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        btd5.events.on("tower.placed", function(event)
+            event.tower:set_sell_price(-1)
+        end)
+        btd5.events.on("bloon.spawned", function(event)
+            event.bloon:set_health(math.huge)
+        end)
+    )lua", "invalid-direct-properties.lua"));
+
+    REQUIRE_FALSE(mod.dispatch_event("tower.placed", {{"tower", tower_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("supported range") != std::string_view::npos);
+    REQUIRE_FALSE(mod.dispatch_event("bloon.spawned", {{"bloon", bloon_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("supported range") != std::string_view::npos);
+}
+
 TEST_CASE("SHA-256 fingerprints are stable", "[compatibility]") {
     const auto test_root = std::filesystem::temp_directory_path() /
                            (L"btd5ml-hash-test-" + std::to_wstring(GetCurrentProcessId()));

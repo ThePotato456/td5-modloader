@@ -40,6 +40,11 @@ struct LuaModOptions final {
     std::function<bool(
         GameObjectKind, void*, std::string_view, std::int64_t, std::string&)>
         game_object_integer_set;
+    std::function<std::optional<double>(
+        GameObjectKind, void*, std::string_view)> game_object_number_get;
+    std::function<bool(
+        GameObjectKind, void*, std::string_view, double, std::string&)>
+        game_object_number_set;
     std::function<void(std::string_view, std::string_view)> log;
 };
 
@@ -108,6 +113,10 @@ private:
     static int api_game_object_kind(lua_State* state);
     static int api_game_object_pop_count(lua_State* state);
     static int api_game_object_set_pop_count(lua_State* state);
+    static int api_game_object_sell_price(lua_State* state);
+    static int api_game_object_set_sell_price(lua_State* state);
+    static int api_game_object_health(lua_State* state);
+    static int api_game_object_set_health(lua_State* state);
 
     static LuaMod* from_upvalue(lua_State* state);
     void open_sandbox();

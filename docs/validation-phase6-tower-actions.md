@@ -106,6 +106,13 @@ stable identity:
 - `tower.selling`, ID `1`, at `2026-08-29T16:07:21.735Z`; and
 - `tower.sold`, ID `1`, at `2026-08-29T16:07:21.736Z`.
 
+A dedicated cancellation run enabled the lifecycle sample's opt-in tower
+action cancellation. Lua cancelled `tower.upgrading` for ID `2` at
+`2026-08-30T18:01:19.224Z` and `tower.selling` for the same ID at
+`2026-08-30T18:01:20.414Z`. The runtime recorded both native rejection paths,
+no matching `tower.upgraded` or `tower.sold` event appeared during the settling
+period, and `--expect-tower-cancellation` reported `LIVE_SMOKE_PASS`.
+
 On the next rendered frame at `2026-08-29T09:43:05.764Z`, the Lua sample
 confirmed that the saved sold-tower wrapper's `is_valid()` result was `false`.
 
@@ -119,9 +126,10 @@ no BTD5 process running. The copied game retained its supported hashes:
 
 ## Scope
 
-These are read-only notifications. The wrapper supports only
-`is_valid()`, `id()`, and `kind()`; it exposes no native address, gameplay
-properties, or mutation. `tower.upgrading` and `tower.selling` are cancellable,
-but their payloads are not yet mutable. `tower.placing` is not yet cancellable or
-mutable. This result does not claim custom-tower registration, an on-screen
-overlay, or online safety enforcement.
+Tower event tables remain read-only, while wrappers expose the separately
+validated properties documented in the tower property validation. The wrapper
+exposes no native address. `tower.upgrading` and `tower.selling` are cancellable
+and accepted in the copied game. `tower.placing` is not yet cancellable or
+mutable because its caller continues placement work after the manager returns.
+This result does not claim custom-tower registration, an on-screen overlay, or
+online safety enforcement.

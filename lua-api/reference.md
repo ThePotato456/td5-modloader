@@ -115,12 +115,29 @@ the native object is destroyed or its scene ends.
 ```lua
 tower:pop_count(): integer
 tower:set_pop_count(value: integer): boolean
+tower:sell_price(): integer
+tower:set_sell_price(value: integer): boolean
 ```
 
 `pop_count()` reads the live tower's accumulated pop count.
 `set_pop_count()` accepts an integer in `0..2147483647`, applies it immediately,
 and returns `true`. Both calls raise a contained error for a stale wrapper, the
 wrong object kind, an invalid type or range, or an unsupported game build.
+`sell_price()` reads the live base sale value consumed by the game's payout
+calculation. `set_sell_price()` accepts an integer in `0..2147483647` and
+changes that base value immediately.
+
+### `Bloon`
+
+```lua
+bloon:health(): number
+bloon:set_health(value: number): boolean
+```
+
+`health()` reads the live floating-point health value. `set_health()` accepts a
+finite, nonnegative value up to the maximum finite 32-bit float and applies it
+immediately. Setting health does not directly dispatch damage or pop events;
+the game observes the replacement through its normal update and damage paths.
 
 ## Base event table
 
@@ -173,8 +190,8 @@ event.tower: GameObject
 - `tower.upgrading`, `tower.upgraded`; and
 - `tower.selling`, `tower.sold`.
 
-Tower event tables are read-only, while the live tower wrapper exposes the
-validated `pop_count()` and `set_pop_count()` methods. `tower.upgrading` and
+Tower event tables are read-only, while the live tower wrapper exposes
+validated pop-count and sell-price accessors. `tower.upgrading` and
 `tower.selling` are cancellable. Setting `event.cancelled = true` rejects the
 pending action before its first side effect and suppresses the corresponding
 `tower.upgraded` or `tower.sold` event. The wrapper passed to `tower.sold`
@@ -190,7 +207,8 @@ event.bloon: GameObject
 - `bloon.popping`, `bloon.popped`; and
 - `bloon.leaking`, `bloon.leaked`.
 
-Bloon payloads and wrappers are currently read-only. `bloon.leaking` is
+Bloon event tables are read-only, while live bloon wrappers expose validated
+`health()` and `set_health()` access. `bloon.leaking` is
 cancellable. Cancellation skips that leak attempt through the native non-leak
 continuation; the bloon remains valid and may attempt to leak again later.
 Wrappers passed to `bloon.popped` and `bloon.leaked` become stale after all

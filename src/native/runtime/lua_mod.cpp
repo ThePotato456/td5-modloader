@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cmath>
 #include <fstream>
 #include <limits>
 #include <system_error>
@@ -571,6 +572,117 @@ int LuaMod::api_game_object_set_pop_count(lua_State* state) {
     return 1;
 }
 
+int LuaMod::api_game_object_sell_price(lua_State* state) {
+    const auto* object = static_cast<LuaGameObject*>(
+        luaL_checkudata(state, 1, kGameObjectMetatable));
+    void* const resolved = object->registry == nullptr
+                               ? nullptr
+                               : object->registry->resolve(object->handle, object->handle.kind);
+    if (resolved == nullptr) return luaL_error(state, "game object is stale");
+    if (object->handle.kind != GameObjectKind::Tower) {
+        return luaL_error(state, "sell_price is available only on tower objects");
+    }
+    if (object->owner == nullptr || !object->owner->options_.game_object_integer_get) {
+        return luaL_error(state, "tower sell_price is unavailable on this game build");
+    }
+    const auto value = object->owner->options_.game_object_integer_get(
+        object->handle.kind, resolved, "sell_price");
+    if (!value) return luaL_error(state, "tower sell_price could not be read");
+    lua_pushinteger(state, static_cast<lua_Integer>(*value));
+    return 1;
+}
+
+int LuaMod::api_game_object_set_sell_price(lua_State* state) {
+    const auto* object = static_cast<LuaGameObject*>(
+        luaL_checkudata(state, 1, kGameObjectMetatable));
+    void* const resolved = object->registry == nullptr
+                               ? nullptr
+                               : object->registry->resolve(object->handle, object->handle.kind);
+    if (resolved == nullptr) return luaL_error(state, "game object is stale");
+    if (object->handle.kind != GameObjectKind::Tower) {
+        return luaL_error(state, "set_sell_price is available only on tower objects");
+    }
+    if (lua_isinteger(state, 2) == 0) {
+        return luaL_error(state, "tower sell_price must be an integer");
+    }
+    const lua_Integer requested = lua_tointeger(state, 2);
+    if (requested < 0 || requested > (std::numeric_limits<std::int32_t>::max)()) {
+        return luaL_error(state, "tower sell_price is outside the supported range");
+    }
+    if (object->owner == nullptr || !object->owner->options_.game_object_integer_set) {
+        return luaL_error(state, "tower sell_price is unavailable on this game build");
+    }
+    std::string error;
+    if (!object->owner->options_.game_object_integer_set(
+            object->handle.kind,
+            resolved,
+            "sell_price",
+            static_cast<std::int64_t>(requested),
+            error)) {
+        return luaL_error(
+            state,
+            "%s",
+            error.empty() ? "tower sell_price could not be changed" : error.c_str());
+    }
+    lua_pushboolean(state, 1);
+    return 1;
+}
+
+int LuaMod::api_game_object_health(lua_State* state) {
+    const auto* object = static_cast<LuaGameObject*>(
+        luaL_checkudata(state, 1, kGameObjectMetatable));
+    void* const resolved = object->registry == nullptr
+                               ? nullptr
+                               : object->registry->resolve(object->handle, object->handle.kind);
+    if (resolved == nullptr) return luaL_error(state, "game object is stale");
+    if (object->handle.kind != GameObjectKind::Bloon) {
+        return luaL_error(state, "health is available only on bloon objects");
+    }
+    if (object->owner == nullptr || !object->owner->options_.game_object_number_get) {
+        return luaL_error(state, "bloon health is unavailable on this game build");
+    }
+    const auto value = object->owner->options_.game_object_number_get(
+        object->handle.kind, resolved, "health");
+    if (!value || !std::isfinite(*value)) {
+        return luaL_error(state, "bloon health could not be read");
+    }
+    lua_pushnumber(state, static_cast<lua_Number>(*value));
+    return 1;
+}
+
+int LuaMod::api_game_object_set_health(lua_State* state) {
+    const auto* object = static_cast<LuaGameObject*>(
+        luaL_checkudata(state, 1, kGameObjectMetatable));
+    void* const resolved = object->registry == nullptr
+                               ? nullptr
+                               : object->registry->resolve(object->handle, object->handle.kind);
+    if (resolved == nullptr) return luaL_error(state, "game object is stale");
+    if (object->handle.kind != GameObjectKind::Bloon) {
+        return luaL_error(state, "set_health is available only on bloon objects");
+    }
+    if (lua_type(state, 2) != LUA_TNUMBER) {
+        return luaL_error(state, "bloon health must be a number");
+    }
+    const double requested = static_cast<double>(lua_tonumber(state, 2));
+    if (!std::isfinite(requested) || requested < 0.0 ||
+        requested > static_cast<double>((std::numeric_limits<float>::max)())) {
+        return luaL_error(state, "bloon health is outside the supported range");
+    }
+    if (object->owner == nullptr || !object->owner->options_.game_object_number_set) {
+        return luaL_error(state, "bloon health is unavailable on this game build");
+    }
+    std::string error;
+    if (!object->owner->options_.game_object_number_set(
+            object->handle.kind, resolved, "health", requested, error)) {
+        return luaL_error(
+            state,
+            "%s",
+            error.empty() ? "bloon health could not be changed" : error.c_str());
+    }
+    lua_pushboolean(state, 1);
+    return 1;
+}
+
 LuaMod* LuaMod::from_upvalue(lua_State* state) {
     return static_cast<LuaMod*>(lua_touserdata(state, lua_upvalueindex(1)));
 }
@@ -608,6 +720,14 @@ void LuaMod::register_api() {
         lua_setfield(state_, -2, "pop_count");
         lua_pushcfunction(state_, &LuaMod::api_game_object_set_pop_count);
         lua_setfield(state_, -2, "set_pop_count");
+        lua_pushcfunction(state_, &LuaMod::api_game_object_sell_price);
+        lua_setfield(state_, -2, "sell_price");
+        lua_pushcfunction(state_, &LuaMod::api_game_object_set_sell_price);
+        lua_setfield(state_, -2, "set_sell_price");
+        lua_pushcfunction(state_, &LuaMod::api_game_object_health);
+        lua_setfield(state_, -2, "health");
+        lua_pushcfunction(state_, &LuaMod::api_game_object_set_health);
+        lua_setfield(state_, -2, "set_health");
         lua_setfield(state_, -2, "__index");
         lua_pushliteral(state_, "BTD5 game object v1");
         lua_setfield(state_, -2, "__metatable");

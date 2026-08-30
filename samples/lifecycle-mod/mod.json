@@ -14,7 +14,9 @@
     "greeting": "Hello from Lua",
     "cancel_lives_loss": false,
     "mutate_lives_loss": false,
-    "mutate_tower_pop_count": false
+    "mutate_tower_pop_count": false,
+    "cancel_tower_actions": false,
+    "mutate_direct_properties": false
   },
   "localization": ["localization/en-US.json"],
   "documentation": "README.md"

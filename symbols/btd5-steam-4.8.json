@@ -119,6 +119,16 @@
       "validation": { "offset": 0, "pattern": "55 8B EC 8B 45 08" }
     },
     {
+      "name": "tower.sell_price.read",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "55 8B EC 83 E4 F8 56 57 8B 7D 08 8B F1 8B 8E B8 00 00 00 FF B7 D4 00 00 00 FF B7 D0 00 00 00",
+      "result_offset": 0,
+      "required": true,
+      "prerequisites": ["tower.pop_count.set"],
+      "validation": { "offset": 54, "pattern": "8B 87 44 01 00 00" }
+    },
+    {
       "name": "event.tower.upgraded.vtable",
       "module": "BTD5-Win.exe",
       "section": ".rdata",
@@ -197,6 +207,16 @@
       "required": true,
       "prerequisites": ["event.bloon.popped.vtable"],
       "validation": { "offset": 0, "pattern": "55 8B EC 6A FF" }
+    },
+    {
+      "name": "bloon.health.damage.commit",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "F3 0F 10 87 24 02 00 00 0F 57 D2 F3 0F 5C C1 89 87 64 02 00 00 0F 2F D0 F3 0F 11 87 24 02 00 00",
+      "result_offset": 0,
+      "required": true,
+      "prerequisites": ["bloon.pop.commit"],
+      "validation": { "offset": 0, "pattern": "F3 0F 10 87 24 02 00 00" }
     },
     {
       "name": "bloon.leak.commit",

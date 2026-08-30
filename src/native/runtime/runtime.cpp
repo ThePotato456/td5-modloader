@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <vector>
 #include <chrono>
+#include <cmath>
+#include <cstring>
 
 #include <btd5loader/runtime_api.hpp>
 #include <btd5loader/version.hpp>
@@ -57,6 +59,11 @@ using TowerPopCountGetter = std::int32_t(__thiscall*)(void*);
 using TowerPopCountSetter = void(__thiscall*)(void*, std::int32_t);
 TowerPopCountGetter g_tower_pop_count_get{};
 TowerPopCountSetter g_tower_pop_count_set{};
+bool g_tower_sell_price_verified{};
+bool g_bloon_health_verified{};
+
+constexpr std::size_t kTowerSellPriceOffset = 0x144;
+constexpr std::size_t kBloonHealthOffset = 0x224;
 
 void dispatch_game_event(
     const std::string_view name,
@@ -434,10 +441,21 @@ bool load_active_mods(const std::string& build_id) {
             void* const object,
             const std::string_view property) -> std::optional<std::int64_t> {
             if (kind != btd5loader::runtime::GameObjectKind::Tower ||
-                property != "pop_count" || object == nullptr || g_tower_pop_count_get == nullptr) {
+                object == nullptr) {
                 return std::nullopt;
             }
-            return static_cast<std::int64_t>(g_tower_pop_count_get(object));
+            if (property == "pop_count" && g_tower_pop_count_get != nullptr) {
+                return static_cast<std::int64_t>(g_tower_pop_count_get(object));
+            }
+            if (property == "sell_price" && g_tower_sell_price_verified) {
+                std::int32_t value{};
+                std::memcpy(
+                    &value,
+                    static_cast<const std::byte*>(object) + kTowerSellPriceOffset,
+                    sizeof(value));
+                return static_cast<std::int64_t>(value);
+            }
+            return std::nullopt;
         };
         options.game_object_integer_set = [](
             const btd5loader::runtime::GameObjectKind kind,
@@ -445,16 +463,62 @@ bool load_active_mods(const std::string& build_id) {
             const std::string_view property,
             const std::int64_t value,
             std::string& error) {
-            if (kind != btd5loader::runtime::GameObjectKind::Tower ||
-                property != "pop_count" || object == nullptr || g_tower_pop_count_set == nullptr) {
-                error = "tower pop_count is unavailable on this game build";
+            if (kind != btd5loader::runtime::GameObjectKind::Tower || object == nullptr) {
+                error = "tower integer property is unavailable on this game build";
                 return false;
             }
             if (value < 0 || value > (std::numeric_limits<std::int32_t>::max)()) {
                 error = "tower pop_count is outside the supported range";
                 return false;
             }
-            g_tower_pop_count_set(object, static_cast<std::int32_t>(value));
+            if (property == "pop_count" && g_tower_pop_count_set != nullptr) {
+                g_tower_pop_count_set(object, static_cast<std::int32_t>(value));
+                return true;
+            }
+            if (property == "sell_price" && g_tower_sell_price_verified) {
+                const auto stored = static_cast<std::int32_t>(value);
+                std::memcpy(
+                    static_cast<std::byte*>(object) + kTowerSellPriceOffset,
+                    &stored,
+                    sizeof(stored));
+                return true;
+            }
+            error = "tower integer property is unavailable on this game build";
+            return false;
+        };
+        options.game_object_number_get = [](
+            const btd5loader::runtime::GameObjectKind kind,
+            void* const object,
+            const std::string_view property) -> std::optional<double> {
+            if (kind != btd5loader::runtime::GameObjectKind::Bloon ||
+                property != "health" || object == nullptr || !g_bloon_health_verified) {
+                return std::nullopt;
+            }
+            float value{};
+            std::memcpy(
+                &value,
+                static_cast<const std::byte*>(object) + kBloonHealthOffset,
+                sizeof(value));
+            return static_cast<double>(value);
+        };
+        options.game_object_number_set = [](
+            const btd5loader::runtime::GameObjectKind kind,
+            void* const object,
+            const std::string_view property,
+            const double value,
+            std::string& error) {
+            if (kind != btd5loader::runtime::GameObjectKind::Bloon ||
+                property != "health" || object == nullptr || !g_bloon_health_verified ||
+                !std::isfinite(value) || value < 0.0 ||
+                value > static_cast<double>((std::numeric_limits<float>::max)())) {
+                error = "bloon health is unavailable or outside the supported range";
+                return false;
+            }
+            const auto stored = static_cast<float>(value);
+            std::memcpy(
+                static_cast<std::byte*>(object) + kBloonHealthOffset,
+                &stored,
+                sizeof(stored));
             return true;
         };
         if (!load_localization(resource_directory, options.localization, error)) {
@@ -610,6 +674,12 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "tower.pop_count.set";
         });
+    const auto tower_sell_price_read = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "tower.sell_price.read";
+        });
     const auto tower_upgrade_commit = std::find_if(
         resolution.resolved.begin(),
         resolution.resolved.end(),
@@ -658,6 +728,12 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "bloon.pop.commit";
         });
+    const auto bloon_health_damage_commit = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "bloon.health.damage.commit";
+        });
     const auto bloon_leak_commit = std::find_if(
         resolution.resolved.begin(),
         resolution.resolved.end(),
@@ -701,6 +777,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
         tower_manager_place == resolution.resolved.end() ||
         tower_pop_count_get == resolution.resolved.end() ||
         tower_pop_count_set == resolution.resolved.end() ||
+        tower_sell_price_read == resolution.resolved.end() ||
         tower_upgrade_commit == resolution.resolved.end() ||
         tower_sale_commit == resolution.resolved.end() ||
         bloon_spawned_vtable == resolution.resolved.end() ||
@@ -709,6 +786,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
         bloon_spawn_primary == resolution.resolved.end() ||
         bloon_spawn_secondary == resolution.resolved.end() ||
         bloon_pop_commit == resolution.resolved.end() ||
+        bloon_health_damage_commit == resolution.resolved.end() ||
         bloon_leak_commit == resolution.resolved.end() ||
         lives_gain_handler == resolution.resolved.end() ||
         lives_loss_handler == resolution.resolved.end() ||
@@ -742,6 +820,8 @@ DWORD WINAPI initialize_worker(LPVOID) {
         reinterpret_cast<std::uintptr_t>(executable) + tower_pop_count_get->relative_virtual_address);
     g_tower_pop_count_set = reinterpret_cast<TowerPopCountSetter>(
         reinterpret_cast<std::uintptr_t>(executable) + tower_pop_count_set->relative_virtual_address);
+    g_tower_sell_price_verified = true;
+    g_bloon_health_verified = true;
     void* const tower_upgrade_commit_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + tower_upgrade_commit->relative_virtual_address);
     void* const tower_sale_commit_target = reinterpret_cast<void*>(
@@ -1049,6 +1129,8 @@ extern "C" void WINAPI BTD5Loader_Shutdown() {
     g_hooks.rollback();
     g_tower_pop_count_get = nullptr;
     g_tower_pop_count_set = nullptr;
+    g_tower_sell_price_verified = false;
+    g_bloon_health_verified = false;
     g_game_objects.begin_scene();
     {
         std::scoped_lock lock(g_mods_mutex);

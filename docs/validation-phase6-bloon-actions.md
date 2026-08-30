@@ -107,8 +107,9 @@ reporting `LIVE_SMOKE_PASS`. The copied game retained its supported hashes:
 
 ## Scope
 
-These wrappers support only `is_valid()`, `id()`, and `kind()`. They expose no
-native address, gameplay properties, or mutation. `bloon.leaking` is
-cancellable but not mutable. `bloon.spawning` and `bloon.popping` are not yet
-cancellable or mutable. This result does not claim custom content, an on-screen
-overlay, or online safety enforcement.
+Bloon wrappers expose no native address. They now include separately validated
+`health()` and `set_health()` methods; other gameplay properties remain
+unavailable. `bloon.leaking` is cancellable but its event table is not mutable.
+`bloon.spawning` and `bloon.popping` are not yet cancellable or mutable. This
+result does not claim custom content, an on-screen overlay, or online safety
+enforcement.

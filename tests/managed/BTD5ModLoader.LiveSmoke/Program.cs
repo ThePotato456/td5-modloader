@@ -13,6 +13,8 @@ if (args.Length is < 4 or > 5 ||
         !string.Equals(args[4], "--expect-lives-cancel", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-lives-mutation", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-tower-pop-count", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-tower-cancellation", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-direct-properties", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal)))
 {
@@ -21,8 +23,8 @@ if (args.Length is < 4 or > 5 ||
         "<package> <state-root> " +
         "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
         "--expect-cash-action|--expect-lives-loss|--expect-lives-cancel|--expect-lives-mutation|" +
-        "--expect-tower-pop-count|--expect-tower-actions|" +
-        "--expect-bloon-actions]");
+        "--expect-tower-pop-count|--expect-tower-cancellation|--expect-tower-actions|" +
+        "--expect-bloon-actions|--expect-direct-properties]");
     return 2;
 }
 
@@ -48,6 +50,10 @@ var expectLivesMutation = args.Length == 5 &&
     string.Equals(args[4], "--expect-lives-mutation", StringComparison.Ordinal);
 var expectTowerPopCount = args.Length == 5 &&
     string.Equals(args[4], "--expect-tower-pop-count", StringComparison.Ordinal);
+var expectTowerCancellation = args.Length == 5 &&
+    string.Equals(args[4], "--expect-tower-cancellation", StringComparison.Ordinal);
+var expectDirectProperties = args.Length == 5 &&
+    string.Equals(args[4], "--expect-direct-properties", StringComparison.Ordinal);
 var expectTowerActions = args.Length == 5 &&
     string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal);
 var expectBloonActions = args.Length == 5 &&
@@ -55,6 +61,7 @@ var expectBloonActions = args.Length == 5 &&
 const string profileName = "Live Smoke";
 Process? gameProcess = null;
 DateTimeOffset? livesCancellationObservedAt = null;
+DateTimeOffset? towerCancellationObservedAt = null;
 try
 {
     var installationService = new LoaderInstallationService(stateRoot);
@@ -120,7 +127,8 @@ try
     {
         return Fail("Package configuration defaults were not inherited by the profile.");
     }
-    if (expectLivesCancel || expectLivesMutation || expectTowerPopCount)
+    if (expectLivesCancel || expectLivesMutation || expectTowerPopCount || expectTowerCancellation ||
+        expectDirectProperties)
     {
         var profile = profileChange.Profile!;
         var configuredMods = profile.Mods.Select(mod => mod.Id != package.Package.Id
@@ -133,7 +141,11 @@ try
                         ? "cancel_lives_loss"
                         : expectLivesMutation
                             ? "mutate_lives_loss"
-                            : "mutate_tower_pop_count"] =
+                            : expectTowerPopCount
+                                ? "mutate_tower_pop_count"
+                                : expectTowerCancellation
+                                    ? "cancel_tower_actions"
+                                    : "mutate_direct_properties"] =
                         System.Text.Json.JsonSerializer.SerializeToElement(true)
                 }
             });
@@ -155,6 +167,7 @@ try
     var deadline = DateTimeOffset.UtcNow.AddSeconds(
         expectMatchExit || expectRound || expectLivesLoss || expectLivesCancel || expectLivesMutation ||
             expectTowerPopCount || expectTowerActions || expectBloonActions
+            || expectTowerCancellation || expectDirectProperties
             ? 240
             : expectMatch || expectCash ? 180 : 20);
     while (DateTimeOffset.UtcNow < deadline)
@@ -169,7 +182,23 @@ try
         {
             continue;
         }
-        var log = await File.ReadAllTextAsync(logPath);
+        string log;
+        try
+        {
+            await using var stream = new FileStream(
+                logPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                4096,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            using var reader = new StreamReader(stream);
+            log = await reader.ReadToEndAsync();
+        }
+        catch (IOException)
+        {
+            continue;
+        }
         var lifecycleReady = log.Contains("Hello from Lua (launch ", StringComparison.Ordinal) &&
             log.Contains("sample.lifecycle:loaded", StringComparison.Ordinal) &&
             log.Contains("game_ready_frame_hook", StringComparison.Ordinal) &&
@@ -247,6 +276,34 @@ try
         var towerPopCountMutation = Regex.Match(
             log,
             "Lifecycle Sample mutated tower\\.pop_count (\\d+)->123");
+        var towerSellPriceMutation = Regex.Match(
+            log,
+            "Lifecycle Sample mutated tower\\.sell_price (\\d+)->777");
+        var cancelledTowerUpgrade = Regex.Match(
+            log,
+            "Lifecycle Sample cancelled tower\\.upgrading id=(\\d+)");
+        var cancelledTowerSale = Regex.Match(
+            log,
+            "Lifecycle Sample cancelled tower\\.selling id=(\\d+)");
+        if (cancelledTowerUpgrade.Success && cancelledTowerSale.Success &&
+            towerCancellationObservedAt is null)
+        {
+            towerCancellationObservedAt = DateTimeOffset.UtcNow;
+        }
+        var towerCancellationSettled = towerCancellationObservedAt is not null &&
+            DateTimeOffset.UtcNow - towerCancellationObservedAt >= TimeSpan.FromSeconds(2);
+        var towerCancellation = cancelledTowerUpgrade.Success && cancelledTowerSale.Success &&
+            cancelledTowerUpgrade.Groups[1].Value == cancelledTowerSale.Groups[1].Value &&
+            towerCancellationSettled &&
+            log.Contains("tower.upgrading:cancelled", StringComparison.Ordinal) &&
+            log.Contains("tower.selling:cancelled", StringComparison.Ordinal) &&
+            !log.Contains(
+                "Lifecycle Sample observed tower.upgraded id=" +
+                    cancelledTowerUpgrade.Groups[1].Value,
+                StringComparison.Ordinal) &&
+            !log.Contains(
+                "Lifecycle Sample observed tower.sold id=" + cancelledTowerSale.Groups[1].Value,
+                StringComparison.Ordinal);
         var spawningBloons = Regex.Matches(log, "Lifecycle Sample observed bloon\\.spawning id=(\\d+)")
             .Select(match => match.Groups[1].Value)
             .ToHashSet(StringComparer.Ordinal);
@@ -267,12 +324,18 @@ try
             spawnedBloons.Contains(leakedBloon.Groups[1].Value) &&
             log.Contains("Lifecycle Sample confirmed popped bloon became stale", StringComparison.Ordinal) &&
             log.Contains("Lifecycle Sample confirmed leaked bloon became stale", StringComparison.Ordinal);
+        var bloonHealthMutation = Regex.Match(
+            log,
+            "Lifecycle Sample mutated bloon\\.health ([0-9.]+)->([0-9.]+)");
+        var directProperties = towerSellPriceMutation.Success && bloonHealthMutation.Success;
         if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
             (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)) &&
             (!expectLivesLoss || (matchReady && livesLifecycle)) &&
             (!expectLivesCancel || (matchReady && livesCancellation)) &&
             (!expectLivesMutation || (matchReady && livesMutation)) &&
             (!expectTowerPopCount || (matchReady && towerPopCountMutation.Success)) &&
+            (!expectTowerCancellation || (matchReady && towerCancellation)) &&
+            (!expectDirectProperties || (matchReady && directProperties)) &&
             (!expectTowerActions || (matchReady && towerActions)) &&
             (!expectBloonActions || (matchReady && bloonActions)))
         {
@@ -287,6 +350,10 @@ try
                 ? "Lua replaced a verified lives loss and lives.changed observed the mutated value in BTD5."
                 : expectTowerPopCount
                 ? "Lua changed a live tower pop count through its validated wrapper setter in BTD5."
+                : expectTowerCancellation
+                ? "Lua cancelled verified tower upgrade and sale attempts before side effects in BTD5."
+                : expectDirectProperties
+                ? "Lua changed live tower sell price and bloon health through validated wrappers in BTD5."
                 : expectLivesLoss
                 ? "Lua observed a verified lives loss after match entry in BTD5."
                 : expectCashAction
@@ -313,6 +380,10 @@ try
         ? "Timed out waiting for a mutated lives loss and matching post-change notification."
         : expectTowerPopCount
         ? "Timed out waiting for a placed tower and validated pop-count mutation."
+        : expectTowerCancellation
+        ? "Timed out waiting for cancelled tower upgrade and sale attempts."
+        : expectDirectProperties
+        ? "Timed out waiting for live tower sell-price and bloon-health mutations."
         : expectLivesLoss
         ? "Timed out waiting for a verified lives loss and Lua event evidence."
         : expectCashAction

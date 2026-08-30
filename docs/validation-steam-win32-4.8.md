@@ -30,6 +30,7 @@ section and passed their validation patterns:
 - `bloon.manager.spawn.primary`
 - `bloon.manager.spawn.secondary`
 - `bloon.pop.commit`
+- `bloon.health.damage.commit`
 - `bloon.leak.commit`
 - `player.lives.gain.handler`
 - `player.lives.loss.handler`
@@ -38,6 +39,7 @@ section and passed their validation patterns:
 - `tower.manager.place`
 - `tower.pop_count.get`
 - `tower.pop_count.set`
+- `tower.sell_price.read`
 - `tower.upgrade.commit`
 - `tower.sale.commit`
 - `tower.factory.constructor`

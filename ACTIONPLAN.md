@@ -201,6 +201,8 @@ Initial supported build fingerprints:
 - [ ] Make verified pre-events cancellable and mutable.
   - [x] Route cancelled `tower.upgrading` and `tower.selling` events through the game's
     verified native rejection paths before the first side effect.
+    - [x] Prove both rejection paths in the copied game with the dedicated
+      `--expect-tower-cancellation` smoke scenario.
   - [x] Route a cancelled `bloon.leaking` attempt through the verified native non-leak
     continuation without invalidating the live bloon.
   - [ ] Add cancellation for the remaining pre-events only after each action's ownership,
@@ -215,6 +217,10 @@ Initial supported build fingerprints:
     including strict integer/range/kind/lifetime validation.
   - [x] Prove the tower pop-count setter in the copied game with the dedicated
     `--expect-tower-pop-count` smoke scenario.
+  - [x] Add fingerprinted tower sell-price and bloon-health getters/setters with
+    strict kind, lifetime, type, finiteness, and range validation.
+  - [x] Prove sell-price and health replacement in the copied game with the
+    dedicated `--expect-direct-properties` smoke scenario.
 - [x] Guard against recursive event loops when a mod mutation triggers another game event.
 - [ ] Document which fields are mutable, when changes take effect, and which mutations may be rejected.
 

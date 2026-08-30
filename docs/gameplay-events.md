@@ -131,10 +131,10 @@ generation prevents an old wrapper from resolving to the replacement object.
 Calling `id()` or `kind()` on a stale wrapper raises a contained Lua error.
 
 Tower wrappers additionally expose `pop_count()` and
-`set_pop_count(value)`. The setter accepts integers in `0..2147483647`, applies
-the value immediately through the fingerprinted game's verified virtual
-setter, and rejects stale wrappers, other object kinds, invalid types or ranges,
-and builds where the accessor symbols do not resolve uniquely.
+`set_pop_count(value)`, plus `sell_price()` and `set_sell_price(value)`. Integer
+setters accept `0..2147483647`. Pop count uses the game's verified virtual
+accessors; sell price uses a fingerprinted field consumed by the verified sale
+payout routine.
 
 For live tower notifications, `tower.placing` creates the tower's stable handle
 before manager ownership and `tower.placed` reuses it after the native spawned
@@ -148,6 +148,10 @@ used when that native bloon later pops or leaks. A popped parent and its spawned
 child layers are distinct objects with distinct handles. Popped and leaked
 wrappers remain valid during their callbacks, then become stale after all
 handlers return. Match teardown invalidates any remaining bloon handles.
+Bloon wrappers expose `health()` and `set_health(value)`. Health must be finite,
+nonnegative, and representable as a 32-bit float. The fingerprint is anchored
+to the native damage commit that reads and writes the same field. Direct health
+replacement does not itself synthesize a damage or pop event.
 
 Additional game-specific getters and validated setters will be added only with
 their corresponding verified native accessors. Raw addresses are never part of

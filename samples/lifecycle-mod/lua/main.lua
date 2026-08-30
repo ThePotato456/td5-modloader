@@ -92,6 +92,13 @@ btd5.events.on("tower.placed", function(event)
         assert(after == 123)
         log("Lifecycle Sample mutated tower.pop_count " .. before .. "->" .. after)
     end
+    if btd5.config.get("mutate_direct_properties") == "true" then
+        local before = event.tower:sell_price()
+        assert(event.tower:set_sell_price(777))
+        local after = event.tower:sell_price()
+        assert(after == 777)
+        log("Lifecycle Sample mutated tower.sell_price " .. before .. "->" .. after)
+    end
     pending_tower_placement = nil
 end)
 
@@ -101,6 +108,11 @@ btd5.events.on("tower.upgrading", function(event)
     assert(event.tower:is_valid())
     pending_tower_upgrade = event.tower:id()
     log("Lifecycle Sample observed tower.upgrading id=" .. pending_tower_upgrade)
+    if btd5.config.get("cancel_tower_actions") == "true" then
+        event.cancelled = true
+        log("Lifecycle Sample cancelled tower.upgrading id=" .. pending_tower_upgrade)
+        pending_tower_upgrade = nil
+    end
 end)
 
 btd5.events.on("tower.upgraded", function(event)
@@ -116,6 +128,11 @@ btd5.events.on("tower.selling", function(event)
     assert(event.tower:is_valid())
     pending_tower_sale = event.tower:id()
     log("Lifecycle Sample observed tower.selling id=" .. pending_tower_sale)
+    if btd5.config.get("cancel_tower_actions") == "true" then
+        event.cancelled = true
+        log("Lifecycle Sample cancelled tower.selling id=" .. pending_tower_sale)
+        pending_tower_sale = nil
+    end
 end)
 
 btd5.events.on("tower.sold", function(event)
@@ -145,6 +162,14 @@ btd5.events.on("bloon.spawned", function(event)
     assert(pending_bloon_spawns[id])
     pending_bloon_spawns[id] = nil
     log("Lifecycle Sample observed bloon.spawned id=" .. id)
+    if btd5.config.get("mutate_direct_properties") == "true" then
+        local before = event.bloon:health()
+        local replacement = before + 1
+        assert(event.bloon:set_health(replacement))
+        local after = event.bloon:health()
+        assert(after == replacement)
+        log("Lifecycle Sample mutated bloon.health " .. before .. "->" .. after)
+    end
 end)
 
 local pending_bloon_pop
