@@ -388,6 +388,7 @@ TEST_CASE("Lua events are ordered, mutable, cancellable, and unsubscribable", "[
     REQUIRE(first.succeeded);
     REQUIRE(first.cancelled);
     REQUIRE(first.handlers_invoked == 2);
+    REQUIRE(std::get<std::int64_t>(first.fields.at(0).second) == 5);
     REQUIRE(logs == std::vector<std::string>{"first:4", "second:5"});
 
     logs.clear();
@@ -395,7 +396,27 @@ TEST_CASE("Lua events are ordered, mutable, cancellable, and unsubscribable", "[
     REQUIRE(second.succeeded);
     REQUIRE_FALSE(second.cancelled);
     REQUIRE(second.handlers_invoked == 3);
+    REQUIRE(std::get<std::int64_t>(second.fields.at(0).second) == 5);
     REQUIRE(logs == std::vector<std::string>{"first:4", "second:5", "late:5"});
+}
+
+TEST_CASE("Lua event mutation rejects incompatible field types", "[lua][events]") {
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.invalid-mutation";
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        btd5.events.on("lives.changing", function(event)
+            event.new_lives = "invalid"
+        end)
+    )lua", "invalid-mutation.lua"));
+
+    const btd5loader::runtime::LuaEventFields fields{
+        {"old_lives", std::int64_t{100}}, {"new_lives", std::int64_t{95}}};
+    const auto result = mod.dispatch_event("lives.changing", fields, true);
+    REQUIRE_FALSE(result.succeeded);
+    REQUIRE(result.fields.size() == 2);
+    REQUIRE(std::get<std::int64_t>(result.fields.at(1).second) == 95);
+    REQUIRE(mod.last_error().find("new_lives") != std::string_view::npos);
 }
 
 TEST_CASE("documented v1 Lua event names are accepted", "[lua][events]") {
@@ -920,7 +941,7 @@ TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]
         [&state, &changes](const std::int32_t before, const std::int32_t after) {
             REQUIRE(state.lives == before);
             changes.emplace_back(before, after);
-            return false;
+            return btd5loader::runtime::LivesChangeDecision{false, after};
         },
         error);
     INFO("Lives write hook installation error: " << error);
@@ -948,7 +969,9 @@ TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]
         loss_target,
         [&cancel_next, &changes](const std::int32_t before, const std::int32_t after) {
             changes.emplace_back(before, after);
-            return std::exchange(cancel_next, false);
+            const bool cancelled = std::exchange(cancel_next, false);
+            return btd5loader::runtime::LivesChangeDecision{
+                cancelled, cancelled ? after + 10 : after};
         },
         error));
     state.lives = 50;
@@ -963,10 +986,24 @@ TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]
     REQUIRE(state.lives == 55);
 
     hook.remove();
+    REQUIRE(hook.install(
+        gain_target,
+        loss_target,
+        [](const std::int32_t, const std::int32_t after) {
+            return btd5loader::runtime::LivesChangeDecision{false, after + 10};
+        },
+        error));
+    state.lives = 100;
+    invoke_fake_lives_write(&state, 5, gain_target);
+    REQUIRE(state.lives == 115);
+    invoke_fake_lives_write(&state, 20, loss_target);
+    REQUIRE(state.lives == 105);
+
+    hook.remove();
     REQUIRE_FALSE(hook.installed());
     changes.clear();
     invoke_fake_lives_write(&state, 4, gain_target);
-    REQUIRE(state.lives == 59);
+    REQUIRE(state.lives == 109);
     REQUIRE(changes.empty());
 }
 

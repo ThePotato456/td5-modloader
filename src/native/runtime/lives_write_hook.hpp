@@ -7,9 +7,14 @@
 
 namespace btd5loader::runtime {
 
+struct LivesChangeDecision final {
+    bool cancelled{};
+    std::int32_t new_lives{};
+};
+
 class LivesWriteHook final {
 public:
-    using Callback = std::function<bool(std::int32_t, std::int32_t)>;
+    using Callback = std::function<LivesChangeDecision(std::int32_t, std::int32_t)>;
 
     LivesWriteHook() = default;
     ~LivesWriteHook();
@@ -25,8 +30,14 @@ public:
     void remove() noexcept;
     [[nodiscard]] bool installed() const noexcept;
 
-    static int __stdcall dispatch_gain(void* state, std::int32_t amount) noexcept;
-    static int __stdcall dispatch_loss(void* state, std::int32_t amount) noexcept;
+    static int __stdcall dispatch_gain(
+        void* state,
+        std::int32_t amount,
+        std::int32_t* replacement) noexcept;
+    static int __stdcall dispatch_loss(
+        void* state,
+        std::int32_t amount,
+        std::int32_t* replacement) noexcept;
 
 private:
     static LivesWriteHook* active_;

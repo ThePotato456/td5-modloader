@@ -162,7 +162,8 @@ bool LivesWriteHook::installed() const noexcept {
 
 int __stdcall LivesWriteHook::dispatch_gain(
     void* const state,
-    const std::int32_t amount) noexcept {
+    const std::int32_t amount,
+    std::int32_t* const replacement) noexcept {
     std::int32_t before = 0;
     LivesWriteHook* const active = active_;
     if (active == nullptr || !active->changing_ || !read_lives(state, before)) {
@@ -171,7 +172,13 @@ int __stdcall LivesWriteHook::dispatch_gain(
     const auto proposed = static_cast<std::int32_t>(
         static_cast<std::uint32_t>(before) + static_cast<std::uint32_t>(amount));
     try {
-        return active->changing_(before, proposed) ? 1 : 0;
+        const auto decision = active->changing_(before, proposed);
+        if (decision.cancelled) return 1;
+        if (replacement != nullptr && decision.new_lives != proposed) {
+            *replacement = decision.new_lives;
+            return 2;
+        }
+        return 0;
     } catch (...) {
         // Keep the exact native lives write boundary exception-safe.
         return 0;
@@ -180,7 +187,8 @@ int __stdcall LivesWriteHook::dispatch_gain(
 
 int __stdcall LivesWriteHook::dispatch_loss(
     void* const state,
-    const std::int32_t amount) noexcept {
+    const std::int32_t amount,
+    std::int32_t* const replacement) noexcept {
     std::int32_t before = 0;
     LivesWriteHook* const active = active_;
     if (active == nullptr || !active->changing_ || !read_lives(state, before)) {
@@ -193,7 +201,13 @@ int __stdcall LivesWriteHook::dispatch_loss(
         0,
         (std::numeric_limits<std::int32_t>::max)()));
     try {
-        return active->changing_(before, proposed) ? 1 : 0;
+        const auto decision = active->changing_(before, proposed);
+        if (decision.cancelled) return 1;
+        if (replacement != nullptr && decision.new_lives != proposed) {
+            *replacement = decision.new_lives;
+            return 2;
+        }
+        return 0;
     } catch (...) {
         // Keep the exact native lives write boundary exception-safe.
         return 0;
@@ -204,16 +218,31 @@ void __declspec(naked) hooked_lives_gain_write() noexcept {
     __asm {
         pushfd
         pushad
+        sub esp, 4
+        lea edx, [esp]
+        push edx
         push ecx
         push eax
         call LivesWriteHook::dispatch_gain
+        cmp eax, 2
+        je replaced
         test eax, eax
         jnz cancelled
+        add esp, 4
         popad
         popfd
         add dword ptr [eax + 88h], ecx
         jmp dword ptr [g_lives_gain_continue]
+    replaced:
+        mov edx, dword ptr [esp]
+        mov dword ptr [esp + 28], edx
+        add esp, 4
+        popad
+        popfd
+        mov dword ptr [eax + 88h], ecx
+        jmp dword ptr [g_lives_gain_continue]
     cancelled:
+        add esp, 4
         popad
         popfd
         jmp dword ptr [g_lives_gain_continue]
@@ -224,16 +253,31 @@ void __declspec(naked) hooked_lives_loss_write() noexcept {
     __asm {
         pushfd
         pushad
+        sub esp, 4
+        lea edx, [esp]
+        push edx
         push ecx
         push eax
         call LivesWriteHook::dispatch_loss
+        cmp eax, 2
+        je replaced
         test eax, eax
         jnz cancelled
+        add esp, 4
         popad
         popfd
         sub dword ptr [eax + 88h], ecx
         jmp dword ptr [g_lives_loss_continue]
+    replaced:
+        mov edx, dword ptr [esp]
+        mov dword ptr [esp + 28], edx
+        add esp, 4
+        popad
+        popfd
+        mov dword ptr [eax + 88h], ecx
+        jmp dword ptr [g_lives_loss_continue]
     cancelled:
+        add esp, 4
         popad
         popfd
         jmp dword ptr [g_lives_loss_continue]

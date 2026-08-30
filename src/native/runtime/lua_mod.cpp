@@ -225,7 +225,41 @@ LuaEventDispatchResult LuaMod::dispatch_event(
     lua_rawgeti(state_, LUA_REGISTRYINDEX, event_reference);
     lua_getfield(state_, -1, "cancelled");
     result.cancelled = cancellable && lua_isboolean(state_, -1) && lua_toboolean(state_, -1) != 0;
-    lua_pop(state_, 2);
+    lua_pop(state_, 1);
+    result.fields.reserve(fields.size());
+    for (const auto& [name, original] : fields) {
+        LuaEventValue updated = original;
+        bool valid = true;
+        if (!std::holds_alternative<GameObjectHandle>(original)) {
+            lua_getfield(state_, -1, name.c_str());
+            if (std::holds_alternative<bool>(original)) {
+                valid = lua_isboolean(state_, -1);
+                if (valid) updated = lua_toboolean(state_, -1) != 0;
+            } else if (std::holds_alternative<std::int64_t>(original)) {
+                valid = lua_isinteger(state_, -1);
+                if (valid) updated = static_cast<std::int64_t>(lua_tointeger(state_, -1));
+            } else if (std::holds_alternative<double>(original)) {
+                valid = lua_isnumber(state_, -1);
+                if (valid) updated = static_cast<double>(lua_tonumber(state_, -1));
+            } else if (std::holds_alternative<std::string>(original)) {
+                valid = lua_type(state_, -1) == LUA_TSTRING;
+                if (valid) {
+                    std::size_t length = 0;
+                    const char* text = lua_tolstring(state_, -1, &length);
+                    updated = std::string(text, length);
+                }
+            }
+            lua_pop(state_, 1);
+        }
+        if (!valid) {
+            result.succeeded = false;
+            report_error(
+                "event." + std::string(event_name),
+                "event field has an invalid type: " + name);
+        }
+        result.fields.emplace_back(name, std::move(updated));
+    }
+    lua_pop(state_, 1);
     luaL_unref(state_, LUA_REGISTRYINDEX, event_reference);
     --event_dispatch_depth_;
     event_handlers_.erase(

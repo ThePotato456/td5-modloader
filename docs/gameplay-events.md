@@ -40,8 +40,9 @@ Currently live in the supported Steam Win32 4.8 build:
 Lives events carry `old_lives` and `new_lives`; cash events currently carry no
 value fields. Each
 live tower notification carries `event.tower`, and each live bloon notification
-carries `event.bloon`. Payload fields are not yet mutable. `lives.changing`,
-`tower.upgrading`, `tower.selling`, and `bloon.leaking` are cancellable. Setting
+carries `event.bloon`. `lives.changing.new_lives` is mutable;
+`lives.changing`, `tower.upgrading`, `tower.selling`, and `bloon.leaking` are
+cancellable. Setting
 `event.cancelled = true` skips the pending lives write or routes an accepted
 tower action into the game's own rejection path. Other live events cannot cancel
 or modify an action. The
@@ -49,7 +50,10 @@ game has already updated its internal balance when
 `cash.changing` runs; the pre/post distinction describes the native observer
 dispatch boundary. `lives.changing` runs at the exact add/subtract instruction,
 after the game has accepted the update, and `new_lives` reflects the clamped
-result for losses. Cancellation affects only the lives delta: it does not undo
+result for losses. Lua may replace `new_lives` with an integer in
+`0..2147483647`. Mutations flow through handlers and then mods in deterministic
+profile order; invalid types and ranges are rejected. Cancellation takes
+precedence over mutation. Cancellation affects only the lives delta: it does not undo
 the originating reward or bloon leak. When cancelled, `lives.changed` does not
 run because the stored value remains unchanged. Cancelling `tower.upgrading`
 occurs before the first upgrade mutation, so `tower.upgraded` does not run.

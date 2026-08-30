@@ -44,6 +44,7 @@ struct LuaEventDispatchResult final {
     bool succeeded{};
     bool cancelled{};
     std::size_t handlers_invoked{};
+    LuaEventFields fields;
 };
 
 class LuaMod final {

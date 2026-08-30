@@ -48,7 +48,9 @@ function GameObject:kind() end
 ---@field cancelled boolean
 
 ---@class BTD5LivesEvent: BTD5Event
+---Read-only value captured immediately before the pending native write.
 ---@field old_lives integer
+---Mutable on lives.changing only; accepted range is 0..2147483647.
 ---@field new_lives integer
 
 ---@class BTD5TowerEvent: BTD5Event

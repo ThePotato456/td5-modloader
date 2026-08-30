@@ -147,6 +147,10 @@ event.new_lives: integer
 | `lives.changing` | Yes |
 | `lives.changed` | No |
 
+For `lives.changing`, `new_lives` is mutable and accepts integers in
+`0..2147483647`; `old_lives` is read-only. Accepted mutations are applied in
+handler and profile order. Cancellation takes precedence over mutation.
+
 ### Tower events
 
 ```lua

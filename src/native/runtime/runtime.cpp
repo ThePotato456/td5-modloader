@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -79,28 +80,41 @@ void dispatch_lives_event(
         });
 }
 
-bool dispatch_lives_changing(
+btd5loader::runtime::LivesChangeDecision dispatch_lives_changing(
     const std::int32_t before,
     const std::int32_t after) {
     using btd5loader::runtime::State;
 
     if (g_state.current() != State::GameReady) {
-        return false;
+        return {false, after};
     }
-    const btd5loader::runtime::LuaEventFields fields{
-        {"old_lives", static_cast<std::int64_t>(before)},
-        {"new_lives", static_cast<std::int64_t>(after)},
-    };
+    std::int64_t new_lives = after;
     bool cancelled = false;
     std::scoped_lock lock(g_mods_mutex);
     g_logger.info("events", "lives.changing");
     for (const auto& mod : g_mods) {
-        cancelled = mod->dispatch_event("lives.changing", fields, true).cancelled || cancelled;
+        const btd5loader::runtime::LuaEventFields fields{
+            {"old_lives", static_cast<std::int64_t>(before)}, {"new_lives", new_lives}};
+        const auto result = mod->dispatch_event("lives.changing", fields, true);
+        cancelled = result.cancelled || cancelled;
+        const auto mutation = std::find_if(
+            result.fields.begin(), result.fields.end(), [](const auto& field) {
+                return field.first == "new_lives";
+            });
+        if (mutation != result.fields.end() &&
+            std::holds_alternative<std::int64_t>(mutation->second)) {
+            const auto proposed = std::get<std::int64_t>(mutation->second);
+            if (proposed >= 0 && proposed <= (std::numeric_limits<std::int32_t>::max)()) {
+                new_lives = proposed;
+            } else {
+                g_logger.error("events", "lives.changing:new_lives_out_of_range");
+            }
+        }
     }
     if (cancelled) {
         g_logger.info("events", "lives.changing:cancelled");
     }
-    return cancelled;
+    return {cancelled, static_cast<std::int32_t>(new_lives)};
 }
 
 void* capture_game_object_event(void* const event) noexcept {

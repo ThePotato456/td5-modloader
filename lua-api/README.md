@@ -207,6 +207,26 @@ Every handler receives one shared event table. It always contains `name` and
 `old_lives` and `new_lives` are Lua integers. Tower and bloon payloads are
 opaque game-object userdata.
 
+### Changing the pending lives value
+
+`lives.changing.new_lives` is the first mutable gameplay field. Assign an
+integer from `0` through `2147483647` to replace the pending absolute lives
+value:
+
+```lua
+btd5.events.on("lives.changing", function(event)
+    if event.new_lives < event.old_lives then
+        event.new_lives = math.max(event.old_lives - 1, 0)
+    end
+end)
+```
+
+`old_lives` is read-only. Changes made by an earlier handler are visible to
+later handlers in the same mod, and accepted changes are passed to later mods
+in profile order. A wrong type or out-of-range value is rejected. If the event
+is also cancelled, cancellation wins and no lives write or `lives.changed`
+event occurs.
+
 ### Cancelling a lives change or tower action
 
 `lives.changing`, `tower.upgrading`, `tower.selling`, and `bloon.leaking` honor

@@ -3,7 +3,7 @@
 Date: 2026-08-29
 
 This validation covers verified pre-write and post-change Lua notifications for
-lives gains and losses, including read-only old/new values and cancellation of
+lives gains and losses, including mutable proposed values and cancellation of
 the pending native write.
 
 ## Binary research and symbol validation
@@ -33,8 +33,10 @@ patched, rolls back the hook transaction, and prevents Lua mods from loading.
 The runtime validates the original six bytes before replacing each write with a
 five-byte x86 jump and padding byte. The shim preserves registers and flags,
 dispatches `lives.changing` while the stored value is still unchanged, executes
-the original add/subtract instruction unless a Lua handler cancels the event,
-and resumes at the following instruction.
+the original add/subtract instruction when Lua leaves the proposal unchanged,
+writes an accepted replacement absolute value when Lua mutates `new_lives`, or
+skips the write when Lua cancels the event. Every path resumes at the following
+native instruction.
 For a loss, `new_lives` reflects the game's subsequent zero clamp.
 
 The existing handler hooks snapshot the value before the complete native
@@ -43,8 +45,9 @@ only when both reads succeed and the value differs. Both event tables contain
 integer `old_lives` and `new_lives` fields.
 
 The x86 fixtures verify pre-write ordering, proposed gain and clamped-loss
-values, cancelled gain and loss writes, original instruction behavior, exact
-byte restoration, post-change detection, zero-value suppression,
+values, replacement gain and loss writes, cancelled gain and loss writes,
+original instruction behavior, exact byte restoration, post-change detection,
+zero-value suppression,
 unavailable-state containment, and clean removal. Dispatching from the handler
 entry remains deliberately avoided because game-mode rules can still reject an
 attempted update there.
@@ -78,7 +81,10 @@ no BTD5 process running. The copied game retained its supported hashes:
 The live acceptance proves the loss path in an ordinary match. The gain path is
 installed through the second fingerprinted handler and is covered by the native
 fixture, but this record does not claim an interactive in-game gain test.
-`lives.changing` can cancel the lives delta but cannot modify its proposed
-value. Cancellation does not reverse the originating reward or bloon leak. This
-validation does not claim an interactive gain test, lives-value mutation, an
-on-screen overlay, or online safety enforcement.
+`lives.changing.new_lives` accepts Lua integers from `0` through `2147483647`.
+`old_lives` is observational and ignored if reassigned. Mutations are applied in
+handler and profile order; invalid types or ranges retain the last accepted
+value. Cancellation takes precedence and does not reverse the originating
+reward or bloon leak. Interactive acceptance of value replacement remains part
+of the Phase 6 gate. This validation does not claim an interactive gain or
+replacement test, an on-screen overlay, or online safety enforcement.
