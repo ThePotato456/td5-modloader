@@ -11,6 +11,7 @@ if (args.Length is < 4 or > 5 ||
         !string.Equals(args[4], "--expect-cash-action", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-lives-loss", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-lives-cancel", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-lives-mutation", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal)))
 {
@@ -18,7 +19,8 @@ if (args.Length is < 4 or > 5 ||
         "Usage: BTD5ModLoader.LiveSmoke <game-directory> <artifact-directory> " +
         "<package> <state-root> " +
         "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
-        "--expect-cash-action|--expect-lives-loss|--expect-lives-cancel|--expect-tower-actions|" +
+        "--expect-cash-action|--expect-lives-loss|--expect-lives-cancel|--expect-lives-mutation|" +
+        "--expect-tower-actions|" +
         "--expect-bloon-actions]");
     return 2;
 }
@@ -41,6 +43,8 @@ var expectLivesLoss = args.Length == 5 &&
     string.Equals(args[4], "--expect-lives-loss", StringComparison.Ordinal);
 var expectLivesCancel = args.Length == 5 &&
     string.Equals(args[4], "--expect-lives-cancel", StringComparison.Ordinal);
+var expectLivesMutation = args.Length == 5 &&
+    string.Equals(args[4], "--expect-lives-mutation", StringComparison.Ordinal);
 var expectTowerActions = args.Length == 5 &&
     string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal);
 var expectBloonActions = args.Length == 5 &&
@@ -113,7 +117,7 @@ try
     {
         return Fail("Package configuration defaults were not inherited by the profile.");
     }
-    if (expectLivesCancel)
+    if (expectLivesCancel || expectLivesMutation)
     {
         var profile = profileChange.Profile!;
         var configuredMods = profile.Mods.Select(mod => mod.Id != package.Package.Id
@@ -122,7 +126,8 @@ try
             {
                 Configuration = new Dictionary<string, System.Text.Json.JsonElement>(mod.Configuration)
                 {
-                    ["cancel_lives_loss"] = System.Text.Json.JsonSerializer.SerializeToElement(true)
+                    [expectLivesCancel ? "cancel_lives_loss" : "mutate_lives_loss"] =
+                        System.Text.Json.JsonSerializer.SerializeToElement(true)
                 }
             });
         await profiles.SaveModsAsync(profileName, configuredMods);
@@ -141,7 +146,8 @@ try
     }
     gameProcess = Process.GetProcessById(launch.ProcessId.Value);
     var deadline = DateTimeOffset.UtcNow.AddSeconds(
-        expectMatchExit || expectRound || expectLivesLoss || expectLivesCancel || expectTowerActions || expectBloonActions
+        expectMatchExit || expectRound || expectLivesLoss || expectLivesCancel || expectLivesMutation ||
+            expectTowerActions || expectBloonActions
             ? 240
             : expectMatch || expectCash ? 180 : 20);
     while (DateTimeOffset.UtcNow < deadline)
@@ -201,6 +207,19 @@ try
             !log.Contains(
                 "Lifecycle Sample observed lives.changed " + cancelledTransition,
                 StringComparison.Ordinal);
+        var livesMutated = Regex.Match(
+            log,
+            "Lifecycle Sample mutated lives\\.changing (\\d+)->(\\d+) to (\\d+)->(\\d+)");
+        var mutatedTransition = livesMutated.Success
+            ? livesMutated.Groups[3].Value + "->" + livesMutated.Groups[4].Value
+            : string.Empty;
+        var livesMutation = livesMutated.Success &&
+            livesMutated.Groups[1].Value == livesMutated.Groups[3].Value &&
+            livesMutated.Groups[2].Value != livesMutated.Groups[4].Value &&
+            log.IndexOf(
+                "Lifecycle Sample observed lives.changed " + mutatedTransition,
+                livesMutated.Index,
+                StringComparison.Ordinal) > livesMutated.Index;
         var placingTower = Regex.Match(log, "Lifecycle Sample observed tower\\.placing id=(\\d+)");
         var placedTower = Regex.Match(log, "Lifecycle Sample observed tower\\.placed id=(\\d+)");
         var upgradingTower = Regex.Match(log, "Lifecycle Sample observed tower\\.upgrading id=(\\d+)");
@@ -242,6 +261,7 @@ try
             (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)) &&
             (!expectLivesLoss || (matchReady && livesLifecycle)) &&
             (!expectLivesCancel || (matchReady && livesCancellation)) &&
+            (!expectLivesMutation || (matchReady && livesMutation)) &&
             (!expectTowerActions || (matchReady && towerActions)) &&
             (!expectBloonActions || (matchReady && bloonActions)))
         {
@@ -252,6 +272,8 @@ try
                 ? "Lua observed tower pre-placement, placement, upgrade, and sale notifications in BTD5."
                 : expectLivesCancel
                 ? "Lua cancelled a verified lives loss and the native write did not occur in BTD5."
+                : expectLivesMutation
+                ? "Lua replaced a verified lives loss and lives.changed observed the mutated value in BTD5."
                 : expectLivesLoss
                 ? "Lua observed a verified lives loss after match entry in BTD5."
                 : expectCashAction
@@ -274,6 +296,8 @@ try
         ? "Timed out waiting for tower pre-placement, placement, upgrade, sale, and Lua event evidence."
         : expectLivesCancel
         ? "Timed out waiting for a cancelled lives loss with no post-change notification."
+        : expectLivesMutation
+        ? "Timed out waiting for a mutated lives loss and matching post-change notification."
         : expectLivesLoss
         ? "Timed out waiting for a verified lives loss and Lua event evidence."
         : expectCashAction

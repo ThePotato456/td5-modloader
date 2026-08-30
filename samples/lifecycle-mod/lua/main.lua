@@ -55,6 +55,14 @@ btd5.events.on("lives.changing", function(event)
         log("Lifecycle Sample cancelled lives.changing " .. transition)
         return
     end
+    if btd5.config.get("mutate_lives_loss") == "true" and
+        event.new_lives < event.old_lives then
+        event.new_lives = event.old_lives + 1
+        local mutated = tostring(event.old_lives) .. "->" .. tostring(event.new_lives)
+        pending_lives_change = mutated
+        log("Lifecycle Sample mutated lives.changing " .. transition .. " to " .. mutated)
+        return
+    end
     pending_lives_change = transition
 end)
 

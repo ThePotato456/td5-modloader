@@ -16,3 +16,9 @@ The `cancel_lives_loss` setting defaults to `false`. When explicitly enabled,
 the sample cancels life-loss writes from `lives.changing` while leaving the
 originating bloon leak intact. It is intended for the dedicated cancellation
 smoke test and is not enabled during ordinary sample use.
+
+The `mutate_lives_loss` setting also defaults to `false`. The dedicated
+mutation smoke test enables it to replace a proposed life loss with a one-life
+gain. The resulting `lives.changed` event must contain the replacement value,
+which proves the Lua mutation reached the native commit boundary. Do not enable
+this test-only behavior during ordinary sample use.

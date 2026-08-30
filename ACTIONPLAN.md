@@ -208,6 +208,8 @@ Initial supported build fingerprints:
   - [ ] Add validated mutable payload fields at their exact native commit boundaries.
     - [x] Allow `lives.changing.new_lives` replacement at the verified gain/loss write,
       with deterministic propagation and strict integer/range validation.
+      - [x] Prove replacement in the copied game with the dedicated
+        `--expect-lives-mutation` smoke scenario.
 - [ ] Make supported live-object properties mutable through validated setters; reject invalid types, ranges, phases, and stale objects.
 - [x] Guard against recursive event loops when a mod mutation triggers another game event.
 - [ ] Document which fields are mutable, when changes take effect, and which mutations may be rejected.

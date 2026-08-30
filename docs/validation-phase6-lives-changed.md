@@ -68,6 +68,13 @@ old value, and no matching `lives.changed 200->199` appeared during the harness
 settling period. The first verified cancellation occurred at
 `2026-08-29T10:20:26.764Z`.
 
+A third Release smoke run enabled the sample's opt-in mutation setting. Lua
+received the proposed loss `1->0`, replaced `new_lives` with `2`, and then
+received `lives.changed 1->2` from the completed native handler. The ordered
+evidence was recorded at `2026-08-30T17:38:54.235Z` and
+`2026-08-30T17:38:54.236Z`. The dedicated `--expect-lives-mutation` verifier
+reported `LIVE_SMOKE_PASS` and closed its exact game process.
+
 The harness reported `LIVE_SMOKE_PASS`, closed only its exact process, and left
 no BTD5 process running. The copied game retained its supported hashes:
 
@@ -85,6 +92,7 @@ fixture, but this record does not claim an interactive in-game gain test.
 `old_lives` is observational and ignored if reassigned. Mutations are applied in
 handler and profile order; invalid types or ranges retain the last accepted
 value. Cancellation takes precedence and does not reverse the originating
-reward or bloon leak. Interactive acceptance of value replacement remains part
-of the Phase 6 gate. This validation does not claim an interactive gain or
-replacement test, an on-screen overlay, or online safety enforcement.
+reward or bloon leak. Interactive loss-path replacement is now accepted; an
+ordinary in-game gain originating from the game itself remains fixture-only.
+This validation does not claim an interactive native gain test, an on-screen
+overlay, or online safety enforcement.

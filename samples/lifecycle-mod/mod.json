@@ -12,7 +12,8 @@
   "capabilities": ["gameplay.events", "storage"],
   "configuration_defaults": {
     "greeting": "Hello from Lua",
-    "cancel_lives_loss": false
+    "cancel_lives_loss": false,
+    "mutate_lives_loss": false
   },
   "localization": ["localization/en-US.json"],
   "documentation": "README.md"
