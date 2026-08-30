@@ -126,9 +126,9 @@ Initial supported build fingerprints:
 
 ---
 
-> **Forward feature work is paused.** Phase 5 passed its original gate, but real-use testing
-> exposed workflow and recovery problems. Phase 5R below must pass before the remaining
-> Phase 6 work or Phase 7 begins.
+> **Phase 5R passed on 2026-08-30.** Real-use testing exposed workflow and recovery problems
+> after the original Phase 5 gate; the revamp below resolved them and passed a disposable
+> fresh-state manager walkthrough. Forward feature work may resume with the remaining Phase 6 work.
 
 ## Phase 5R — Manager workflow and reliability revamp
 
@@ -164,7 +164,7 @@ Initial supported build fingerprints:
 
 - [x] Automated tests cover settings persistence/recovery, profile lifecycle, configuration edits,
   every loader health state, interrupted operations, post-operation verification, and migrations.
-- [ ] From a fresh state, a player can choose BTD5 once, install the loader with one primary action,
+- [x] From a fresh state, a player can choose BTD5 once, install the loader with one primary action,
   install a mod, enable and configure it in the current profile, and launch without editing files.
 - [x] Restarting the manager preserves the game and current profile; invalid saved selections recover
   to an explicit safe state without silently selecting an unrelated profile.

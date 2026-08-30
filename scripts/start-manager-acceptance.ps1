@@ -59,8 +59,14 @@ if (-not [string]::IsNullOrWhiteSpace($VerifyRunDirectory)) {
     $currentProfile = $profiles | ForEach-Object {
         Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
     } | Where-Object { $_.name -eq $settings.currentProfile } | Select-Object -First 1
-    if ($null -eq $currentProfile -or
-        @($currentProfile.mods | Where-Object enabled).Count -eq 0 -or
+    if ($null -eq $currentProfile) {
+        throw 'The persisted current profile was not found.'
+    }
+    $enabledMods = @($currentProfile.mods | Where-Object enabled)
+    $configuredMods = @($enabledMods | Where-Object {
+        $null -ne $_.configuration -and @($_.configuration.PSObject.Properties).Count -gt 0
+    })
+    if ($enabledMods.Count -eq 0 -or $configuredMods.Count -eq 0 -or
         @($currentProfile.launchHistory | Where-Object { $_.mode -eq 'modded' -and $_.successful }).Count -eq 0) {
         throw 'The current profile was not enabled, configured, and launched successfully.'
     }
@@ -69,6 +75,18 @@ if (-not [string]::IsNullOrWhiteSpace($VerifyRunDirectory)) {
         if (-not (Test-Path -LiteralPath (Join-Path $context.gameDirectory $loaderFile))) {
             throw "The loader installation is missing $loaderFile"
         }
+    }
+
+    $runtimeLogPath = Join-Path $context.stateDirectory 'logs\runtime.jsonl'
+    if (-not (Test-Path -LiteralPath $runtimeLogPath)) {
+        throw 'The launched runtime did not create its structured log.'
+    }
+    $runtimeMessages = @(Get-Content -LiteralPath $runtimeLogPath | ForEach-Object {
+        try { ($_ | ConvertFrom-Json).message } catch { $null }
+    })
+    if (-not ($runtimeMessages -contains 'sample.lifecycle:loaded') -or
+        -not ($runtimeMessages -contains 'game_ready_frame_hook')) {
+        throw 'The sample mod did not load and reach the game-ready hook.'
     }
 
     Write-Host 'Fresh-state manager acceptance passed.'

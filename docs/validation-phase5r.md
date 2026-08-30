@@ -2,9 +2,9 @@
 
 Date: 2026-08-30
 
-This record covers the automated acceptance evidence for the manager workflow
-and reliability revamp. It does not close the remaining fresh-state hands-on UI
-walkthrough.
+This record covers the automated and hands-on acceptance evidence for the
+manager workflow and reliability revamp. All Phase 5R implementation gates
+passed.
 
 ## Automated suite
 
@@ -62,10 +62,37 @@ correction action. A missing loader file routes to repair, and a vanished
 profile routes to explicit profile selection. Modded launch rechecks readiness
 and requires the offline-mode acknowledgement before starting a process.
 
-## Remaining hands-on gate
+## Hands-on fresh-state gate
 
-The final unchecked Phase 5R gate is a continuous fresh-state walkthrough in
-the current WPF manager: choose the ignored BTD5 test copy, install through the
-single primary action, drag in a package, create and configure a profile, and
-launch. This must use a disposable manager-state directory and copied game so it
-does not disturb the player's normal state or registered Steam installation.
+The final gate used the current staged Debug manager and a timestamped ignored
+run under `.local/manager-acceptance`. The launcher copied the existing ignored
+test game while excluding loader artifacts, assigned a completely isolated
+manager-state directory, and disabled automatic Steam discovery for that
+process. It did not read or alter normal `%LocalAppData%\BTD5ModLoader` state or
+the registered Steam installation.
+
+The player completed the continuous WPF workflow:
+
+1. chose the printed disposable game directory in Options;
+2. installed the loader using the single context-aware primary action;
+3. created and selected `New Profile`;
+4. dragged `lifecycle-sample.btd5mod` from the staged samples folder;
+5. enabled the mod and changed `greeting` from `Hello from Lua` to `changed`;
+6. acknowledged the offline-mode requirement; and
+7. launched the profile and closed the game normally.
+
+The acceptance verifier found one installation record, one installed package,
+one enabled and configured profile entry, persisted game/profile selection, and
+one successful modded launch entry. The runtime log independently recorded
+`sample.lifecycle:loaded`, `game_ready_frame_hook`, the changed greeting,
+`Lifecycle Sample is ready`, and the deterministic timer callback.
+
+The disposable copy retained the verified Steam Win32 4.8 proprietary hashes:
+
+| File | SHA-256 |
+| --- | --- |
+| `BTD5-Win.exe` | `BDC4F4AEC679F51B8763FF7FE517A2556E392D99576045ECE117FCAFDDA27B70` |
+| `Assets/BTD5.jet` | `906AA89D690C27664CE47A1A2E3EAC756D7CF551FE3E1669EC22AE814346B9A8` |
+
+No BTD5 game process remained after the walkthrough. The isolated manager was
+left open for review, and all acceptance files remain ignored and disposable.
