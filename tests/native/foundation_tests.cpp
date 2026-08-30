@@ -32,6 +32,7 @@
 #include "../../src/native/runtime/runtime_state.hpp"
 #include "../../src/native/runtime/symbol_resolver.hpp"
 #include "../../src/native/runtime/tower_placement_hook.hpp"
+#include "../../src/native/runtime/tower_sale_hook.hpp"
 #include "../../src/native/runtime/tower_upgrade_hook.hpp"
 
 namespace {
@@ -700,6 +701,49 @@ TEST_CASE("tower upgrade hook propagates cancellation and restores its commit bo
     hook.remove();
     REQUIRE_FALSE(hook.installed());
     REQUIRE(std::memcmp(code + 8, instructions.data() + 8, 8) == 0);
+    REQUIRE(VirtualFree(code, 0, MEM_RELEASE) != FALSE);
+}
+
+TEST_CASE("tower sale hook propagates cancellation and restores its commit boundary", "[hooks]") {
+    constexpr std::array<std::byte, 14> instructions{
+        std::byte{0x84}, std::byte{0xC0}, std::byte{0x0F}, std::byte{0x85},
+        std::byte{0x06}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x8D}, std::byte{0xBB}, std::byte{0x14}, std::byte{0xFF},
+        std::byte{0xFF}, std::byte{0xFF}};
+    auto* const code = static_cast<std::byte*>(VirtualAlloc(
+        nullptr, instructions.size(), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    REQUIRE(code != nullptr);
+    std::memcpy(code, instructions.data(), instructions.size());
+
+    bool cancel = false;
+    bool throw_on_dispatch = false;
+    int tower = 1;
+    void* observed = nullptr;
+    btd5loader::runtime::TowerSaleHook hook;
+    std::string error;
+    REQUIRE(hook.install(
+        code + 8,
+        [&cancel, &throw_on_dispatch, &observed](void* const candidate) {
+            observed = candidate;
+            if (throw_on_dispatch) {
+                throw std::runtime_error("fixture failure");
+            }
+            return cancel;
+        },
+        error));
+    REQUIRE(error.empty());
+    REQUIRE(hook.installed());
+
+    REQUIRE_FALSE(btd5loader::runtime::TowerSaleHook::dispatch(&tower));
+    REQUIRE(observed == &tower);
+    cancel = true;
+    REQUIRE(btd5loader::runtime::TowerSaleHook::dispatch(&tower));
+    throw_on_dispatch = true;
+    REQUIRE_FALSE(btd5loader::runtime::TowerSaleHook::dispatch(&tower));
+
+    hook.remove();
+    REQUIRE_FALSE(hook.installed());
+    REQUIRE(std::memcmp(code + 8, instructions.data() + 8, 6) == 0);
     REQUIRE(VirtualFree(code, 0, MEM_RELEASE) != FALSE);
 }
 

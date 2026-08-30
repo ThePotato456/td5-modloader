@@ -199,8 +199,8 @@ Initial supported build fingerprints:
 - [x] Attach stable, lifetime-checked bloon wrappers to live bloon notifications.
 - [x] Add verified bloon spawning, popping, and leaking pre-events.
 - [ ] Make verified pre-events cancellable and mutable.
-  - [x] Route cancelled `tower.upgrading` events through the game's verified native
-    rejected-upgrade path before the first mutation.
+  - [x] Route cancelled `tower.upgrading` and `tower.selling` events through the game's
+    verified native rejection paths before the first side effect.
   - [ ] Add cancellation for the remaining pre-events only after each action's ownership,
     cleanup, and return path is independently verified.
   - [ ] Add validated mutable payload fields at their exact native commit boundaries.

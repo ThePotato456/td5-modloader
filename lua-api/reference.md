@@ -157,10 +157,11 @@ event.tower: GameObject
 - `tower.upgrading`, `tower.upgraded`; and
 - `tower.selling`, `tower.sold`.
 
-Tower payloads and wrappers are currently read-only. `tower.upgrading` is
-cancellable; setting `event.cancelled = true` rejects the pending upgrade before
-its first mutation and suppresses `tower.upgraded`. The wrapper passed to
-`tower.sold` becomes stale after all handlers return.
+Tower payloads and wrappers are currently read-only. `tower.upgrading` and
+`tower.selling` are cancellable. Setting `event.cancelled = true` rejects the
+pending action before its first side effect and suppresses the corresponding
+`tower.upgraded` or `tower.sold` event. The wrapper passed to `tower.sold`
+becomes stale after all handlers return.
 
 ### Bloon events
 

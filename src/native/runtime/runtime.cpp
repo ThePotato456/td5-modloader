@@ -767,7 +767,9 @@ DWORD WINAPI initialize_worker(LPVOID) {
             std::string error;
             const bool installed = g_tower_sale_hook.install(
                 tower_sale_commit_target,
-                [](void* tower) { dispatch_tower_event("tower.selling", tower, false); },
+                [](void* tower) {
+                    return dispatch_tower_event("tower.selling", tower, false, true);
+                },
                 error);
             if (!installed) {
                 g_logger.error("hooks", error);

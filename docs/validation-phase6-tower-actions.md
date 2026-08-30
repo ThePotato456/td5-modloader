@@ -63,6 +63,15 @@ RVA `0x232524`. Automated coverage verifies callback cancellation propagation,
 exact instruction restoration, and fail-safe exception behavior. Interactive
 acceptance of the cancellation path remains part of the Phase 6 gate.
 
+The sale hook applies the same contract to the immediately preceding native
+sellability branch. A cancelled `tower.selling` event jumps to that branch's
+original rejection target at RVA `0x425AED`, before UI, removal, refund, event,
+or cleanup side effects. The target is the native function's shared epilogue;
+non-cancelled sales execute the displaced instruction and resume at RVA
+`0x42531E`. Automated coverage verifies cancellation propagation, exact
+instruction restoration, and exception-safe fallthrough. Interactive
+acceptance remains part of the Phase 6 gate.
+
 ## Interactive copied-game acceptance
 
 The strengthened Release smoke workflow launched the ignored copied game
@@ -112,7 +121,7 @@ no BTD5 process running. The copied game retained its supported hashes:
 
 These are read-only notifications. The wrapper supports only
 `is_valid()`, `id()`, and `kind()`; it exposes no native address, gameplay
-properties, or mutation. `tower.upgrading` is cancellable but its payload is not
-yet mutable. `tower.placing` and `tower.selling` are not yet cancellable or
+properties, or mutation. `tower.upgrading` and `tower.selling` are cancellable,
+but their payloads are not yet mutable. `tower.placing` is not yet cancellable or
 mutable. This result does not claim custom-tower registration, an on-screen
 overlay, or online safety enforcement.

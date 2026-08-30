@@ -11,6 +11,7 @@
 
 namespace btd5loader::runtime {
 void* g_tower_sale_continue{};
+void* g_tower_sale_cancel{};
 void hooked_tower_sale() noexcept;
 
 namespace {
@@ -41,6 +42,16 @@ bool TowerSaleHook::install(void* const target, Callback selling, std::string& e
         error = "tower sale hook target, callback, or instruction validation failed";
         return false;
     }
+    const auto* const bytes = static_cast<const std::byte*>(target);
+    const auto* const eligibility = bytes - 8;
+    if (eligibility[0] != std::byte{0x84} || eligibility[1] != std::byte{0xC0} ||
+        eligibility[2] != std::byte{0x0F} || eligibility[3] != std::byte{0x85}) {
+        error = "tower sale rejection branch validation failed";
+        return false;
+    }
+    std::int32_t rejection_displacement = 0;
+    std::memcpy(&rejection_displacement, eligibility + 4, sizeof(rejection_displacement));
+    g_tower_sale_cancel = const_cast<std::byte*>(bytes) + rejection_displacement;
     const auto source = reinterpret_cast<std::uintptr_t>(target);
     const auto destination = reinterpret_cast<std::uintptr_t>(&hooked_tower_sale);
     const auto displacement = static_cast<std::intptr_t>(destination - (source + 5));
@@ -77,16 +88,21 @@ void TowerSaleHook::remove() noexcept {
     selling_ = {};
     target_ = nullptr;
     g_tower_sale_continue = nullptr;
+    g_tower_sale_cancel = nullptr;
     installed_ = false;
 }
 
 bool TowerSaleHook::installed() const noexcept { return installed_; }
 
-void __stdcall TowerSaleHook::dispatch(void* const tower) noexcept {
+bool __stdcall TowerSaleHook::dispatch(void* const tower) noexcept {
     auto* const active = active_;
     if (active != nullptr && active->selling_) {
-        try { active->selling_(tower); } catch (...) {}
+        try {
+            return active->selling_(tower);
+        } catch (...) {
+        }
     }
+    return false;
 }
 
 void __declspec(naked) hooked_tower_sale() noexcept {
@@ -96,10 +112,15 @@ void __declspec(naked) hooked_tower_sale() noexcept {
         mov eax, dword ptr [ebx - 1Ch]
         push eax
         call TowerSaleHook::dispatch
+        mov dword ptr [esp + 28], eax
         popad
         popfd
+        test al, al
+        jne cancelled
         lea edi, [ebx - 0ECh]
         jmp dword ptr [g_tower_sale_continue]
+    cancelled:
+        jmp dword ptr [g_tower_sale_cancel]
     }
 }
 

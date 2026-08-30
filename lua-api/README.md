@@ -195,7 +195,7 @@ Every handler receives one shared event table. It always contains `name` and
 | `tower.placed` | `tower` | After placement observer dispatch | No |
 | `tower.upgrading` | `tower` | After eligibility and before upgrade mutation | **Yes** |
 | `tower.upgraded` | `tower` | After upgrade observer dispatch | No |
-| `tower.selling` | `tower` | After eligibility and before sale side effects | No |
+| `tower.selling` | `tower` | After eligibility and before sale side effects | **Yes** |
 | `tower.sold` | `tower` | After sale observer dispatch | No |
 | `bloon.spawning` | `bloon` | Before bloon-manager ownership | No |
 | `bloon.spawned` | `bloon` | After spawn observer dispatch | No |
@@ -207,9 +207,10 @@ Every handler receives one shared event table. It always contains `name` and
 `old_lives` and `new_lives` are Lua integers. Tower and bloon payloads are
 opaque game-object userdata.
 
-### Cancelling a lives change or tower upgrade
+### Cancelling a lives change or tower action
 
-`lives.changing` and `tower.upgrading` honor `event.cancelled`:
+`lives.changing`, `tower.upgrading`, and `tower.selling` honor
+`event.cancelled`:
 
 ```lua
 btd5.events.on("lives.changing", function(event)
@@ -223,13 +224,21 @@ btd5.events.on("tower.upgrading", function(event)
         event.cancelled = true
     end
 end)
+
+btd5.events.on("tower.selling", function(event)
+    if should_keep_tower(event.tower) then
+        event.cancelled = true
+    end
+end)
 ```
 
 Cancellation skips the pending lives write and suppresses `lives.changed` for
 that transition. It does not undo the originating bloon leak or reward action.
 Cancelling `tower.upgrading` resumes the game's own rejected-upgrade path before
-the first mutation, so `tower.upgraded` does not run. Setting `cancelled` on any
-other event currently has no gameplay effect.
+the first mutation, so `tower.upgraded` does not run. Cancelling `tower.selling`
+uses the game's rejected-sale path before removal or refund side effects, so
+`tower.sold` does not run. Setting `cancelled` on any other event currently has
+no gameplay effect.
 
 The detailed ordering contract is maintained in
 [Gameplay event contract v1](../docs/gameplay-events.md).
