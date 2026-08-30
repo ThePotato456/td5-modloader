@@ -1436,6 +1436,7 @@ TEST_CASE("published Lua example manifests and entry points load", "[packages][l
         Example{L"hello-world-mod", "example.hello-world"},
         Example{L"event-monitor-mod", "example.event-monitor"},
         Example{L"lives-guardian-mod", "example.lives-guardian"},
+        Example{L"api-debug-mod", "example.api-debug"},
     };
     const auto samples = std::filesystem::path(BTD5ML_SOURCE_DIR) / L"samples";
     const auto test_root = std::filesystem::temp_directory_path() /
@@ -1468,6 +1469,117 @@ TEST_CASE("published Lua example manifests and entry points load", "[packages][l
         REQUIRE(mod.invoke("on_shutdown"));
     }
 
+    std::filesystem::remove_all(test_root);
+}
+
+TEST_CASE("API Debug sample exercises opt-in mutations and cancellations", "[samples][lua]") {
+    using btd5loader::runtime::GameObjectKind;
+    struct TowerState final {
+        std::int32_t pop_count{4};
+        std::int32_t sell_price{100};
+    } tower;
+    struct BloonState final {
+        float health{2.0F};
+    } bloon;
+
+    const auto source = std::filesystem::path(BTD5ML_SOURCE_DIR) /
+                        L"samples" / L"api-debug-mod";
+    const auto test_root = std::filesystem::temp_directory_path() /
+                           (L"btd5ml-api-debug-" + std::to_wstring(GetCurrentProcessId()));
+    btd5loader::runtime::GameObjectRegistry registry;
+    const auto tower_handle = registry.add(GameObjectKind::Tower, &tower);
+    const auto bloon_handle = registry.add(GameObjectKind::Bloon, &bloon);
+
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "example.api-debug";
+    options.storage_directory = test_root;
+    options.resource_directory = source;
+    options.localization.emplace("example.api-debug.ready", "ready");
+    options.configuration = {
+        {"log_every_event", "false"},
+        {"log_object_properties", "true"},
+        {"mutate_tower_pop_count", "true"},
+        {"tower_pop_count", "321"},
+        {"mutate_tower_sell_price", "true"},
+        {"tower_sell_price", "654"},
+        {"mutate_bloon_health", "true"},
+        {"bloon_health_bonus", "2.5"},
+        {"replace_lives_below_minimum", "true"},
+        {"minimum_lives", "5"},
+        {"cancel_lives_losses", "false"},
+        {"cancel_tower_upgrades", "true"},
+        {"cancel_tower_sales", "true"},
+        {"cancel_bloon_leaks", "true"}};
+    options.object_registry = &registry;
+    options.game_object_integer_get = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property) -> std::optional<std::int64_t> {
+        if (kind != GameObjectKind::Tower || object == nullptr) return std::nullopt;
+        const auto* state = static_cast<TowerState*>(object);
+        if (property == "pop_count") return state->pop_count;
+        if (property == "sell_price") return state->sell_price;
+        return std::nullopt;
+    };
+    options.game_object_integer_set = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property,
+        const std::int64_t value,
+        std::string&) {
+        if (kind != GameObjectKind::Tower || object == nullptr) return false;
+        auto* state = static_cast<TowerState*>(object);
+        if (property == "pop_count") state->pop_count = static_cast<std::int32_t>(value);
+        else if (property == "sell_price") state->sell_price = static_cast<std::int32_t>(value);
+        else return false;
+        return true;
+    };
+    options.game_object_number_get = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property) -> std::optional<double> {
+        if (kind != GameObjectKind::Bloon || object == nullptr || property != "health") {
+            return std::nullopt;
+        }
+        return static_cast<BloonState*>(object)->health;
+    };
+    options.game_object_number_set = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property,
+        const double value,
+        std::string&) {
+        if (kind != GameObjectKind::Bloon || object == nullptr || property != "health") {
+            return false;
+        }
+        static_cast<BloonState*>(object)->health = static_cast<float>(value);
+        return true;
+    };
+
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(read_test_file(source / L"lua" / L"main.lua"), "lua/main.lua"));
+    REQUIRE(mod.invoke("on_load"));
+    REQUIRE(mod.invoke("on_ready"));
+
+    REQUIRE(mod.dispatch_event("tower.placed", {{"tower", tower_handle}}).succeeded);
+    REQUIRE(tower.pop_count == 321);
+    REQUIRE(tower.sell_price == 654);
+    REQUIRE(mod.dispatch_event("bloon.spawned", {{"bloon", bloon_handle}}).succeeded);
+    REQUIRE(bloon.health == 4.5F);
+
+    const auto lives = mod.dispatch_event(
+        "lives.changing",
+        {{"old_lives", std::int64_t{10}}, {"new_lives", std::int64_t{1}}},
+        true);
+    REQUIRE(lives.succeeded);
+    REQUIRE_FALSE(lives.cancelled);
+    REQUIRE(std::get<std::int64_t>(lives.fields.at(1).second) == 5);
+    REQUIRE(mod.dispatch_event("tower.upgrading", {{"tower", tower_handle}}, true).cancelled);
+    REQUIRE(mod.dispatch_event("tower.selling", {{"tower", tower_handle}}, true).cancelled);
+    REQUIRE(mod.dispatch_event("bloon.leaking", {{"bloon", bloon_handle}}, true).cancelled);
+
+    mod.advance_timers(60);
+    REQUIRE(mod.invoke("on_shutdown"));
     std::filesystem::remove_all(test_root);
 }
 

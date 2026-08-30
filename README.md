@@ -127,7 +127,8 @@ not emit `lives.changed`.
 Start with the [Lua API reference](lua-api/README.md), the
 [gameplay event contract](docs/gameplay-events.md), and the runnable
 [example mod catalog](samples/README.md). The examples range from a minimal
-Hello World mod to event monitoring and supported lives-change cancellation.
+Hello World mod to event monitoring, supported cancellation, and a configurable
+API Debug Console that demonstrates every implemented runtime feature.
 
 ## Mod package layout
 

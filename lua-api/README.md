@@ -407,3 +407,5 @@ script itself.
   supported cancellation API.
 - [Lifecycle Sample](../samples/lifecycle-mod/README.md): comprehensive runtime
   validation and every live event.
+- [API Debug Console](../samples/api-debug-mod/README.md): all implemented
+  runtime APIs, every event, object inspection, and opt-in mutations.

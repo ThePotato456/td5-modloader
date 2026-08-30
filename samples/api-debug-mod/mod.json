@@ -1,0 +1,31 @@
+{
+  "$schema": "../../schemas/mod-manifest.schema.json",
+  "id": "example.api-debug",
+  "name": "API Debug Console",
+  "author": "BTD5 Mod Loader contributors",
+  "version": "1.0.0",
+  "entry_point": "lua/main.lua",
+  "loader_api": 1,
+  "supported_game_builds": ["steam-win32-4.8"],
+  "dependencies": [],
+  "load_order": { "before": [], "after": [] },
+  "capabilities": ["gameplay.events", "gameplay.mutate", "storage"],
+  "configuration_defaults": {
+    "log_every_event": true,
+    "log_object_properties": true,
+    "mutate_tower_pop_count": false,
+    "tower_pop_count": 123,
+    "mutate_tower_sell_price": false,
+    "tower_sell_price": 777,
+    "mutate_bloon_health": false,
+    "bloon_health_bonus": 1.0,
+    "replace_lives_below_minimum": false,
+    "minimum_lives": 1,
+    "cancel_lives_losses": false,
+    "cancel_tower_upgrades": false,
+    "cancel_tower_sales": false,
+    "cancel_bloon_leaks": false
+  },
+  "localization": ["localization/en-US.json"],
+  "documentation": "README.md"
+}

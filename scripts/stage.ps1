@@ -43,7 +43,8 @@ $sampleDefinitions = @(
     @{ Source = 'lifecycle-mod'; Output = 'lifecycle-sample.btd5mod' },
     @{ Source = 'hello-world-mod'; Output = 'hello-world.btd5mod' },
     @{ Source = 'event-monitor-mod'; Output = 'event-monitor.btd5mod' },
-    @{ Source = 'lives-guardian-mod'; Output = 'lives-guardian.btd5mod' }
+    @{ Source = 'lives-guardian-mod'; Output = 'lives-guardian.btd5mod' },
+    @{ Source = 'api-debug-mod'; Output = 'api-debug-console.btd5mod' }
 )
 $stagedSamplePackages = @()
 foreach ($definition in $sampleDefinitions) {
