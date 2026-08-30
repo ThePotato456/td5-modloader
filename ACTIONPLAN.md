@@ -144,6 +144,11 @@ Initial supported build fingerprints:
   distinguish a missing record, invalid record, unsupported game, and partial installation.
 - [~] Make install and repair transactional, automatically verify their result, preserve foreign or
   modified files, and leave an actionable recovery result after interruption or partial failure.
+  - [x] Preflight every repair before writing so conflicts and unavailable release files leave the
+    existing installation unchanged.
+  - [x] Verify each copied file and the completed operation; roll back loader-owned copies after
+    cancellation, I/O failure, or failed post-operation verification.
+  - [ ] Persist and reconcile an operation journal when the manager process terminates mid-operation.
 - [~] Replace the dual-list profile editor with a current-profile mod list containing an enable
   toggle, selected version, dependency status, load order, Configure action, and Remove action.
 - [x] Add profile create, select, rename, duplicate, and delete workflows with a visible current

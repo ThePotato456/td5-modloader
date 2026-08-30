@@ -71,6 +71,17 @@ try
     Assert((await service.VerifyAsync(gameDirectory)).Success, "Installed loader did not verify.");
 
     var runtimeTarget = Path.Combine(gameDirectory, "btd5loader_runtime.dll");
+    File.Delete(proxyTarget);
+    await File.WriteAllTextAsync(runtimeTarget, "user-modified runtime");
+    var transactionalRepairConflict = await service.RepairAsync(gameDirectory, artifactDirectory);
+    Assert(!transactionalRepairConflict.Success && !File.Exists(proxyTarget),
+        "A failed repair left an earlier restored file behind.");
+    Assert(await File.ReadAllTextAsync(runtimeTarget) == "user-modified runtime",
+        "A failed repair changed a modified loader file.");
+    File.Copy(Path.Combine(artifactDirectory, "btd5loader_runtime.dll"), runtimeTarget, true);
+    Assert((await service.RepairAsync(gameDirectory, artifactDirectory)).Success && File.Exists(proxyTarget),
+        "Repair did not recover after a transaction preflight failure.");
+
     File.Delete(runtimeTarget);
     var missingVerification = await service.VerifyAsync(gameDirectory);
     Assert(!missingVerification.Success &&

@@ -98,18 +98,34 @@ public sealed class LoaderInstallationService
             return new(false, "Existing files conflict with loader installation.", conflicts);
         }
 
+        var prepared = new List<(string RelativePath, string SourcePath, string Sha256)>();
+        foreach (var artifact in artifacts)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            prepared.Add((
+                artifact.RelativePath,
+                artifact.SourcePath,
+                await GameDiscovery.HashFileAsync(artifact.SourcePath, cancellationToken).ConfigureAwait(false)));
+        }
+
         var installed = new List<InstalledFile>();
+        var recordWritten = false;
         try
         {
-            foreach (var artifact in artifacts)
+            foreach (var artifact in prepared)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var target = ToGamePath(installation.Directory, artifact.RelativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 CopyAtomically(artifact.SourcePath, target);
-                installed.Add(new(
-                    artifact.RelativePath,
-                    await GameDiscovery.HashFileAsync(target, cancellationToken).ConfigureAwait(false)));
+                var installedFile = new InstalledFile(artifact.RelativePath, artifact.Sha256);
+                installed.Add(installedFile);
+                var installedHash = await GameDiscovery.HashFileAsync(target, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!string.Equals(installedHash, artifact.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new IOException($"The copied loader file failed verification: {artifact.RelativePath}");
+                }
             }
 
             var record = new LoaderInstallationRecord(
@@ -124,6 +140,7 @@ public sealed class LoaderInstallationService
                 JsonSerializer.Serialize(record, JsonOptions),
                 false,
                 cancellationToken).ConfigureAwait(false);
+            recordWritten = true;
             var verification = await VerifyAsync(installation.Directory, cancellationToken)
                 .ConfigureAwait(false);
             if (!verification.Success)
@@ -133,14 +150,26 @@ public sealed class LoaderInstallationService
             }
             return new(true, "Loader installed successfully.", []);
         }
-        catch
+        catch (OperationCanceledException)
         {
-            foreach (var file in installed)
+            await RollBackCopiesAsync(installation.Directory, installed).ConfigureAwait(false);
+            if (recordWritten)
             {
-                File.Delete(ToGamePath(installation.Directory, file.RelativePath));
+                _ = TryDelete(recordPath);
             }
-            File.Delete(recordPath);
             throw;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            var preserved = await RollBackCopiesAsync(installation.Directory, installed).ConfigureAwait(false);
+            if (recordWritten && !TryDelete(recordPath))
+            {
+                preserved.Add("installation record");
+            }
+            var message = preserved.Count == 0
+                ? "Loader installation failed and all changes were rolled back."
+                : "Loader installation failed. Files changed during rollback were preserved for manual recovery.";
+            return new(false, message + " " + exception.Message, preserved);
         }
     }
 
@@ -322,6 +351,7 @@ public sealed class LoaderInstallationService
         var artifacts = EnumerateArtifacts(artifactDirectory)
             .ToDictionary(artifact => artifact.RelativePath, StringComparer.OrdinalIgnoreCase);
         var conflicts = new List<string>();
+        var pending = new List<(InstalledFile Installed, string SourcePath)>();
         foreach (var installed in record.Files)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -344,17 +374,67 @@ public sealed class LoaderInstallationService
                 conflicts.Add(installed.RelativePath);
                 continue;
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            CopyAtomically(artifact.SourcePath, target);
+            pending.Add((installed, artifact.SourcePath));
         }
         if (conflicts.Count != 0)
         {
-            return new(false, "Repair found modified or unavailable loader files.", conflicts);
+            return new(
+                false,
+                "Repair made no changes because modified or unavailable loader files require recovery.",
+                conflicts);
         }
-        var verification = await VerifyAsync(gameDirectory, cancellationToken).ConfigureAwait(false);
-        return verification.Success
-            ? new(true, "Loader installation repaired and verified.", [])
-            : new(false, "Repair completed but post-repair verification failed.", verification.Conflicts);
+
+        var restored = new List<InstalledFile>();
+        try
+        {
+            foreach (var repair in pending)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var target = ToGamePath(record.GameDirectory, repair.Installed.RelativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                CopyAtomically(repair.SourcePath, target);
+                restored.Add(repair.Installed);
+                var restoredHash = await GameDiscovery.HashFileAsync(target, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!string.Equals(
+                        restoredHash,
+                        repair.Installed.Sha256,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new IOException(
+                        $"The repaired loader file failed verification: {repair.Installed.RelativePath}");
+                }
+            }
+
+            var verification = await VerifyAsync(gameDirectory, cancellationToken).ConfigureAwait(false);
+            if (verification.Success)
+            {
+                return new(true, "Loader installation repaired and verified.", []);
+            }
+
+            var preserved = await RollBackCopiesAsync(record.GameDirectory, restored).ConfigureAwait(false);
+            return new(
+                false,
+                preserved.Count == 0
+                    ? "Repair failed verification and the pre-repair state was restored."
+                    : "Repair failed verification. Changed files were preserved for manual recovery.",
+                verification.Conflicts.Concat(preserved).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        }
+        catch (OperationCanceledException)
+        {
+            await RollBackCopiesAsync(record.GameDirectory, restored).ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            var preserved = await RollBackCopiesAsync(record.GameDirectory, restored).ConfigureAwait(false);
+            return new(
+                false,
+                preserved.Count == 0
+                    ? "Repair failed and the pre-repair state was restored. " + exception.Message
+                    : "Repair failed. Changed files were preserved for manual recovery. " + exception.Message,
+                preserved);
+        }
     }
 
     public async Task<InstallationResult> UninstallAsync(
@@ -502,6 +582,50 @@ public sealed class LoaderInstallationService
         finally
         {
             File.Delete(temporary);
+        }
+    }
+
+    private static async Task<List<string>> RollBackCopiesAsync(
+        string gameDirectory,
+        IEnumerable<InstalledFile> copiedFiles)
+    {
+        var preserved = new List<string>();
+        foreach (var copied in copiedFiles.Reverse())
+        {
+            var target = ToGamePath(gameDirectory, copied.RelativePath);
+            if (!File.Exists(target))
+            {
+                continue;
+            }
+            try
+            {
+                var hash = await GameDiscovery.HashFileAsync(target, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (!string.Equals(hash, copied.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    preserved.Add(copied.RelativePath);
+                    continue;
+                }
+                File.Delete(target);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                preserved.Add(copied.RelativePath);
+            }
+        }
+        return preserved;
+    }
+
+    private static bool TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 
