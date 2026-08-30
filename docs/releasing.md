@@ -33,8 +33,10 @@ The script performs these gates in order:
 7. Verify required files and create a versioned ZIP, checksum, and release-notes
    template under `out/release/v<version>`.
 
-If a validation step fails, no Git commit or tag is created and the script
-restores both version files to their original contents. Fix the failure and
+If a validation step fails, no Git commit or tag is created. The script restores
+both version files to their exact pre-run contents, reads them back to verify
+the cleanup, and reports that restoration. If either file cannot be restored,
+the warning lists every file that still needs manual review. Fix the failure and
 rerun from the clean working tree.
 
 ## Commit and push

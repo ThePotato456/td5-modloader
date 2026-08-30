@@ -24,6 +24,7 @@ $notesPath = Join-Path $releaseRoot 'RELEASE_NOTES.md'
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $originalProductInfo = $null
 $originalNativeVersion = $null
+$versionUpdateStarted = $false
 $releasePrepared = $false
 
 function Invoke-CheckedScript {
@@ -64,6 +65,52 @@ function Set-VersionConstant {
     [System.IO.File]::WriteAllText($Path, $updated, $utf8NoBom)
 }
 
+function Restore-VersionFilesAfterFailure {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ProductInfoPath,
+        [AllowNull()]
+        [string]$OriginalProductInfo,
+        [Parameter(Mandatory)]
+        [string]$NativeVersionPath,
+        [AllowNull()]
+        [string]$OriginalNativeVersion
+    )
+
+    $unrestored = [System.Collections.Generic.List[string]]::new()
+    $files = @(
+        @{ Path = $ProductInfoPath; Contents = $OriginalProductInfo },
+        @{ Path = $NativeVersionPath; Contents = $OriginalNativeVersion }
+    )
+    foreach ($file in $files) {
+        if ($null -eq $file.Contents) {
+            $unrestored.Add($file.Path)
+            continue
+        }
+        try {
+            [System.IO.File]::WriteAllText($file.Path, $file.Contents, $utf8NoBom)
+            $restored = [System.IO.File]::ReadAllText($file.Path)
+            if ($restored -cne $file.Contents) {
+                $unrestored.Add($file.Path)
+            }
+        }
+        catch {
+            $unrestored.Add($file.Path)
+        }
+    }
+
+    if ($unrestored.Count -eq 0) {
+        Write-Warning 'Release preparation failed; both version files were restored to their pre-run contents.'
+        return
+    }
+
+    Write-Warning 'Release preparation failed and automatic version-file cleanup was incomplete.'
+    Write-Warning 'Review or restore these files before running prepare-release again:'
+    foreach ($path in $unrestored) {
+        Write-Warning "  $path"
+    }
+}
+
 function Assert-SafeGeneratedPath {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -99,6 +146,7 @@ try {
     Write-Host "Preparing BTD5 Mod Loader $tag" -ForegroundColor Green
     $originalProductInfo = [System.IO.File]::ReadAllText($productInfoPath)
     $originalNativeVersion = [System.IO.File]::ReadAllText($nativeVersionPath)
+    $versionUpdateStarted = $true
     Set-VersionConstant `
         -Path $productInfoPath `
         -Pattern 'public const string Version = "[^"]+";' `
@@ -188,6 +236,7 @@ See ``README.md`` inside the bundle for installation, compatibility, and safety 
     Write-Host "Archive:  $archivePath"
     Write-Host "Checksum: $checksumPath"
     Write-Host "Notes:    $notesPath"
+    Write-Host "Version files were intentionally left at $Version for the release commit."
     Write-Host "`nReview the version changes and artifact, then run:"
     Write-Host "  git add `"$productInfoPath`" `"$nativeVersionPath`""
     Write-Host "  git commit -m `"chore(release): prepare $tag`""
@@ -200,11 +249,12 @@ See ``README.md`` inside the bundle for installation, compatibility, and safety 
     }
 }
 finally {
-    if (-not $releasePrepared -and $null -ne $originalProductInfo -and
-        $null -ne $originalNativeVersion) {
-        [System.IO.File]::WriteAllText($productInfoPath, $originalProductInfo, $utf8NoBom)
-        [System.IO.File]::WriteAllText($nativeVersionPath, $originalNativeVersion, $utf8NoBom)
-        Write-Warning 'Release preparation failed; version-file changes were restored.'
+    if (-not $releasePrepared -and $versionUpdateStarted) {
+        Restore-VersionFilesAfterFailure `
+            -ProductInfoPath $productInfoPath `
+            -OriginalProductInfo $originalProductInfo `
+            -NativeVersionPath $nativeVersionPath `
+            -OriginalNativeVersion $originalNativeVersion
     }
     Pop-Location
 }
