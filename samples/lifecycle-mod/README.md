@@ -22,3 +22,7 @@ mutation smoke test enables it to replace a proposed life loss with a one-life
 gain. The resulting `lives.changed` event must contain the replacement value,
 which proves the Lua mutation reached the native commit boundary. Do not enable
 this test-only behavior during ordinary sample use.
+
+The `mutate_tower_pop_count` setting defaults to `false`. Its dedicated live
+smoke test reads a newly placed tower's pop count, changes it to `123` through
+the validated wrapper setter, reads it back, and logs the transition.

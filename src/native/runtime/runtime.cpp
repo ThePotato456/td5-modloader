@@ -53,6 +53,11 @@ btd5loader::runtime::TowerSaleHook g_tower_sale_hook;
 btd5loader::runtime::TowerUpgradeHook g_tower_upgrade_hook;
 btd5loader::runtime::HookTransaction g_hooks;
 
+using TowerPopCountGetter = std::int32_t(__thiscall*)(void*);
+using TowerPopCountSetter = void(__thiscall*)(void*, std::int32_t);
+TowerPopCountGetter g_tower_pop_count_get{};
+TowerPopCountSetter g_tower_pop_count_set{};
+
 void dispatch_game_event(
     const std::string_view name,
     const btd5loader::runtime::LuaEventFields& fields = {}) {
@@ -424,6 +429,34 @@ bool load_active_mods(const std::string& build_id) {
         options.resource_directory = resource_directory;
         options.configuration = requested.configuration;
         options.object_registry = &g_game_objects;
+        options.game_object_integer_get = [](
+            const btd5loader::runtime::GameObjectKind kind,
+            void* const object,
+            const std::string_view property) -> std::optional<std::int64_t> {
+            if (kind != btd5loader::runtime::GameObjectKind::Tower ||
+                property != "pop_count" || object == nullptr || g_tower_pop_count_get == nullptr) {
+                return std::nullopt;
+            }
+            return static_cast<std::int64_t>(g_tower_pop_count_get(object));
+        };
+        options.game_object_integer_set = [](
+            const btd5loader::runtime::GameObjectKind kind,
+            void* const object,
+            const std::string_view property,
+            const std::int64_t value,
+            std::string& error) {
+            if (kind != btd5loader::runtime::GameObjectKind::Tower ||
+                property != "pop_count" || object == nullptr || g_tower_pop_count_set == nullptr) {
+                error = "tower pop_count is unavailable on this game build";
+                return false;
+            }
+            if (value < 0 || value > (std::numeric_limits<std::int32_t>::max)()) {
+                error = "tower pop_count is outside the supported range";
+                return false;
+            }
+            g_tower_pop_count_set(object, static_cast<std::int32_t>(value));
+            return true;
+        };
         if (!load_localization(resource_directory, options.localization, error)) {
             g_logger.error("mods", requested.id + ":" + error);
             return rollback();
@@ -565,6 +598,18 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "tower.manager.place";
         });
+    const auto tower_pop_count_get = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "tower.pop_count.get";
+        });
+    const auto tower_pop_count_set = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "tower.pop_count.set";
+        });
     const auto tower_upgrade_commit = std::find_if(
         resolution.resolved.begin(),
         resolution.resolved.end(),
@@ -654,6 +699,8 @@ DWORD WINAPI initialize_worker(LPVOID) {
         tower_upgraded_vtable == resolution.resolved.end() ||
         tower_sold_vtable == resolution.resolved.end() ||
         tower_manager_place == resolution.resolved.end() ||
+        tower_pop_count_get == resolution.resolved.end() ||
+        tower_pop_count_set == resolution.resolved.end() ||
         tower_upgrade_commit == resolution.resolved.end() ||
         tower_sale_commit == resolution.resolved.end() ||
         bloon_spawned_vtable == resolution.resolved.end() ||
@@ -691,6 +738,10 @@ DWORD WINAPI initialize_worker(LPVOID) {
         reinterpret_cast<std::uintptr_t>(executable) + tower_sold_vtable->relative_virtual_address);
     void* const tower_manager_place_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + tower_manager_place->relative_virtual_address);
+    g_tower_pop_count_get = reinterpret_cast<TowerPopCountGetter>(
+        reinterpret_cast<std::uintptr_t>(executable) + tower_pop_count_get->relative_virtual_address);
+    g_tower_pop_count_set = reinterpret_cast<TowerPopCountSetter>(
+        reinterpret_cast<std::uintptr_t>(executable) + tower_pop_count_set->relative_virtual_address);
     void* const tower_upgrade_commit_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + tower_upgrade_commit->relative_virtual_address);
     void* const tower_sale_commit_target = reinterpret_cast<void*>(
@@ -996,6 +1047,8 @@ extern "C" btd5loader::runtime::State WINAPI BTD5Loader_GetState() {
 extern "C" void WINAPI BTD5Loader_Shutdown() {
     using btd5loader::runtime::State;
     g_hooks.rollback();
+    g_tower_pop_count_get = nullptr;
+    g_tower_pop_count_set = nullptr;
     g_game_objects.begin_scene();
     {
         std::scoped_lock lock(g_mods_mutex);

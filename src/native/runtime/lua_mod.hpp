@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -34,6 +35,11 @@ struct LuaModOptions final {
     std::size_t event_recursion_limit{8};
     std::size_t maximum_event_handlers{256};
     GameObjectRegistry* object_registry{};
+    std::function<std::optional<std::int64_t>(
+        GameObjectKind, void*, std::string_view)> game_object_integer_get;
+    std::function<bool(
+        GameObjectKind, void*, std::string_view, std::int64_t, std::string&)>
+        game_object_integer_set;
     std::function<void(std::string_view, std::string_view)> log;
 };
 
@@ -100,6 +106,8 @@ private:
     static int api_game_object_is_valid(lua_State* state);
     static int api_game_object_id(lua_State* state);
     static int api_game_object_kind(lua_State* state);
+    static int api_game_object_pop_count(lua_State* state);
+    static int api_game_object_set_pop_count(lua_State* state);
 
     static LuaMod* from_upvalue(lua_State* state);
     void open_sandbox();

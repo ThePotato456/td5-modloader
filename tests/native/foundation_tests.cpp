@@ -556,6 +556,91 @@ TEST_CASE("Lua bloon event wrappers preserve identity and reject removal", "[lua
     REQUIRE(mod.last_error().find("event payload is invalid or stale") != std::string_view::npos);
 }
 
+TEST_CASE("Lua tower pop count validates writes and rejects stale objects", "[lua][objects]") {
+    using btd5loader::runtime::GameObjectKind;
+    btd5loader::runtime::GameObjectRegistry registry;
+    std::int32_t pop_count = 7;
+    const auto handle = registry.add(GameObjectKind::Tower, &pop_count);
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.tower-properties";
+    options.object_registry = &registry;
+    options.game_object_integer_get = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property) -> std::optional<std::int64_t> {
+        if (kind != GameObjectKind::Tower || property != "pop_count" || object == nullptr) {
+            return std::nullopt;
+        }
+        return *static_cast<std::int32_t*>(object);
+    };
+    options.game_object_integer_set = [](
+        const GameObjectKind kind,
+        void* const object,
+        const std::string_view property,
+        const std::int64_t value,
+        std::string&) {
+        if (kind != GameObjectKind::Tower || property != "pop_count" || object == nullptr) {
+            return false;
+        }
+        *static_cast<std::int32_t*>(object) = static_cast<std::int32_t>(value);
+        return true;
+    };
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        local tower
+        btd5.events.on("tower.placed", function(event)
+            tower = event.tower
+            assert(tower:pop_count() == 7)
+            assert(tower:set_pop_count(42))
+            assert(tower:pop_count() == 42)
+        end)
+        btd5.events.on("tower.upgraded", function()
+            tower:set_pop_count(1)
+        end)
+    )lua", "tower-properties.lua"));
+
+    REQUIRE(mod.dispatch_event("tower.placed", {{"tower", handle}}).succeeded);
+    REQUIRE(pop_count == 42);
+    REQUIRE(registry.invalidate(handle));
+    const auto stale = mod.dispatch_event("tower.upgraded");
+    REQUIRE_FALSE(stale.succeeded);
+    REQUIRE(mod.last_error().find("game object is stale") != std::string_view::npos);
+}
+
+TEST_CASE("Lua tower pop count rejects invalid values and object kinds", "[lua][objects]") {
+    using btd5loader::runtime::GameObjectKind;
+    btd5loader::runtime::GameObjectRegistry registry;
+    std::int32_t tower = 3;
+    std::int32_t bloon = 0;
+    const auto tower_handle = registry.add(GameObjectKind::Tower, &tower);
+    const auto bloon_handle = registry.add(GameObjectKind::Bloon, &bloon);
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.invalid-tower-properties";
+    options.object_registry = &registry;
+    options.game_object_integer_set = [](
+        GameObjectKind, void*, std::string_view, std::int64_t, std::string&) { return true; };
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        btd5.events.on("tower.placed", function(event)
+            event.tower:set_pop_count(-1)
+        end)
+        btd5.events.on("tower.upgraded", function(event)
+            event.tower:set_pop_count(1.5)
+        end)
+        btd5.events.on("bloon.spawned", function(event)
+            event.bloon:set_pop_count(1)
+        end)
+    )lua", "invalid-tower-properties.lua"));
+
+    REQUIRE_FALSE(mod.dispatch_event("tower.placed", {{"tower", tower_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("supported range") != std::string_view::npos);
+    REQUIRE_FALSE(mod.dispatch_event("tower.upgraded", {{"tower", tower_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("must be an integer") != std::string_view::npos);
+    REQUIRE_FALSE(mod.dispatch_event("bloon.spawned", {{"bloon", bloon_handle}}).succeeded);
+    REQUIRE(mod.last_error().find("only on tower") != std::string_view::npos);
+    REQUIRE(tower == 3);
+}
+
 TEST_CASE("SHA-256 fingerprints are stable", "[compatibility]") {
     const auto test_root = std::filesystem::temp_directory_path() /
                            (L"btd5ml-hash-test-" + std::to_wstring(GetCurrentProcessId()));

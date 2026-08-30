@@ -43,6 +43,16 @@ function GameObject:id() end
 ---@return BTD5ObjectKind
 function GameObject:kind() end
 
+---@class BTD5Tower: BTD5GameObject
+local Tower = {}
+
+---@return integer
+function Tower:pop_count() end
+
+---@param value integer # Accepted range is 0..2147483647.
+---@return boolean
+function Tower:set_pop_count(value) end
+
 ---@class BTD5Event
 ---@field name BTD5EventName
 ---@field cancelled boolean
@@ -54,7 +64,7 @@ function GameObject:kind() end
 ---@field new_lives integer
 
 ---@class BTD5TowerEvent: BTD5Event
----@field tower BTD5GameObject
+---@field tower BTD5Tower
 
 ---@class BTD5BloonEvent: BTD5Event
 ---@field bloon BTD5GameObject

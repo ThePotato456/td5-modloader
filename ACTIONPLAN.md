@@ -211,6 +211,10 @@ Initial supported build fingerprints:
       - [x] Prove replacement in the copied game with the dedicated
         `--expect-lives-mutation` smoke scenario.
 - [ ] Make supported live-object properties mutable through validated setters; reject invalid types, ranges, phases, and stale objects.
+  - [x] Add fingerprinted tower `pop_count()` and `set_pop_count(value)` access,
+    including strict integer/range/kind/lifetime validation.
+  - [x] Prove the tower pop-count setter in the copied game with the dedicated
+    `--expect-tower-pop-count` smoke scenario.
 - [x] Guard against recursive event loops when a mod mutation triggers another game event.
 - [ ] Document which fields are mutable, when changes take effect, and which mutations may be rejected.
 

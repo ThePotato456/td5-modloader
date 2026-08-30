@@ -36,6 +36,8 @@ section and passed their validation patterns:
 - `player.lives.gain.write`
 - `player.lives.loss.write`
 - `tower.manager.place`
+- `tower.pop_count.get`
+- `tower.pop_count.set`
 - `tower.upgrade.commit`
 - `tower.sale.commit`
 - `tower.factory.constructor`

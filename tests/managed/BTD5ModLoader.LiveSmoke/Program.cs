@@ -12,6 +12,7 @@ if (args.Length is < 4 or > 5 ||
         !string.Equals(args[4], "--expect-lives-loss", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-lives-cancel", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-lives-mutation", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-tower-pop-count", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal)))
 {
@@ -20,7 +21,7 @@ if (args.Length is < 4 or > 5 ||
         "<package> <state-root> " +
         "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
         "--expect-cash-action|--expect-lives-loss|--expect-lives-cancel|--expect-lives-mutation|" +
-        "--expect-tower-actions|" +
+        "--expect-tower-pop-count|--expect-tower-actions|" +
         "--expect-bloon-actions]");
     return 2;
 }
@@ -45,6 +46,8 @@ var expectLivesCancel = args.Length == 5 &&
     string.Equals(args[4], "--expect-lives-cancel", StringComparison.Ordinal);
 var expectLivesMutation = args.Length == 5 &&
     string.Equals(args[4], "--expect-lives-mutation", StringComparison.Ordinal);
+var expectTowerPopCount = args.Length == 5 &&
+    string.Equals(args[4], "--expect-tower-pop-count", StringComparison.Ordinal);
 var expectTowerActions = args.Length == 5 &&
     string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal);
 var expectBloonActions = args.Length == 5 &&
@@ -117,7 +120,7 @@ try
     {
         return Fail("Package configuration defaults were not inherited by the profile.");
     }
-    if (expectLivesCancel || expectLivesMutation)
+    if (expectLivesCancel || expectLivesMutation || expectTowerPopCount)
     {
         var profile = profileChange.Profile!;
         var configuredMods = profile.Mods.Select(mod => mod.Id != package.Package.Id
@@ -126,7 +129,11 @@ try
             {
                 Configuration = new Dictionary<string, System.Text.Json.JsonElement>(mod.Configuration)
                 {
-                    [expectLivesCancel ? "cancel_lives_loss" : "mutate_lives_loss"] =
+                    [expectLivesCancel
+                        ? "cancel_lives_loss"
+                        : expectLivesMutation
+                            ? "mutate_lives_loss"
+                            : "mutate_tower_pop_count"] =
                         System.Text.Json.JsonSerializer.SerializeToElement(true)
                 }
             });
@@ -147,7 +154,7 @@ try
     gameProcess = Process.GetProcessById(launch.ProcessId.Value);
     var deadline = DateTimeOffset.UtcNow.AddSeconds(
         expectMatchExit || expectRound || expectLivesLoss || expectLivesCancel || expectLivesMutation ||
-            expectTowerActions || expectBloonActions
+            expectTowerPopCount || expectTowerActions || expectBloonActions
             ? 240
             : expectMatch || expectCash ? 180 : 20);
     while (DateTimeOffset.UtcNow < deadline)
@@ -237,6 +244,9 @@ try
             upgradedTower.Groups[1].Value == sellingTower.Groups[1].Value &&
             placedTower.Groups[1].Value == soldTower.Groups[1].Value &&
             log.Contains("Lifecycle Sample confirmed sold tower became stale", StringComparison.Ordinal);
+        var towerPopCountMutation = Regex.Match(
+            log,
+            "Lifecycle Sample mutated tower\\.pop_count (\\d+)->123");
         var spawningBloons = Regex.Matches(log, "Lifecycle Sample observed bloon\\.spawning id=(\\d+)")
             .Select(match => match.Groups[1].Value)
             .ToHashSet(StringComparer.Ordinal);
@@ -262,6 +272,7 @@ try
             (!expectLivesLoss || (matchReady && livesLifecycle)) &&
             (!expectLivesCancel || (matchReady && livesCancellation)) &&
             (!expectLivesMutation || (matchReady && livesMutation)) &&
+            (!expectTowerPopCount || (matchReady && towerPopCountMutation.Success)) &&
             (!expectTowerActions || (matchReady && towerActions)) &&
             (!expectBloonActions || (matchReady && bloonActions)))
         {
@@ -274,6 +285,8 @@ try
                 ? "Lua cancelled a verified lives loss and the native write did not occur in BTD5."
                 : expectLivesMutation
                 ? "Lua replaced a verified lives loss and lives.changed observed the mutated value in BTD5."
+                : expectTowerPopCount
+                ? "Lua changed a live tower pop count through its validated wrapper setter in BTD5."
                 : expectLivesLoss
                 ? "Lua observed a verified lives loss after match entry in BTD5."
                 : expectCashAction
@@ -298,6 +311,8 @@ try
         ? "Timed out waiting for a cancelled lives loss with no post-change notification."
         : expectLivesMutation
         ? "Timed out waiting for a mutated lives loss and matching post-change notification."
+        : expectTowerPopCount
+        ? "Timed out waiting for a placed tower and validated pop-count mutation."
         : expectLivesLoss
         ? "Timed out waiting for a verified lives loss and Lua event evidence."
         : expectCashAction

@@ -110,6 +110,18 @@ object:kind(): "tower" | "bloon"
 `is_valid()` is safe on stale objects. `id()` and `kind()` raise an error after
 the native object is destroyed or its scene ends.
 
+### `Tower`
+
+```lua
+tower:pop_count(): integer
+tower:set_pop_count(value: integer): boolean
+```
+
+`pop_count()` reads the live tower's accumulated pop count.
+`set_pop_count()` accepts an integer in `0..2147483647`, applies it immediately,
+and returns `true`. Both calls raise a contained error for a stale wrapper, the
+wrong object kind, an invalid type or range, or an unsupported game build.
+
 ## Base event table
 
 Every handler receives:
@@ -161,7 +173,8 @@ event.tower: GameObject
 - `tower.upgrading`, `tower.upgraded`; and
 - `tower.selling`, `tower.sold`.
 
-Tower payloads and wrappers are currently read-only. `tower.upgrading` and
+Tower event tables are read-only, while the live tower wrapper exposes the
+validated `pop_count()` and `set_pop_count()` methods. `tower.upgrading` and
 `tower.selling` are cancellable. Setting `event.cancelled = true` rejects the
 pending action before its first side effect and suppresses the corresponding
 `tower.upgraded` or `tower.sold` event. The wrapper passed to `tower.sold`
@@ -202,7 +215,7 @@ launch, arbitrary filesystem access, and networking.
 
 The following are planned but are not valid v1 calls today:
 
-- gameplay-property getters and setters;
-- cancellation for tower or bloon actions;
+- additional gameplay-property getters and setters;
+- cancellation for `tower.placing`, `bloon.spawning`, or `bloon.popping`;
 - cash balance payloads or mutation; and
 - `btd5.towers.register` and the custom tower content API.

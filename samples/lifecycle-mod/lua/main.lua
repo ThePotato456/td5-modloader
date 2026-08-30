@@ -85,6 +85,13 @@ btd5.events.on("tower.placed", function(event)
     assert(event.tower:is_valid())
     assert(event.tower:id() == pending_tower_placement)
     log("Lifecycle Sample observed tower.placed id=" .. event.tower:id())
+    if btd5.config.get("mutate_tower_pop_count") == "true" then
+        local before = event.tower:pop_count()
+        assert(event.tower:set_pop_count(123))
+        local after = event.tower:pop_count()
+        assert(after == 123)
+        log("Lifecycle Sample mutated tower.pop_count " .. before .. "->" .. after)
+    end
     pending_tower_placement = nil
 end)
 

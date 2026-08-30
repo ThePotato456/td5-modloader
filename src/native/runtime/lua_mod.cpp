@@ -33,6 +33,7 @@ constexpr std::array<std::string_view, 24> kEventNames{
     "bloon.popping", "bloon.popped", "bloon.leaking", "bloon.leaked"};
 
 struct LuaGameObject final {
+    LuaMod* owner{};
     GameObjectRegistry* registry{};
     GameObjectHandle handle;
 };
@@ -508,6 +509,68 @@ int LuaMod::api_game_object_kind(lua_State* state) {
     return 1;
 }
 
+int LuaMod::api_game_object_pop_count(lua_State* state) {
+    const auto* object = static_cast<LuaGameObject*>(
+        luaL_checkudata(state, 1, kGameObjectMetatable));
+    void* const resolved = object->registry == nullptr
+                               ? nullptr
+                               : object->registry->resolve(object->handle, object->handle.kind);
+    if (resolved == nullptr) {
+        return luaL_error(state, "game object is stale");
+    }
+    if (object->handle.kind != GameObjectKind::Tower) {
+        return luaL_error(state, "pop_count is available only on tower objects");
+    }
+    if (object->owner == nullptr || !object->owner->options_.game_object_integer_get) {
+        return luaL_error(state, "tower pop_count is unavailable on this game build");
+    }
+    const auto value = object->owner->options_.game_object_integer_get(
+        object->handle.kind, resolved, "pop_count");
+    if (!value) {
+        return luaL_error(state, "tower pop_count could not be read");
+    }
+    lua_pushinteger(state, static_cast<lua_Integer>(*value));
+    return 1;
+}
+
+int LuaMod::api_game_object_set_pop_count(lua_State* state) {
+    const auto* object = static_cast<LuaGameObject*>(
+        luaL_checkudata(state, 1, kGameObjectMetatable));
+    void* const resolved = object->registry == nullptr
+                               ? nullptr
+                               : object->registry->resolve(object->handle, object->handle.kind);
+    if (resolved == nullptr) {
+        return luaL_error(state, "game object is stale");
+    }
+    if (object->handle.kind != GameObjectKind::Tower) {
+        return luaL_error(state, "set_pop_count is available only on tower objects");
+    }
+    if (lua_isinteger(state, 2) == 0) {
+        return luaL_error(state, "tower pop_count must be an integer");
+    }
+    const lua_Integer requested = lua_tointeger(state, 2);
+    if (requested < 0 || requested > (std::numeric_limits<std::int32_t>::max)()) {
+        return luaL_error(state, "tower pop_count is outside the supported range");
+    }
+    if (object->owner == nullptr || !object->owner->options_.game_object_integer_set) {
+        return luaL_error(state, "tower pop_count is unavailable on this game build");
+    }
+    std::string error;
+    if (!object->owner->options_.game_object_integer_set(
+            object->handle.kind,
+            resolved,
+            "pop_count",
+            static_cast<std::int64_t>(requested),
+            error)) {
+        return luaL_error(
+            state,
+            "%s",
+            error.empty() ? "tower pop_count could not be changed" : error.c_str());
+    }
+    lua_pushboolean(state, 1);
+    return 1;
+}
+
 LuaMod* LuaMod::from_upvalue(lua_State* state) {
     return static_cast<LuaMod*>(lua_touserdata(state, lua_upvalueindex(1)));
 }
@@ -541,6 +604,10 @@ void LuaMod::register_api() {
         lua_setfield(state_, -2, "id");
         lua_pushcfunction(state_, &LuaMod::api_game_object_kind);
         lua_setfield(state_, -2, "kind");
+        lua_pushcfunction(state_, &LuaMod::api_game_object_pop_count);
+        lua_setfield(state_, -2, "pop_count");
+        lua_pushcfunction(state_, &LuaMod::api_game_object_set_pop_count);
+        lua_setfield(state_, -2, "set_pop_count");
         lua_setfield(state_, -2, "__index");
         lua_pushliteral(state_, "BTD5 game object v1");
         lua_setfield(state_, -2, "__metatable");
@@ -662,6 +729,7 @@ bool LuaMod::push_event_value(const LuaEventValue& value) {
 
 void LuaMod::push_game_object(const GameObjectHandle& handle) {
     auto* object = static_cast<LuaGameObject*>(lua_newuserdatauv(state_, sizeof(LuaGameObject), 0));
+    object->owner = this;
     object->registry = options_.object_registry;
     object->handle = handle;
     luaL_setmetatable(state_, kGameObjectMetatable);

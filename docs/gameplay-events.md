@@ -107,10 +107,10 @@ Pre-event cancellation and field mutation are represented by a shared event
 table, so earlier handler changes are visible to later handlers. A hook may
 honor `event.cancelled = true` only when that event is documented as
 cancellable. `lives.changing` currently honors cancellation. Its
-`old_lives` and `new_lives` fields are read-only inputs; assigning different
-values does not change the native write. Field schemas, ranges, and other live
-mutability remain unimplemented; game hooks must not consume arbitrary table
-changes until those validators are added.
+`old_lives` is read-only. `new_lives` accepts integers in
+`0..2147483647`, and an accepted replacement changes the pending native write.
+Other event fields remain read-only until their validators and exact commit
+boundaries are implemented.
 
 ## Object wrappers
 
@@ -130,6 +130,12 @@ invalidates every wrapper from the previous scene. IDs may be reused, but a new
 generation prevents an old wrapper from resolving to the replacement object.
 Calling `id()` or `kind()` on a stale wrapper raises a contained Lua error.
 
+Tower wrappers additionally expose `pop_count()` and
+`set_pop_count(value)`. The setter accepts integers in `0..2147483647`, applies
+the value immediately through the fingerprinted game's verified virtual
+setter, and rejects stale wrappers, other object kinds, invalid types or ranges,
+and builds where the accessor symbols do not resolve uniquely.
+
 For live tower notifications, `tower.placing` creates the tower's stable handle
 before manager ownership and `tower.placed` reuses it after the native spawned
 event. Upgrades retain that identity, and sale invalidates the handle after all
@@ -143,5 +149,6 @@ child layers are distinct objects with distinct handles. Popped and leaked
 wrappers remain valid during their callbacks, then become stale after all
 handlers return. Match teardown invalidates any remaining bloon handles.
 
-Game-specific getters and validated setters will be added with the corresponding
-live hooks. Raw addresses are never part of the public Lua API.
+Additional game-specific getters and validated setters will be added only with
+their corresponding verified native accessors. Raw addresses are never part of
+the public Lua API.
