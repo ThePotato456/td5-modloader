@@ -16,7 +16,8 @@ if (args.Length is < 4 or > 5 ||
         !string.Equals(args[4], "--expect-tower-cancellation", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-direct-properties", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal) &&
-        !string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal)))
+        !string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-disabled", StringComparison.Ordinal)))
 {
     Console.Error.WriteLine(
         "Usage: BTD5ModLoader.LiveSmoke <game-directory> <artifact-directory> " +
@@ -24,7 +25,7 @@ if (args.Length is < 4 or > 5 ||
         "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
         "--expect-cash-action|--expect-lives-loss|--expect-lives-cancel|--expect-lives-mutation|" +
         "--expect-tower-pop-count|--expect-tower-cancellation|--expect-tower-actions|" +
-        "--expect-bloon-actions|--expect-direct-properties]");
+        "--expect-bloon-actions|--expect-direct-properties|--expect-disabled]");
     return 2;
 }
 
@@ -32,7 +33,9 @@ var gameDirectory = Path.GetFullPath(args[0]);
 var artifactDirectory = Path.GetFullPath(args[1]);
 var packagePath = Path.GetFullPath(args[2]);
 var stateRoot = Path.GetFullPath(args[3]);
-var expectMatch = args.Length == 5;
+var expectDisabled = args.Length == 5 &&
+    string.Equals(args[4], "--expect-disabled", StringComparison.Ordinal);
+var expectMatch = args.Length == 5 && !expectDisabled;
 var expectMatchExit = args.Length == 5 &&
     string.Equals(args[4], "--expect-match-exit", StringComparison.Ordinal);
 var expectRound = args.Length == 5 &&
@@ -62,6 +65,7 @@ const string profileName = "Live Smoke";
 Process? gameProcess = null;
 DateTimeOffset? livesCancellationObservedAt = null;
 DateTimeOffset? towerCancellationObservedAt = null;
+DateTimeOffset? disabledRuntimeObservedAt = null;
 try
 {
     var installationService = new LoaderInstallationService(stateRoot);
@@ -127,6 +131,16 @@ try
     {
         return Fail("Package configuration defaults were not inherited by the profile.");
     }
+    if (expectDisabled)
+    {
+        var disabled = await new ProfileModService(stateRoot, "steam-win32-4.8")
+            .DisableAsync(profileName, package.Package.Id);
+        if (!disabled.Success || disabled.Profile?.Mods.Single().Enabled != false)
+        {
+            return Fail("Sample mod could not be disabled before launch: " +
+                Format(disabled.Validation.Errors));
+        }
+    }
     if (expectLivesCancel || expectLivesMutation || expectTowerPopCount || expectTowerCancellation ||
         expectDirectProperties)
     {
@@ -169,7 +183,7 @@ try
             expectTowerPopCount || expectTowerActions || expectBloonActions
             || expectTowerCancellation || expectDirectProperties
             ? 240
-            : expectMatch || expectCash ? 180 : 20);
+            : expectMatch || expectCash ? 180 : expectDisabled ? 30 : 20);
     while (DateTimeOffset.UtcNow < deadline)
     {
         await Task.Delay(250);
@@ -204,6 +218,19 @@ try
             log.Contains("game_ready_frame_hook", StringComparison.Ordinal) &&
             log.Contains("Lifecycle Sample is ready", StringComparison.Ordinal) &&
             log.Contains("deterministic timer fired", StringComparison.Ordinal);
+        var disabledRuntimeReady =
+            log.Contains("hooks_ready=", StringComparison.Ordinal) &&
+            log.Contains("mods_loaded_waiting_for_game_ready_hook", StringComparison.Ordinal);
+        if (disabledRuntimeReady && disabledRuntimeObservedAt is null)
+        {
+            disabledRuntimeObservedAt = DateTimeOffset.UtcNow;
+        }
+        var disabledRuntimeSettled = disabledRuntimeObservedAt is not null &&
+            DateTimeOffset.UtcNow - disabledRuntimeObservedAt >= TimeSpan.FromSeconds(2);
+        var disabledProfileClean = disabledRuntimeReady && disabledRuntimeSettled &&
+            !log.Contains("sample.lifecycle:loaded", StringComparison.Ordinal) &&
+            !log.Contains("Hello from Lua", StringComparison.Ordinal) &&
+            !log.Contains("Lifecycle Sample", StringComparison.Ordinal);
         var matchReady = log.Contains("Lifecycle Sample observed match.starting", StringComparison.Ordinal) &&
             log.Contains("Lifecycle Sample observed match.started", StringComparison.Ordinal);
         var matchExited = log.Contains("Lifecycle Sample observed match.ending", StringComparison.Ordinal) &&
@@ -328,7 +355,8 @@ try
             log,
             "Lifecycle Sample mutated bloon\\.health ([0-9.]+)->([0-9.]+)");
         var directProperties = towerSellPriceMutation.Success && bloonHealthMutation.Success;
-        if (lifecycleReady && (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
+        if ((expectDisabled ? disabledProfileClean : lifecycleReady) &&
+            (!expectMatch || matchReady) && (!expectMatchExit || matchExited) &&
             (!expectRound || (matchReady && roundCompleted)) && (!expectCash || (matchReady && cashChanged)) &&
             (!expectLivesLoss || (matchReady && livesLifecycle)) &&
             (!expectLivesCancel || (matchReady && livesCancellation)) &&
@@ -340,7 +368,9 @@ try
             (!expectBloonActions || (matchReady && bloonActions)))
         {
             Console.WriteLine("LIVE_SMOKE_PASS");
-            Console.WriteLine(expectBloonActions
+            Console.WriteLine(expectDisabled
+                ? "The disabled sample was excluded from the next modded launch."
+                : expectBloonActions
                 ? "Lua observed bloon pre/post spawn, pop, and leak notifications in BTD5."
                 : expectTowerActions
                 ? "Lua observed tower pre-placement, placement, upgrade, and sale notifications in BTD5."
@@ -370,7 +400,9 @@ try
             return 0;
         }
     }
-    return Fail(expectBloonActions
+    return Fail(expectDisabled
+        ? "Timed out waiting for a clean runtime startup with the sample disabled."
+        : expectBloonActions
         ? "Timed out waiting for bloon spawn, pop, leak, and Lua event evidence."
         : expectTowerActions
         ? "Timed out waiting for tower pre-placement, placement, upgrade, sale, and Lua event evidence."

@@ -228,7 +228,7 @@ Initial supported build fingerprints:
 
 - [x] Automated mock-host tests cover every event, mutable field, cancellation path, invalid mutation, stale wrapper, and recursive dispatch case.
 - [ ] In-game smoke tests confirm event order and mutations across a complete match without hooks firing twice or surviving scene teardown.
-- [ ] Disabling the sample event mod restores unmodified gameplay on the next launch.
+- [x] Disabling the sample event mod restores unmodified gameplay on the next launch.
 
 ---
 
