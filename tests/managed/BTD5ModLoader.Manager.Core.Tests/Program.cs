@@ -395,7 +395,8 @@ try
         Path.Combine(operationsStateRoot, "logs", "runtime.jsonl"),
         "{\"component\":\"runtime\",\"message\":\"hooks_ready_no_hooks_registered\"}\n");
     var recordingLauncher = new RecordingGameProcessLauncher();
-    var launches = new GameLaunchService(operationsStateRoot, builds, recordingLauncher);
+    var launches = new GameLaunchService(
+        operationsStateRoot, builds, recordingLauncher, artifactDirectory);
     var launchStatus = await launches.GetStatusAsync(gameDirectory, "Operations");
     Assert(launchStatus is
     {
@@ -404,6 +405,64 @@ try
         ProfileValid: true,
         RuntimeState: "hooks_ready_no_hooks_registered"
     }, "Launch readiness status was incorrect.");
+    Assert(launchStatus.Issues.Count == 0, "A ready launch reported corrective actions.");
+
+    File.Delete(Path.Combine(gameDirectory, "btd5loader_runtime.dll"));
+    var repairReadiness = await launches.GetStatusAsync(gameDirectory, "Operations");
+    Assert(repairReadiness.Issues.Any(issue =>
+            issue is { Code: "loader.repairable", Action: ReadinessAction.RepairLoader }),
+        "A missing loader file was not routed to the repair action.");
+    Assert((await new LoaderInstallationService(operationsStateRoot, builds)
+            .RepairAsync(gameDirectory, artifactDirectory)).Success,
+        "The loader could not be restored after the readiness routing test.");
+
+    var missingProfileReadiness = await launches.GetStatusAsync(gameDirectory, "Missing Profile");
+    Assert(missingProfileReadiness.Issues.Any(issue =>
+            issue is { Code: "profile.missing", Action: ReadinessAction.SelectProfile }),
+        "A vanished current profile was not routed to profile selection.");
+
+    await operationsProfiles.CreateAsync("Missing Package");
+    await operationsProfiles.SaveModsAsync(
+        "Missing Package",
+        [new("sample.not-installed", "1.0.0", true, 0,
+            new Dictionary<string, JsonElement>())]);
+    var missingPackageReadiness = await launches.GetStatusAsync(gameDirectory, "Missing Package");
+    Assert(missingPackageReadiness.Issues.Any(issue => issue is
+    {
+        Code: "profile.package_missing",
+        Action: ReadinessAction.InstallMod,
+        ModId: "sample.not-installed"
+    }), "A missing selected package was not routed to mod installation.");
+
+    await operationsProfiles.CreateAsync("Invalid Configuration");
+    var operationsProfile = await operationsProfiles.LoadAsync("Operations") ??
+        throw new InvalidOperationException("The operation profile disappeared.");
+    await operationsProfiles.SaveModsAsync(
+        "Invalid Configuration",
+        [
+            operationsProfile.Mods.Single(mod => mod.Id == "sample.library") with { Order = 0 },
+            new("sample.application", "1.1.0", true, 1, new Dictionary<string, JsonElement>())
+        ]);
+    var configurationReadiness = await launches.GetStatusAsync(gameDirectory, "Invalid Configuration");
+    Assert(configurationReadiness.Issues.Any(issue => issue is
+    {
+        Code: "profile.configuration",
+        Action: ReadinessAction.ConfigureMod,
+        ModId: "sample.application"
+    }), "Invalid per-profile settings were not routed to Configure.");
+
+    var installedApplication = (await ModPackageService.ListInstalledAsync(
+        operationsStateRoot, "fixture-build")).Single(package =>
+            package.Id == "sample.application" && package.Version == "1.1.0");
+    await operationsProfiles.CreateAsync("Broken Dependencies");
+    await operationsProfiles.SaveModsAsync(
+        "Broken Dependencies",
+        [new("sample.application", "1.1.0", true, 0, installedApplication.ConfigurationDefaults)]);
+    var dependencyReadiness = await launches.GetStatusAsync(gameDirectory, "Broken Dependencies");
+    Assert(dependencyReadiness.Issues.Any(issue =>
+            issue is { Code: "profile.dependencies", Action: ReadinessAction.ResolveDependencies }),
+        "A broken dependency was not routed to dependency correction.");
+
     Assert(!(await launches.LaunchModdedAsync(gameDirectory, "Operations", false)).Success &&
         recordingLauncher.Requests.Count == 0,
         "Modded launch did not require the offline-risk acknowledgement.");

@@ -47,13 +47,37 @@ public sealed record GameLaunchResult(
     int? ProcessId,
     IReadOnlyList<string> Errors);
 
+public enum ReadinessAction
+{
+    ChooseGame,
+    InstallLoader,
+    RepairLoader,
+    RecoverLoader,
+    RestoreReleaseFiles,
+    SelectProfile,
+    InstallMod,
+    ConfigureMod,
+    ResolveDependencies,
+    ReviewProfile
+}
+
+public sealed record ReadinessProblem(
+    string Code,
+    string Message,
+    string Correction,
+    ReadinessAction Action,
+    string? ModId = null);
+
 public sealed record LoaderStatusResult(
     bool GameSupported,
     bool LoaderVerified,
     bool ProfileValid,
     string? BuildId,
     string RuntimeState,
-    IReadOnlyList<string> Problems);
+    IReadOnlyList<ReadinessProblem> Issues)
+{
+    public IReadOnlyList<string> Problems => Issues.Select(issue => issue.Message).ToArray();
+}
 
 public sealed class GameLaunchService
 {
@@ -65,16 +89,19 @@ public sealed class GameLaunchService
     private readonly string managerStateRoot;
     private readonly IReadOnlyList<KnownGameBuild> knownBuilds;
     private readonly IGameProcessLauncher processLauncher;
+    private readonly string artifactDirectory;
 
     public GameLaunchService(
         string managerStateRoot,
         IReadOnlyList<KnownGameBuild>? knownBuilds = null,
-        IGameProcessLauncher? processLauncher = null)
+        IGameProcessLauncher? processLauncher = null,
+        string? artifactDirectory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(managerStateRoot);
         this.managerStateRoot = Path.GetFullPath(managerStateRoot);
         this.knownBuilds = knownBuilds ?? GameDiscovery.SupportedBuilds;
         this.processLauncher = processLauncher ?? new SystemGameProcessLauncher();
+        this.artifactDirectory = Path.GetFullPath(artifactDirectory ?? AppContext.BaseDirectory);
     }
 
     public async Task<LoaderStatusResult> GetStatusAsync(
@@ -82,33 +109,53 @@ public sealed class GameLaunchService
         string profileName,
         CancellationToken cancellationToken = default)
     {
-        var problems = new List<string>();
+        var issues = new List<ReadinessProblem>();
         var game = await GameDiscovery.ValidateAsync(
             gameDirectory, knownBuilds, cancellationToken).ConfigureAwait(false);
         if (!game.Supported)
         {
-            problems.Add(game.Error ?? "Game validation failed.");
+            issues.Add(new(
+                "game.unsupported",
+                game.Error ?? "Game validation failed.",
+                "Choose the supported Steam Win32 game folder in Options.",
+                ReadinessAction.ChooseGame));
         }
-        var loader = await new LoaderInstallationService(managerStateRoot, knownBuilds)
-            .VerifyAsync(gameDirectory, cancellationToken).ConfigureAwait(false);
-        if (!loader.Success)
+        LoaderHealthResult? loader = null;
+        if (game.Supported)
         {
-            problems.Add(loader.Message + FormatItems(loader.Conflicts));
+            loader = await new LoaderInstallationService(managerStateRoot, knownBuilds)
+                .InspectAsync(gameDirectory, artifactDirectory, cancellationToken).ConfigureAwait(false);
+            if (loader.State != LoaderHealthState.Healthy)
+            {
+                issues.Add(LoaderIssue(loader));
+            }
         }
         ProfileValidationResult? profile = null;
         if (game.BuildId is not null)
         {
-            profile = await new ProfileModService(managerStateRoot, game.BuildId)
-                .ValidateAsync(profileName, cancellationToken).ConfigureAwait(false);
-            problems.AddRange(profile.Errors);
+            if (await new ProfileService(managerStateRoot).LoadAsync(profileName, cancellationToken)
+                    .ConfigureAwait(false) is null)
+            {
+                issues.Add(new(
+                    "profile.missing",
+                    "The selected profile no longer exists.",
+                    "Choose or create a profile.",
+                    ReadinessAction.SelectProfile));
+            }
+            else
+            {
+                profile = await new ProfileModService(managerStateRoot, game.BuildId)
+                    .ValidateAsync(profileName, cancellationToken).ConfigureAwait(false);
+                issues.AddRange(profile.Errors.Select(ProfileIssue));
+            }
         }
         return new(
             game.Supported,
-            loader.Success,
+            loader?.State == LoaderHealthState.Healthy,
             profile?.Valid == true,
             game.BuildId,
             await ReadLatestRuntimeStateAsync(cancellationToken).ConfigureAwait(false),
-            problems);
+            issues);
     }
 
     public async Task<GameLaunchResult> LaunchModdedAsync(
@@ -279,4 +326,64 @@ public sealed class GameLaunchService
 
     private static string FormatItems(IReadOnlyList<string> items) =>
         items.Count == 0 ? string.Empty : " (" + string.Join(", ", items) + ")";
+
+    private static ReadinessProblem LoaderIssue(LoaderHealthResult loader)
+    {
+        var files = loader.Files.Where(file => file.State != LoaderFileState.Healthy)
+            .Select(file => file.RelativePath).ToArray();
+        var message = loader.Message + FormatItems(files);
+        return loader.State switch
+        {
+            LoaderHealthState.NotInstalled => new(
+                "loader.not_installed", message, "Open Options and install the loader.",
+                ReadinessAction.InstallLoader),
+            LoaderHealthState.Repairable => new(
+                "loader.repairable", message, "Open Options and repair the loader.",
+                ReadinessAction.RepairLoader),
+            LoaderHealthState.ArtifactUnavailable => new(
+                "loader.release_files_missing", message,
+                "Restore the release files beside the manager, then recheck.",
+                ReadinessAction.RestoreReleaseFiles),
+            _ => new(
+                "loader.recovery_required", message,
+                "Open Options for the preserved-file recovery details.",
+                ReadinessAction.RecoverLoader)
+        };
+    }
+
+    private static ReadinessProblem ProfileIssue(string message)
+    {
+        var modId = message.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (message.Contains("configuration", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("setting", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(
+                "profile.configuration", message,
+                "Select the affected mod and correct its configuration.",
+                ReadinessAction.ConfigureMod,
+                modId);
+        }
+        if (message.Contains("not installed or compatible", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(
+                "profile.package_missing", message,
+                "Install the required version or select an installed compatible version.",
+                ReadinessAction.InstallMod,
+                modId);
+        }
+        if (message.Contains("requires", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("cycle", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(
+                "profile.dependencies", message,
+                "Enable compatible dependencies or adjust the profile load order.",
+                ReadinessAction.ResolveDependencies,
+                modId);
+        }
+        return new(
+            "profile.invalid", message,
+            "Review the affected package and profile settings.",
+            ReadinessAction.ReviewProfile,
+            modId);
+    }
 }

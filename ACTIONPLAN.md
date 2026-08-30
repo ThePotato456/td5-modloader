@@ -155,7 +155,7 @@ Initial supported build fingerprints:
   profile and safe fallback when the current profile is removed.
 - [x] Add a practical per-profile configuration editor inferred from package defaults for booleans,
   numbers, and strings, with validation plus per-setting and whole-mod reset controls.
-- [~] Automatically inspect loader, game, and current-profile readiness at startup and before launch;
+- [x] Automatically inspect loader, game, and current-profile readiness at startup and before launch;
   route failures to the exact corrective action instead of a generic status string.
 - [ ] Migrate existing profile and installation state without losing configuration or launch history.
 - [ ] Update manager documentation and screenshots after the workflow stabilizes.

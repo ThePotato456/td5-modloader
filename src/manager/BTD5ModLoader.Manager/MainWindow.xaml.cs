@@ -25,6 +25,7 @@ internal sealed partial class MainWindow : Window
     private string? selectedPackagePath;
     private LoaderHealthResult? loaderHealth;
     private ProfileValidationResult? currentProfileValidation;
+    private ReadinessProblem? readinessProblem;
     private bool launchReady;
     private bool refreshingProfileSelection;
     private bool windowLoaded;
@@ -757,6 +758,12 @@ internal sealed partial class MainWindow : Window
         {
             return;
         }
+        await RefreshLoaderHealthAsync().ConfigureAwait(true);
+        await RefreshReadinessAsync(true).ConfigureAwait(true);
+        if (!launchReady)
+        {
+            return;
+        }
         if (OfflineRiskCheck.IsChecked != true)
         {
             OptionsOverlay.Visibility = Visibility.Visible;
@@ -976,9 +983,19 @@ internal sealed partial class MainWindow : Window
     {
         launchReady = false;
         currentProfileValidation = null;
+        readinessProblem = null;
         if (selectedProfile is null)
         {
-            readinessSummary = "Choose a current profile to prepare a modded launch.";
+            readinessProblem = new(
+                "profile.not_selected",
+                "No current profile is selected.",
+                "Choose or create a profile.",
+                ReadinessAction.SelectProfile);
+            readinessSummary = readinessProblem.Message + " • " + readinessProblem.Correction;
+            if (reportToStatusBar)
+            {
+                RouteReadinessProblem(readinessProblem);
+            }
             UpdateActionState();
             return;
         }
@@ -989,29 +1006,49 @@ internal sealed partial class MainWindow : Window
             RefreshPackageLabels();
             if (string.IsNullOrWhiteSpace(GameDirectoryText.Text))
             {
-                readinessSummary = "Choose a supported game copy.";
+                readinessProblem = new(
+                    "game.not_selected",
+                    "No game copy is selected.",
+                    "Choose the supported Steam Win32 game folder in Options.",
+                    ReadinessAction.ChooseGame);
+                readinessSummary = readinessProblem.Message + " • " + readinessProblem.Correction;
+                if (reportToStatusBar)
+                {
+                    RouteReadinessProblem(readinessProblem);
+                }
                 UpdateActionState();
                 return;
             }
             var status = await new GameLaunchService(managerStateRoot)
                 .GetStatusAsync(GameDirectoryText.Text, selectedProfile.Name).ConfigureAwait(true);
-            launchReady = status.Problems.Count == 0;
+            launchReady = status.Issues.Count == 0;
+            readinessProblem = status.Issues.FirstOrDefault();
             readinessSummary = launchReady
                 ? $"Ready • {selectedProfile.Mods.Count(mod => mod.Enabled)} mods • {status.BuildId}"
-                : status.Problems[0];
+                : readinessProblem!.Message + " • " + readinessProblem.Correction;
             if (reportToStatusBar)
             {
-                StatusText.Text = launchReady
-                    ? "Launch validation passed."
-                    : "Launch blocked: " + string.Join(" ", status.Problems);
+                if (launchReady)
+                {
+                    StatusText.Text = "Launch validation passed.";
+                }
+                else
+                {
+                    RouteReadinessProblem(readinessProblem!);
+                }
             }
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException)
         {
             readinessSummary = "Launch readiness could not be checked.";
+            readinessProblem = new(
+                "readiness.check_failed",
+                exception.Message,
+                "Open Options, recheck the loader, and export diagnostics if the problem continues.",
+                ReadinessAction.RecoverLoader);
             if (reportToStatusBar)
             {
-                StatusText.Text = exception.Message;
+                RouteReadinessProblem(readinessProblem);
             }
         }
         UpdateActionState();
@@ -1066,10 +1103,69 @@ internal sealed partial class MainWindow : Window
             ? "Required before launching with mods."
             : "Acknowledged — modded launch safety check passed.";
         LaunchModdedButton.ToolTip = !launchReady
-            ? "Resolve the readiness message before launching."
+            ? readinessProblem?.Correction ?? "Resolve the readiness message before launching."
             : offlineBlocksLaunch
                 ? "Open Options and acknowledge Steam Offline Mode before launching."
                 : "Launch the current profile.";
+    }
+
+    private void RouteReadinessProblem(ReadinessProblem problem)
+    {
+        StatusText.Text = "Launch blocked: " + problem.Message + " " + problem.Correction;
+        switch (problem.Action)
+        {
+            case ReadinessAction.ChooseGame:
+                ShowOptionsForCorrection();
+                GameDirectoryText.Focus();
+                break;
+            case ReadinessAction.InstallLoader:
+            case ReadinessAction.RepairLoader:
+            case ReadinessAction.RecoverLoader:
+            case ReadinessAction.RestoreReleaseFiles:
+                ShowOptionsForCorrection();
+                LoaderPrimaryButton.Focus();
+                break;
+            case ReadinessAction.SelectProfile:
+                ProfilesList.Focus();
+                break;
+            case ReadinessAction.InstallMod:
+                SelectReadinessPackage(problem.ModId);
+                BrowseModsFolderButton.Focus();
+                break;
+            case ReadinessAction.ConfigureMod:
+                SelectReadinessPackage(problem.ModId);
+                ConfigureModButton.Focus();
+                break;
+            case ReadinessAction.ResolveDependencies:
+            case ReadinessAction.ReviewProfile:
+                SelectReadinessPackage(problem.ModId);
+                ProfilePackagesList.Focus();
+                break;
+        }
+    }
+
+    private void ShowOptionsForCorrection()
+    {
+        OptionsOverlay.Visibility = Visibility.Visible;
+        runtimeLogTimer.Start();
+    }
+
+    private void SelectReadinessPackage(string? modId)
+    {
+        if (string.IsNullOrWhiteSpace(modId))
+        {
+            return;
+        }
+        var entry = selectedProfile?.Mods.SingleOrDefault(mod =>
+            string.Equals(mod.Id, modId, StringComparison.Ordinal));
+        var item = ProfilePackagesList.Items.Cast<ModListItem>().FirstOrDefault(candidate =>
+            string.Equals(candidate.Package.Id, modId, StringComparison.Ordinal) &&
+            (entry is null || string.Equals(candidate.Package.Version, entry.Version, StringComparison.Ordinal)));
+        if (item is not null)
+        {
+            ProfilePackagesList.SelectedItem = item;
+            ProfilePackagesList.ScrollIntoView(item);
+        }
     }
 
     private void TryDiscoverGame()

@@ -269,7 +269,8 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <Button Grid.Row="2" Margin="0,7,0,0" HorizontalAlignment="Stretch"
+                        <Button x:Name="BrowseModsFolderButton" Grid.Row="2" Margin="0,7,0,0"
+                                HorizontalAlignment="Stretch"
                                 Style="{StaticResource FlatButton}" Click="BrowseModsFolder_Click">
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                 <Image Width="21" Height="21" Source="Assets/file.png" />
