@@ -11,6 +11,7 @@ namespace btd5loader::runtime {
 class BloonActionHook final {
 public:
     using Callback = std::function<void(void*)>;
+    using CancellableCallback = std::function<bool(void*)>;
 
     BloonActionHook() = default;
     ~BloonActionHook();
@@ -25,12 +26,12 @@ public:
         void* leak_commit,
         Callback spawning,
         Callback popping,
-        Callback leaking,
+        CancellableCallback leaking,
         std::string& error);
     void remove() noexcept;
     [[nodiscard]] bool installed() const noexcept;
 
-    static void __stdcall dispatch_leaking(void* bloon) noexcept;
+    [[nodiscard]] static bool __stdcall dispatch_leaking(void* bloon) noexcept;
 
 private:
     using SpawnFunction = void(__thiscall*)(void*, void*);
@@ -58,7 +59,7 @@ private:
 
     Callback spawning_;
     Callback popping_;
-    Callback leaking_;
+    CancellableCallback leaking_;
     void* primary_spawn_{};
     void* secondary_spawn_{};
     void* pop_commit_{};

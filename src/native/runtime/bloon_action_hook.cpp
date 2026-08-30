@@ -14,6 +14,7 @@
 namespace btd5loader::runtime {
 void* g_bloon_leak_allocate{};
 void* g_bloon_leak_continue{};
+void* g_bloon_leak_cancel{};
 void hooked_bloon_leak() noexcept;
 
 namespace {
@@ -58,7 +59,7 @@ bool BloonActionHook::install(
     void* const leak_commit,
     Callback spawning,
     Callback popping,
-    Callback leaking,
+    CancellableCallback leaking,
     std::string& error) {
     if (installed_ || active_ != nullptr) {
         error = "bloon action hook is already installed";
@@ -76,6 +77,16 @@ bool BloonActionHook::install(
         error = "bloon leak commit instruction validation failed";
         return false;
     }
+    const auto* const leak_bytes = static_cast<const std::byte*>(leak_commit);
+    const auto* const track_end_branch = leak_bytes - 6;
+    if (track_end_branch[0] != std::byte{0x0F} ||
+        track_end_branch[1] != std::byte{0x82}) {
+        error = "bloon leak alternate-path branch validation failed";
+        return false;
+    }
+    std::int32_t cancel_displacement = 0;
+    std::memcpy(&cancel_displacement, track_end_branch + 2, sizeof(cancel_displacement));
+    g_bloon_leak_cancel = const_cast<std::byte*>(leak_bytes) + cancel_displacement;
     std::int32_t allocate_displacement = 0;
     std::memcpy(&allocate_displacement, leak_original_.data() + 3, sizeof(allocate_displacement));
     g_bloon_leak_allocate = static_cast<std::byte*>(leak_commit) + 7 + allocate_displacement;
@@ -184,6 +195,7 @@ void BloonActionHook::remove() noexcept {
     leak_commit_ = nullptr;
     g_bloon_leak_allocate = nullptr;
     g_bloon_leak_continue = nullptr;
+    g_bloon_leak_cancel = nullptr;
     installed_ = false;
 }
 
@@ -235,11 +247,15 @@ void __fastcall BloonActionHook::hooked_pop(
     }
 }
 
-void __stdcall BloonActionHook::dispatch_leaking(void* const bloon) noexcept {
+bool __stdcall BloonActionHook::dispatch_leaking(void* const bloon) noexcept {
     BloonActionHook* const active = active_;
-    if (active != nullptr) {
-        invoke(active->leaking_, bloon);
+    if (active != nullptr && active->leaking_) {
+        try {
+            return active->leaking_(bloon);
+        } catch (...) {
+        }
     }
+    return false;
 }
 
 void __declspec(naked) hooked_bloon_leak() noexcept {
@@ -248,11 +264,16 @@ void __declspec(naked) hooked_bloon_leak() noexcept {
         pushad
         push ebx
         call BloonActionHook::dispatch_leaking
+        mov dword ptr [esp + 28], eax
         popad
         popfd
+        test al, al
+        jne cancelled
         push 8
         call dword ptr [g_bloon_leak_allocate]
         jmp dword ptr [g_bloon_leak_continue]
+    cancelled:
+        jmp dword ptr [g_bloon_leak_cancel]
     }
 }
 

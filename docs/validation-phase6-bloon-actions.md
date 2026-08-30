@@ -59,6 +59,16 @@ validated before activation. The Release build and static analysis compile this
 hook, while the interactive test below provides the current behavioral coverage
 for these new mid-action boundaries.
 
+The leak hook now also validates the immediately preceding native below-track-
+end branch. A cancelled `bloon.leaking` event jumps to that branch's original
+non-leak continuation at RVA `0x203CAA`, before escaped-event dispatch, lives
+loss, or cleanup. This cancels the current attempt without invalidating the live
+bloon; it may reach the boundary again on a later update. A non-cancelled event
+executes the displaced allocation call and resumes at RVA `0x203BA1`. Automated
+coverage verifies cancellation propagation, exact instruction restoration, and
+exception-safe fallthrough. Interactive cancellation acceptance remains part of
+the Phase 6 gate.
+
 ## Interactive copied-game acceptance
 
 The strengthened Release smoke workflow launched the ignored copied game
@@ -98,7 +108,7 @@ reporting `LIVE_SMOKE_PASS`. The copied game retained its supported hashes:
 ## Scope
 
 These wrappers support only `is_valid()`, `id()`, and `kind()`. They expose no
-native address, gameplay properties, or mutation. `bloon.spawning`,
-`bloon.popping`, and `bloon.leaking` are not yet cancellable or mutable. This
-result does not claim custom content, an on-screen overlay, or online safety
-enforcement.
+native address, gameplay properties, or mutation. `bloon.leaking` is
+cancellable but not mutable. `bloon.spawning` and `bloon.popping` are not yet
+cancellable or mutable. This result does not claim custom content, an on-screen
+overlay, or online safety enforcement.

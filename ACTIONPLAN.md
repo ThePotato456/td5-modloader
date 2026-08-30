@@ -201,6 +201,8 @@ Initial supported build fingerprints:
 - [ ] Make verified pre-events cancellable and mutable.
   - [x] Route cancelled `tower.upgrading` and `tower.selling` events through the game's
     verified native rejection paths before the first side effect.
+  - [x] Route a cancelled `bloon.leaking` attempt through the verified native non-leak
+    continuation without invalidating the live bloon.
   - [ ] Add cancellation for the remaining pre-events only after each action's ownership,
     cleanup, and return path is independently verified.
   - [ ] Add validated mutable payload fields at their exact native commit boundaries.

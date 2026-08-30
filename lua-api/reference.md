@@ -173,8 +173,11 @@ event.bloon: GameObject
 - `bloon.popping`, `bloon.popped`; and
 - `bloon.leaking`, `bloon.leaked`.
 
-All bloon events are currently read-only. Wrappers passed to `bloon.popped` and
-`bloon.leaked` become stale after all handlers return.
+Bloon payloads and wrappers are currently read-only. `bloon.leaking` is
+cancellable. Cancellation skips that leak attempt through the native non-leak
+continuation; the bloon remains valid and may attempt to leak again later.
+Wrappers passed to `bloon.popped` and `bloon.leaked` become stale after all
+handlers return.
 
 ## Sandbox availability
 

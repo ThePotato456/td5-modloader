@@ -20,6 +20,7 @@
 
 #include "../../src/native/runtime/compatibility.hpp"
 #include "../../src/native/runtime/active_profile.hpp"
+#include "../../src/native/runtime/bloon_action_hook.hpp"
 #include "../../src/native/runtime/hook_transaction.hpp"
 #include "../../src/native/runtime/lives_hook.hpp"
 #include "../../src/native/runtime/lives_write_hook.hpp"
@@ -744,6 +745,54 @@ TEST_CASE("tower sale hook propagates cancellation and restores its commit bound
     hook.remove();
     REQUIRE_FALSE(hook.installed());
     REQUIRE(std::memcmp(code + 8, instructions.data() + 8, 6) == 0);
+    REQUIRE(VirtualFree(code, 0, MEM_RELEASE) != FALSE);
+}
+
+TEST_CASE("bloon leak hook propagates cancellation and restores its commit boundary", "[hooks]") {
+    constexpr std::array<std::byte, 13> instructions{
+        std::byte{0x0F}, std::byte{0x82}, std::byte{0x07}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0x6A}, std::byte{0x08},
+        std::byte{0xE8}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x00}};
+    auto* const code = static_cast<std::byte*>(VirtualAlloc(
+        nullptr, instructions.size(), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    REQUIRE(code != nullptr);
+    std::memcpy(code, instructions.data(), instructions.size());
+
+    bool cancel = false;
+    bool throw_on_dispatch = false;
+    int bloon = 1;
+    void* observed = nullptr;
+    btd5loader::runtime::BloonActionHook hook;
+    std::string error;
+    REQUIRE(hook.install(
+        reinterpret_cast<void*>(&fake_game_screen_init),
+        reinterpret_cast<void*>(&fake_game_screen_uninit),
+        reinterpret_cast<void*>(&fake_tower_placement),
+        code + 6,
+        [](void*) {},
+        [](void*) {},
+        [&cancel, &throw_on_dispatch, &observed](void* const candidate) {
+            observed = candidate;
+            if (throw_on_dispatch) {
+                throw std::runtime_error("fixture failure");
+            }
+            return cancel;
+        },
+        error));
+    REQUIRE(error.empty());
+    REQUIRE(hook.installed());
+
+    REQUIRE_FALSE(btd5loader::runtime::BloonActionHook::dispatch_leaking(&bloon));
+    REQUIRE(observed == &bloon);
+    cancel = true;
+    REQUIRE(btd5loader::runtime::BloonActionHook::dispatch_leaking(&bloon));
+    throw_on_dispatch = true;
+    REQUIRE_FALSE(btd5loader::runtime::BloonActionHook::dispatch_leaking(&bloon));
+
+    hook.remove();
+    REQUIRE_FALSE(hook.installed());
+    REQUIRE(std::memcmp(code + 6, instructions.data() + 6, 7) == 0);
     REQUIRE(VirtualFree(code, 0, MEM_RELEASE) != FALSE);
 }
 

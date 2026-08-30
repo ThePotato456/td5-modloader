@@ -41,7 +41,7 @@ Lives events carry `old_lives` and `new_lives`; cash events currently carry no
 value fields. Each
 live tower notification carries `event.tower`, and each live bloon notification
 carries `event.bloon`. Payload fields are not yet mutable. `lives.changing`,
-`tower.upgrading`, and `tower.selling` are cancellable. Setting
+`tower.upgrading`, `tower.selling`, and `bloon.leaking` are cancellable. Setting
 `event.cancelled = true` skips the pending lives write or routes an accepted
 tower action into the game's own rejection path. Other live events cannot cancel
 or modify an action. The
@@ -56,8 +56,10 @@ occurs before the first upgrade mutation, so `tower.upgraded` does not run.
 Cancelling `tower.selling` occurs before removal and refund side effects, so
 `tower.sold` does not run. `tower.placing` remains a non-cancellable read-only
 pre-event. The `tower.upgrading` and `tower.selling` payloads remain read-only.
-`bloon.spawning`, `bloon.popping`, and `bloon.leaking` are likewise read-only
-and not yet cancellable.
+Cancelling `bloon.leaking` skips only that accepted leak attempt through the
+native non-leak continuation; the live bloon can reach the boundary again on a
+later update. `bloon.spawning` and `bloon.popping` remain non-cancellable, and
+all bloon payloads remain read-only.
 
 ## Subscription
 

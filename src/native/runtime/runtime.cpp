@@ -146,22 +146,33 @@ bool dispatch_tower_event(
     return cancelled;
 }
 
-void dispatch_bloon_event(
+bool dispatch_bloon_event(
     const std::string_view name,
     void* const bloon,
-    const bool invalidate_after) {
+    const bool invalidate_after,
+    const bool cancellable = false) {
     using btd5loader::runtime::GameObjectKind;
+    using btd5loader::runtime::State;
 
-    if (bloon == nullptr) {
-        return;
+    if (bloon == nullptr || g_state.current() != State::GameReady) {
+        return false;
     }
     const auto handle = g_game_objects.find_or_add(GameObjectKind::Bloon, bloon);
     if (handle.id == 0) {
         g_logger.error("events", "bloon_handle_unavailable");
-        return;
+        return false;
     }
+    bool cancelled = false;
     try {
-        dispatch_game_event(name, {{"bloon", handle}});
+        const btd5loader::runtime::LuaEventFields fields{{"bloon", handle}};
+        std::scoped_lock lock(g_mods_mutex);
+        g_logger.info("events", std::string(name));
+        for (const auto& mod : g_mods) {
+            cancelled = mod->dispatch_event(name, fields, cancellable).cancelled || cancelled;
+        }
+        if (cancelled) {
+            g_logger.info("events", std::string(name) + ":cancelled");
+        }
     } catch (...) {
         if (invalidate_after) {
             (void)g_game_objects.invalidate(handle);
@@ -171,6 +182,7 @@ void dispatch_bloon_event(
     if (invalidate_after) {
         (void)g_game_objects.invalidate(handle);
     }
+    return cancelled;
 }
 
 void dispatch_frame(HDC) {
@@ -792,7 +804,9 @@ DWORD WINAPI initialize_worker(LPVOID) {
                 bloon_leak_commit_target,
                 [](void* bloon) { dispatch_bloon_event("bloon.spawning", bloon, false); },
                 [](void* bloon) { dispatch_bloon_event("bloon.popping", bloon, false); },
-                [](void* bloon) { dispatch_bloon_event("bloon.leaking", bloon, false); },
+                [](void* bloon) {
+                    return dispatch_bloon_event("bloon.leaking", bloon, false, true);
+                },
                 error);
             if (!installed) {
                 g_logger.error("hooks", error);

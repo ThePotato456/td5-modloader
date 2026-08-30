@@ -201,7 +201,7 @@ Every handler receives one shared event table. It always contains `name` and
 | `bloon.spawned` | `bloon` | After spawn observer dispatch | No |
 | `bloon.popping` | `bloon` | After acceptance and before pop side effects | No |
 | `bloon.popped` | `bloon` | After pop observer dispatch | No |
-| `bloon.leaking` | `bloon` | After track-end acceptance and before leak side effects | No |
+| `bloon.leaking` | `bloon` | After track-end acceptance and before leak side effects | **Yes** |
 | `bloon.leaked` | `bloon` | After leak observer dispatch | No |
 
 `old_lives` and `new_lives` are Lua integers. Tower and bloon payloads are
@@ -209,7 +209,7 @@ opaque game-object userdata.
 
 ### Cancelling a lives change or tower action
 
-`lives.changing`, `tower.upgrading`, and `tower.selling` honor
+`lives.changing`, `tower.upgrading`, `tower.selling`, and `bloon.leaking` honor
 `event.cancelled`:
 
 ```lua
@@ -230,6 +230,12 @@ btd5.events.on("tower.selling", function(event)
         event.cancelled = true
     end
 end)
+
+btd5.events.on("bloon.leaking", function(event)
+    if should_block_this_leak(event.bloon) then
+        event.cancelled = true
+    end
+end)
 ```
 
 Cancellation skips the pending lives write and suppresses `lives.changed` for
@@ -237,8 +243,11 @@ that transition. It does not undo the originating bloon leak or reward action.
 Cancelling `tower.upgrading` resumes the game's own rejected-upgrade path before
 the first mutation, so `tower.upgraded` does not run. Cancelling `tower.selling`
 uses the game's rejected-sale path before removal or refund side effects, so
-`tower.sold` does not run. Setting `cancelled` on any other event currently has
-no gameplay effect.
+`tower.sold` does not run. Cancelling `bloon.leaking` routes that update through
+the game's normal non-leak continuation, so lives are not lost and
+`bloon.leaked` does not run for that attempt. The bloon remains live and may
+attempt to leak again on a later update. Setting `cancelled` on any other event
+currently has no gameplay effect.
 
 The detailed ordering contract is maintained in
 [Gameplay event contract v1](../docs/gameplay-events.md).
