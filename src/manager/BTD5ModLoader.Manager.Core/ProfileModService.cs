@@ -83,6 +83,25 @@ public sealed class ProfileModService
         return await TrySaveAsync(profile, mods, "Mod disabled.", cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<ProfileChangeResult> ToggleVersionAsync(
+        string profileName,
+        string modId,
+        string version,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await RequireProfileAsync(profileName, cancellationToken).ConfigureAwait(false);
+        var entry = profile.Mods.SingleOrDefault(mod => string.Equals(mod.Id, modId, StringComparison.Ordinal));
+        if (entry is null or { Enabled: false })
+        {
+            return await EnableAsync(profileName, modId, version, cancellationToken).ConfigureAwait(false);
+        }
+        if (!string.Equals(entry.Version, version, StringComparison.Ordinal))
+        {
+            return await ChangeVersionAsync(profileName, modId, version, cancellationToken).ConfigureAwait(false);
+        }
+        return await DisableAsync(profileName, modId, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<ProfileChangeResult> ChangeVersionAsync(
         string profileName,
         string modId,

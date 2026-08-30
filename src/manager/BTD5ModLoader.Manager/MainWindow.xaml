@@ -232,7 +232,19 @@
                         </Grid>
                         <ListBox x:Name="ProfilePackagesList" Grid.Row="1" Style="{StaticResource CardList}"
                                  ItemContainerStyle="{StaticResource CardItem}"
-                                 SelectionChanged="PackageList_SelectionChanged">
+                                 SelectionChanged="PackageList_SelectionChanged"
+                                 PreviewMouseRightButtonDown="ProfilePackagesList_PreviewMouseRightButtonDown">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Configure" Click="ConfigureMod_Click" />
+                                    <Separator />
+                                    <MenuItem Header="Move earlier" Click="MoveSelectedPackageEarlier_Click" />
+                                    <MenuItem Header="Move later" Click="MoveSelectedPackageLater_Click" />
+                                    <Separator />
+                                    <MenuItem Header="Remove from profile"
+                                              Click="RemoveSelectedPackageFromProfile_Click" />
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid>
@@ -619,15 +631,9 @@
             </Grid>
 
             <Button x:Name="InstallPackageButton" Visibility="Collapsed" Click="InstallPackage_Click" />
-            <Button x:Name="MoveUpButton" Visibility="Collapsed" Click="MoveModUp_Click" />
-            <Button x:Name="MoveDownButton" Visibility="Collapsed" Click="MoveModDown_Click" />
             <Button x:Name="RenameProfileButton" Visibility="Collapsed" Click="RenameProfile_Click" />
             <Button x:Name="DuplicateProfileButton" Visibility="Collapsed" Click="DuplicateProfile_Click" />
             <Button x:Name="DeleteProfileButton" Visibility="Collapsed" Click="DeleteProfile_Click" />
-            <ListBox x:Name="ProfileModsList" Visibility="Collapsed"
-                     SelectionChanged="ProfileModsList_SelectionChanged" />
-            <TextBlock x:Name="ProfileSummaryText" Visibility="Collapsed" />
-            <TextBlock x:Name="CurrentProfileText" Visibility="Collapsed" />
         </Grid>
     </Border>
 </Window>

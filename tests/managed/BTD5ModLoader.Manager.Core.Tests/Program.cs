@@ -364,6 +364,21 @@ try
     Assert((await operations.ChangeVersionAsync(
         "Operations", "sample.application", "1.0.0")).Success,
         "Compatible mod downgrade failed.");
+    var toggledVersion = await operations.ToggleVersionAsync(
+        "Operations", "sample.application", "1.1.0");
+    Assert(toggledVersion.Success && toggledVersion.Profile?.Mods.Single(mod =>
+            mod.Id == "sample.application") is { Version: "1.1.0", Enabled: true },
+        "Toggling another installed version did not select it while keeping the mod enabled.");
+    var toggledOff = await operations.ToggleVersionAsync(
+        "Operations", "sample.application", "1.1.0");
+    Assert(toggledOff.Success && toggledOff.Profile?.Mods.Single(mod =>
+            mod.Id == "sample.application") is { Version: "1.1.0", Enabled: false },
+        "Toggling the selected enabled version did not disable the mod.");
+    var toggledOn = await operations.ToggleVersionAsync(
+        "Operations", "sample.application", "1.0.0");
+    Assert(toggledOn.Success && toggledOn.Profile?.Mods.Single(mod =>
+            mod.Id == "sample.application") is { Version: "1.0.0", Enabled: true },
+        "Toggling a version for a disabled mod did not enable the selected version.");
     var referencedUninstall = await operations.UninstallPackageAsync("sample.application", "1.0.0");
     Assert(!referencedUninstall.Success && referencedUninstall.BlockingProfiles.SequenceEqual(
         new[] { "Operations" }), "A profile-referenced package was uninstalled.");

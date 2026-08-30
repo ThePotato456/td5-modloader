@@ -24,6 +24,7 @@ internal sealed partial class MainWindow : Window
     private ModProfile? selectedProfile;
     private string? selectedPackagePath;
     private LoaderHealthResult? loaderHealth;
+    private ProfileValidationResult? currentProfileValidation;
     private bool launchReady;
     private bool refreshingProfileSelection;
     private bool windowLoaded;
@@ -351,14 +352,18 @@ internal sealed partial class MainWindow : Window
         }
         var profileEntry = selectedProfile?.Mods.SingleOrDefault(mod =>
             string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
-        var profileState = profileEntry is null ? "Not in current profile" :
-            profileEntry.Enabled ? "Enabled in current profile" : "Disabled in current profile";
+        var selectedVersion = profileEntry is not null && string.Equals(
+            profileEntry.Version, package.Version, StringComparison.Ordinal);
+        var profileState = FormatPackageDetailsStatus(package, profileEntry, selectedVersion);
         SelectedModTitleText.Text = package.Name ?? package.Id ?? "Invalid package";
         SelectedModAuthorText.Text = package.Valid ? $"by {package.Author}" : "Package validation failed";
         SelectedModDescriptionText.Text = profileState;
         SelectedModIcon.Source = AssetImage(IconNameForPackage(package));
         PackageDetailsText.Text = package.Valid
-            ? $"Version                                      {package.Version}\n" +
+            ? $"Package version                         {package.Version}\n" +
+              $"Selected version                       {profileEntry?.Version ?? "None"}\n" +
+              $"Profile order                             " +
+              $"{(profileEntry is null ? "None" : (profileEntry.Order + 1).ToString(CultureInfo.InvariantCulture))}\n" +
               $"Author                                       {package.Author}\n" +
               $"Dependencies                           {FormatDependencies(package)}\n" +
               $"Settings                                    " +
@@ -366,6 +371,21 @@ internal sealed partial class MainWindow : Window
               $"ID: {package.Id}\nCapabilities: {FormatItems(package.Capabilities)}"
             : string.Join(Environment.NewLine, package.Errors);
         UpdateActionState();
+    }
+
+    private void ProfilePackagesList_PreviewMouseRightButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        var current = e.OriginalSource as DependencyObject;
+        while (current is not null && current is not ListBoxItem)
+        {
+            current = VisualTreeHelper.GetParent(current);
+        }
+        if (current is ListBoxItem item)
+        {
+            ProfilePackagesList.SelectedItem = item.DataContext;
+        }
     }
 
     private async void ModToggle_Click(object sender, RoutedEventArgs e)
@@ -380,12 +400,8 @@ internal sealed partial class MainWindow : Window
             StatusText.Text = "Select or create a profile before enabling mods.";
             return;
         }
-        var entry = selectedProfile.Mods.SingleOrDefault(mod =>
-            string.Equals(mod.Id, item.Package.Id, StringComparison.Ordinal));
-        var service = new ProfileModService(managerStateRoot, SupportedBuildId);
-        await ApplyProfileChangeAsync(entry is null or { Enabled: false }
-            ? service.EnableAsync(selectedProfile.Name, item.Package.Id, item.Package.Version)
-            : service.DisableAsync(selectedProfile.Name, item.Package.Id)).ConfigureAwait(true);
+        await ApplyProfileChangeAsync(new ProfileModService(managerStateRoot, SupportedBuildId)
+            .ToggleVersionAsync(selectedProfile.Name, item.Package.Id, item.Package.Version)).ConfigureAwait(true);
     }
 
     private void BrowseModsFolder_Click(object sender, RoutedEventArgs e)
@@ -461,6 +477,7 @@ internal sealed partial class MainWindow : Window
         {
             var name = item.Name;
             selectedProfile = await new ProfileService(managerStateRoot).LoadAsync(name).ConfigureAwait(true);
+            currentProfileValidation = null;
             await new ManagerSettingsService(managerStateRoot)
                 .SetCurrentProfileAsync(name).ConfigureAwait(true);
             RefreshProfileMods();
@@ -535,31 +552,6 @@ internal sealed partial class MainWindow : Window
         }
     }
 
-    private async void EnablePackage_Click(object sender, RoutedEventArgs e)
-    {
-        if (!TryGetOperationSelection(out var profile, out var package))
-        {
-            return;
-        }
-        await ApplyProfileChangeAsync(new ProfileModService(managerStateRoot, SupportedBuildId)
-            .EnableAsync(profile.Name, package.Id!, package.Version!)).ConfigureAwait(true);
-    }
-
-    private async void ToggleMod_Click(object sender, RoutedEventArgs e)
-    {
-        if (selectedProfile is null || SelectedInstalledPackage() is not { Id: not null, Version: not null } package)
-        {
-            StatusText.Text = "Select a current profile and installed mod first.";
-            return;
-        }
-        var entry = selectedProfile.Mods.SingleOrDefault(mod =>
-            string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
-        var service = new ProfileModService(managerStateRoot, SupportedBuildId);
-        await ApplyProfileChangeAsync(entry is null or { Enabled: false }
-            ? service.EnableAsync(selectedProfile.Name, package.Id, package.Version)
-            : service.DisableAsync(selectedProfile.Name, package.Id)).ConfigureAwait(true);
-    }
-
     private async void ConfigureMod_Click(object sender, RoutedEventArgs e)
     {
         if (selectedProfile is null || SelectedInstalledPackage() is not { Id: not null } package)
@@ -572,6 +564,11 @@ internal sealed partial class MainWindow : Window
         if (entry is null)
         {
             StatusText.Text = "Add the mod to the current profile before configuring it.";
+            return;
+        }
+        if (!string.Equals(entry.Version, package.Version, StringComparison.Ordinal))
+        {
+            StatusText.Text = $"The current profile uses {entry.Version}. Select that version to configure it.";
             return;
         }
         if (package.ConfigurationDefaults.Count == 0)
@@ -667,31 +664,43 @@ internal sealed partial class MainWindow : Window
         StatusText.Text = "Profile deleted. Choose another profile explicitly.";
     }
 
-    private async void MoveModUp_Click(object sender, RoutedEventArgs e) =>
-        await MoveSelectedModAsync(-1).ConfigureAwait(true);
+    private async void MoveSelectedPackageEarlier_Click(object sender, RoutedEventArgs e) =>
+        await MoveSelectedPackageAsync(-1).ConfigureAwait(true);
 
-    private async void MoveModDown_Click(object sender, RoutedEventArgs e) =>
-        await MoveSelectedModAsync(1).ConfigureAwait(true);
+    private async void MoveSelectedPackageLater_Click(object sender, RoutedEventArgs e) =>
+        await MoveSelectedPackageAsync(1).ConfigureAwait(true);
 
-    private async Task MoveSelectedModAsync(int offset)
+    private async Task MoveSelectedPackageAsync(int offset)
     {
-        if (!TryGetSelectedProfileMod(out var profile, out var mod))
+        if (selectedProfile is null || SelectedInstalledPackage() is not { Id: not null } package)
         {
+            StatusText.Text = "Select a profile mod first.";
             return;
         }
-        var index = Math.Clamp(mod.Order + offset, 0, profile.Mods.Count - 1);
-        await ApplyProfileChangeAsync(new ProfileModService(managerStateRoot, SupportedBuildId)
-            .MoveAsync(profile.Name, mod.Id, index)).ConfigureAwait(true);
-    }
-
-    private async void RemoveMod_Click(object sender, RoutedEventArgs e)
-    {
-        if (!TryGetSelectedProfileMod(out var profile, out var mod))
+        var ordered = selectedProfile.Mods.OrderBy(mod => mod.Order).ThenBy(mod => mod.Id, StringComparer.Ordinal)
+            .ToArray();
+        var index = Array.FindIndex(ordered, mod => string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
+        if (index < 0)
         {
+            StatusText.Text = "Add the mod to the current profile before changing its order.";
+            return;
+        }
+        if (!string.Equals(ordered[index].Version, package.Version, StringComparison.Ordinal))
+        {
+            StatusText.Text = $"The current profile uses {ordered[index].Version}. " +
+                "Select that version to change its order.";
+            return;
+        }
+        var target = Math.Clamp(index + offset, 0, ordered.Length - 1);
+        if (target == index)
+        {
+            StatusText.Text = offset < 0
+                ? "The mod is already first in profile order."
+                : "The mod is already last in profile order.";
             return;
         }
         await ApplyProfileChangeAsync(new ProfileModService(managerStateRoot, SupportedBuildId)
-            .RemoveAsync(profile.Name, mod.Id)).ConfigureAwait(true);
+            .MoveAsync(selectedProfile.Name, package.Id, target)).ConfigureAwait(true);
     }
 
     private async void RemoveSelectedPackageFromProfile_Click(object sender, RoutedEventArgs e)
@@ -709,6 +718,7 @@ internal sealed partial class MainWindow : Window
     {
         var result = await operation.ConfigureAwait(true);
         selectedProfile = result.Profile;
+        currentProfileValidation = result.Success ? result.Validation : null;
         StatusText.Text = result.Success ? result.Message :
             result.Message + " " + string.Join(" ", result.Validation.Errors);
         RefreshProfileMods();
@@ -740,9 +750,6 @@ internal sealed partial class MainWindow : Window
             UpdateActionState();
         }
     }
-
-    private void ProfileModsList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
-        UpdateActionState();
 
     private async void LaunchModded_Click(object sender, RoutedEventArgs e)
     {
@@ -872,6 +879,7 @@ internal sealed partial class MainWindow : Window
 
     private async Task RefreshManagerStateAsync(string? selectProfile = null)
     {
+        currentProfileValidation = null;
         installedPackages = await ModPackageService.ListInstalledAsync(
             managerStateRoot, SupportedBuildId).ConfigureAwait(true);
         profilesSnapshot = await new ProfileService(managerStateRoot).ListAsync().ConfigureAwait(true);
@@ -927,16 +935,6 @@ internal sealed partial class MainWindow : Window
 
     private void RefreshProfileMods()
     {
-        CurrentProfileText.Text = selectedProfile is null
-            ? "No current profile selected"
-            : $"Current profile: {selectedProfile.Name}";
-        ProfileSummaryText.Text = selectedProfile is null
-            ? "Select a profile"
-            : $"{selectedProfile.Mods.Count(mod => mod.Enabled)} enabled / {selectedProfile.Mods.Count} total";
-        ProfileModsList.ItemsSource = selectedProfile?.Mods
-            .OrderBy(mod => mod.Order)
-            .Select(mod => $"{(mod.Enabled ? "● Enabled" : "○ Disabled")}  {mod.Id} {mod.Version}")
-            .ToArray() ?? [];
         UpdateActionState();
     }
 
@@ -947,18 +945,17 @@ internal sealed partial class MainWindow : Window
         {
             var entry = package.Id is null ? null : selectedProfile?.Mods.SingleOrDefault(mod =>
                 string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
+            var selectedVersion = entry is not null && string.Equals(
+                entry.Version, package.Version, StringComparison.Ordinal);
+            var enabled = selectedVersion && entry!.Enabled;
             return new ModListItem(
                 package,
                 package.Name ?? package.Id ?? "Invalid package",
-                package.Version ?? "Invalid",
+                FormatPackageProfileStatus(package, entry, selectedVersion),
                 AssetUri(IconNameForPackage(package)),
-                AssetUri(entry is { Enabled: true } ? "switchon.png" : "switchoff.png"),
-                entry is { Enabled: true },
-                selectedProfile is null
-                    ? "Select a profile first"
-                    : entry is { Enabled: true }
-                        ? "Disable in the current profile"
-                        : "Enable in the current profile");
+                AssetUri(enabled ? "switchon.png" : "switchoff.png"),
+                enabled,
+                ToggleHint(package, entry, selectedVersion));
         }).ToArray();
         ProfilePackagesList.ItemsSource = items;
         ProfilePackagesList.SelectedItem = items.SingleOrDefault(item => selected is not null &&
@@ -978,12 +975,7 @@ internal sealed partial class MainWindow : Window
     private async Task RefreshReadinessAsync(bool reportToStatusBar = false)
     {
         launchReady = false;
-        if (string.IsNullOrWhiteSpace(GameDirectoryText.Text))
-        {
-            readinessSummary = "Choose a supported game copy.";
-            UpdateActionState();
-            return;
-        }
+        currentProfileValidation = null;
         if (selectedProfile is null)
         {
             readinessSummary = "Choose a current profile to prepare a modded launch.";
@@ -992,6 +984,15 @@ internal sealed partial class MainWindow : Window
         }
         try
         {
+            currentProfileValidation = await new ProfileModService(managerStateRoot, SupportedBuildId)
+                .ValidateAsync(selectedProfile.Name).ConfigureAwait(true);
+            RefreshPackageLabels();
+            if (string.IsNullOrWhiteSpace(GameDirectoryText.Text))
+            {
+                readinessSummary = "Choose a supported game copy.";
+                UpdateActionState();
+                return;
+            }
             var status = await new GameLaunchService(managerStateRoot)
                 .GetStatusAsync(GameDirectoryText.Text, selectedProfile.Name).ConfigureAwait(true);
             launchReady = status.Problems.Count == 0;
@@ -1021,17 +1022,15 @@ internal sealed partial class MainWindow : Window
         var package = SelectedInstalledPackage();
         var entry = package?.Id is null ? null : selectedProfile?.Mods.SingleOrDefault(mod =>
             string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
+        var selectedVersion = entry is not null && string.Equals(
+            entry.Version, package?.Version, StringComparison.Ordinal);
         var hasPackage = package is { Valid: true, Id: not null, Version: not null };
         var hasProfile = selectedProfile is not null;
-        ConfigureModButton.IsEnabled = entry is not null && package!.ConfigurationDefaults.Count != 0;
-        ConfigureModButton.Visibility = entry is null ? Visibility.Collapsed : Visibility.Visible;
+        ConfigureModButton.IsEnabled = selectedVersion && package!.ConfigurationDefaults.Count != 0;
+        ConfigureModButton.Visibility = selectedVersion ? Visibility.Visible : Visibility.Collapsed;
         UninstallPackageButton.IsEnabled = hasPackage;
         UninstallPackageButton.Visibility = hasPackage ? Visibility.Visible : Visibility.Collapsed;
 
-        var selectedModIndex = ProfileModsList.SelectedIndex;
-        MoveUpButton.IsEnabled = hasProfile && selectedModIndex > 0;
-        MoveDownButton.IsEnabled = hasProfile && selectedModIndex >= 0 &&
-            selectedModIndex < (selectedProfile?.Mods.Count ?? 0) - 1;
         RemoveFromProfileButton.IsEnabled = entry is not null;
         RemoveFromProfileButton.Visibility = entry is not null
             ? Visibility.Visible
@@ -1089,31 +1088,6 @@ internal sealed partial class MainWindow : Window
         return (ProfilePackagesList.SelectedItem as ModListItem)?.Package;
     }
 
-    private bool TryGetOperationSelection(out ModProfile profile, out ModPackageInfo package)
-    {
-        profile = selectedProfile!;
-        package = SelectedInstalledPackage()!;
-        if (profile is null || package is not { Valid: true, Id: not null, Version: not null })
-        {
-            StatusText.Text = "Select a profile and a valid installed package first.";
-            return false;
-        }
-        return true;
-    }
-
-    private bool TryGetSelectedProfileMod(out ModProfile profile, out ProfileModEntry mod)
-    {
-        profile = selectedProfile!;
-        mod = null!;
-        if (profile is null || ProfileModsList.SelectedIndex < 0)
-        {
-            StatusText.Text = "Select a profile mod first.";
-            return false;
-        }
-        mod = profile.Mods.OrderBy(value => value.Order).ElementAt(ProfileModsList.SelectedIndex);
-        return true;
-    }
-
     private bool TryGetLaunchInputs(out string gameDirectory, out string profileName)
     {
         gameDirectory = GameDirectoryText.Text;
@@ -1142,6 +1116,104 @@ internal sealed partial class MainWindow : Window
     private static string FormatDependencies(ModPackageInfo package) => package.Dependencies.Count == 0
         ? "None"
         : string.Join(", ", package.Dependencies.Select(value => $"{value.Id} {value.Version}"));
+
+    private string FormatPackageProfileStatus(
+        ModPackageInfo package,
+        ProfileModEntry? entry,
+        bool selectedVersion)
+    {
+        var version = package.Version ?? "Invalid";
+        if (!package.Valid)
+        {
+            return version + " • Invalid package";
+        }
+        if (selectedProfile is null)
+        {
+            return version + " • Installed";
+        }
+        if (entry is null)
+        {
+            return version + " • Not in profile";
+        }
+        if (!selectedVersion)
+        {
+            return $"{version} • Available • Uses {entry.Version}";
+        }
+        if (!entry.Enabled)
+        {
+            return $"{version} • Disabled • Profile #{entry.Order + 1}";
+        }
+        if (currentProfileValidation is null)
+        {
+            return $"{version} • Enabled • Profile #{entry.Order + 1}";
+        }
+        if (currentProfileValidation is not { Valid: true } validation)
+        {
+            return version + " • Enabled • Needs attention";
+        }
+        var loadOrder = validation.OrderedPackages
+            .Select((value, index) => (value, index))
+            .Single(value =>
+                string.Equals(value.value.Id, package.Id, StringComparison.Ordinal) &&
+                string.Equals(value.value.Version, package.Version, StringComparison.Ordinal)).index + 1;
+        return $"{version} • Load #{loadOrder} • Ready";
+    }
+
+    private string FormatPackageDetailsStatus(
+        ModPackageInfo package,
+        ProfileModEntry? entry,
+        bool selectedVersion)
+    {
+        if (selectedProfile is null)
+        {
+            return "Select a profile to configure this package";
+        }
+        if (entry is null)
+        {
+            return "Not in current profile";
+        }
+        if (!selectedVersion)
+        {
+            return $"Available version • current profile uses {entry.Version}";
+        }
+        if (!entry.Enabled)
+        {
+            return $"Disabled in current profile • profile order #{entry.Order + 1}";
+        }
+        if (currentProfileValidation is null)
+        {
+            return $"Enabled in current profile • profile order #{entry.Order + 1}";
+        }
+        if (currentProfileValidation is not { Valid: true } validation)
+        {
+            var problem = currentProfileValidation?.Errors.FirstOrDefault(error =>
+                package.Id is not null && error.Contains(package.Id, StringComparison.Ordinal));
+            return "Enabled • dependencies need attention" +
+                (problem is null ? string.Empty : ": " + problem);
+        }
+        var loadOrder = validation.OrderedPackages
+            .Select((value, index) => (value, index))
+            .Single(value => string.Equals(value.value.Id, package.Id, StringComparison.Ordinal)).index + 1;
+        return $"Enabled in current profile • load order #{loadOrder} • dependencies ready";
+    }
+
+    private string ToggleHint(
+        ModPackageInfo package,
+        ProfileModEntry? entry,
+        bool selectedVersion)
+    {
+        if (selectedProfile is null)
+        {
+            return "Select a profile first";
+        }
+        if (entry is null or { Enabled: false })
+        {
+            return $"Enable version {package.Version} in the current profile";
+        }
+        return selectedVersion
+            ? "Disable in the current profile"
+            : $"Switch the current profile from {entry.Version} to {package.Version}";
+    }
 
     private static string FormatItems(IReadOnlyList<string> items) => items.Count == 0
         ? "None"

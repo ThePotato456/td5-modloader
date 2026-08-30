@@ -149,7 +149,7 @@ Initial supported build fingerprints:
   - [x] Verify each copied file and the completed operation; roll back loader-owned copies after
     cancellation, I/O failure, or failed post-operation verification.
   - [x] Persist and reconcile an operation journal when the manager process terminates mid-operation.
-- [~] Replace the dual-list profile editor with a current-profile mod list containing an enable
+- [x] Replace the dual-list profile editor with a current-profile mod list containing an enable
   toggle, selected version, dependency status, load order, Configure action, and Remove action.
 - [x] Add profile create, select, rename, duplicate, and delete workflows with a visible current
   profile and safe fallback when the current profile is removed.
