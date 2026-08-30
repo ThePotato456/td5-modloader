@@ -88,6 +88,50 @@ public sealed class ManagerSettingsService
         return updated;
     }
 
+    public async Task<ManagerSettingsLoadResult> ReconcileSelectionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var loaded = await LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (loaded.Recovered)
+        {
+            return loaded;
+        }
+
+        var settings = loaded.Settings;
+        var warnings = new List<string>();
+        if (settings.GameDirectory is not null && !Directory.Exists(settings.GameDirectory))
+        {
+            settings = settings with { GameDirectory = null };
+            warnings.Add("The saved game copy no longer exists. Choose a game copy explicitly.");
+        }
+
+        if (settings.CurrentProfile is not null)
+        {
+            try
+            {
+                if (await new ProfileService(Path.GetDirectoryName(settingsPath)!)
+                        .LoadAsync(settings.CurrentProfile, cancellationToken).ConfigureAwait(false) is null)
+                {
+                    settings = settings with { CurrentProfile = null };
+                    warnings.Add("The saved current profile no longer exists. Choose a profile explicitly.");
+                }
+            }
+            catch (InvalidDataException)
+            {
+                settings = settings with { CurrentProfile = null };
+                warnings.Add("The saved current profile is invalid and was preserved. Choose a profile explicitly.");
+            }
+        }
+
+        if (warnings.Count == 0)
+        {
+            return loaded;
+        }
+
+        await SaveAsync(settings, cancellationToken).ConfigureAwait(false);
+        return new(settings, true, string.Join(" ", warnings));
+    }
+
     public static ManagerSettings Default() => new(1, null, null);
 
     private static void Validate(ManagerSettings? settings)

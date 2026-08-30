@@ -52,11 +52,18 @@ try
 
     var service = new LoaderInstallationService(stateRoot, builds);
     var proxyTarget = Path.Combine(gameDirectory, "wininet.dll");
+    var unsupportedDirectory = Path.Combine(testRoot, "unsupported-game");
+    Directory.CreateDirectory(unsupportedDirectory);
+    Assert((await service.InspectAsync(unsupportedDirectory, artifactDirectory)).State ==
+        LoaderHealthState.UnsupportedGame, "An unsupported game was not reported explicitly.");
     Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
         LoaderHealthState.NotInstalled, "A clean game was not reported as not installed.");
     await File.WriteAllTextAsync(proxyTarget, "pre-existing proxy");
-    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
-        LoaderHealthState.Conflict, "A foreign proxy was not reported as an install conflict.");
+    var foreignHealth = await service.InspectAsync(gameDirectory, artifactDirectory);
+    Assert(foreignHealth.State == LoaderHealthState.Conflict &&
+        foreignHealth.Files.Any(file => file is { RelativePath: "wininet.dll", State: LoaderFileState.Foreign }) &&
+        foreignHealth.Message.Contains("not owned", StringComparison.OrdinalIgnoreCase),
+        "A foreign proxy was not reported with an actionable install conflict.");
     var conflict = await service.InstallAsync(gameDirectory, artifactDirectory);
     Assert(!conflict.Success && conflict.Conflicts.SequenceEqual(new[] { "wininet.dll" }),
         "Install did not report the pre-existing proxy conflict.");
@@ -152,8 +159,11 @@ try
         "Repair did not restore a missing loader-owned file.");
 
     await File.WriteAllTextAsync(proxyTarget, "user-modified proxy");
-    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
-        LoaderHealthState.Conflict, "A modified owned file was not reported as a conflict.");
+    var modifiedHealth = await service.InspectAsync(gameDirectory, artifactDirectory);
+    Assert(modifiedHealth.State == LoaderHealthState.Conflict &&
+        modifiedHealth.Files.Any(file => file is { RelativePath: "wininet.dll", State: LoaderFileState.Modified }) &&
+        modifiedHealth.Message.Contains("will not be overwritten", StringComparison.OrdinalIgnoreCase),
+        "A modified owned file was not reported with a manual recovery path.");
     var repairConflict = await service.RepairAsync(gameDirectory, artifactDirectory);
     Assert(!repairConflict.Success &&
         repairConflict.Conflicts.Contains("wininet.dll", StringComparer.OrdinalIgnoreCase),
@@ -162,7 +172,9 @@ try
         "Repair overwrote a modified loader file.");
 
     var partialUninstall = await service.UninstallAsync(gameDirectory);
-    Assert(!partialUninstall.Success && File.Exists(proxyTarget) && !File.Exists(runtimeTarget),
+    Assert(!partialUninstall.Success && File.Exists(proxyTarget) && !File.Exists(runtimeTarget) &&
+        partialUninstall.Conflicts.Contains("wininet.dll", StringComparer.OrdinalIgnoreCase) &&
+        partialUninstall.Message.Contains("preserved", StringComparison.OrdinalIgnoreCase),
         "Uninstall did not preserve only the modified loader file.");
     File.Copy(Path.Combine(artifactDirectory, "wininet.dll"), proxyTarget, true);
     var uninstall = await service.UninstallAsync(gameDirectory);
@@ -354,6 +366,21 @@ try
         savedSettings.CurrentProfile == "Testing" &&
         (await settingsService.LoadAsync()).Settings == savedSettings,
         "Manager game/profile selection did not persist.");
+    var missingSavedGame = Path.Combine(testRoot, "removed-game-copy");
+    await settingsService.SaveAsync(savedSettings with
+    {
+        GameDirectory = missingSavedGame,
+        CurrentProfile = "Removed Profile"
+    });
+    var reconciledSettings = await settingsService.ReconcileSelectionsAsync();
+    Assert(reconciledSettings is
+    {
+        Recovered: true,
+        Settings.GameDirectory: null,
+        Settings.CurrentProfile: null
+    } && reconciledSettings.Warning?.Contains("explicitly", StringComparison.Ordinal) == true &&
+        (await settingsService.LoadAsync()).Settings == ManagerSettingsService.Default(),
+        "Invalid saved selections did not recover to an explicit safe state.");
     await File.WriteAllTextAsync(Path.Combine(stateRoot, "manager.json"), "{not json");
     var recoveredSettings = await settingsService.LoadAsync();
     Assert(recoveredSettings.Recovered && recoveredSettings.Settings == ManagerSettingsService.Default() &&
@@ -536,8 +563,13 @@ try
         [new("sample.application", "1.1.0", true, 0, installedApplication.ConfigurationDefaults)]);
     var dependencyReadiness = await launches.GetStatusAsync(gameDirectory, "Broken Dependencies");
     Assert(dependencyReadiness.Issues.Any(issue =>
-            issue is { Code: "profile.dependencies", Action: ReadinessAction.ResolveDependencies }),
-        "A broken dependency was not routed to dependency correction.");
+            issue is
+            {
+                Code: "profile.dependencies",
+                Action: ReadinessAction.ResolveDependencies,
+                ModId: "sample.application"
+            }),
+        "A broken dependency did not identify the affected mod and corrective action.");
 
     Assert(!(await launches.LaunchModdedAsync(gameDirectory, "Operations", false)).Success &&
         recordingLauncher.Requests.Count == 0,

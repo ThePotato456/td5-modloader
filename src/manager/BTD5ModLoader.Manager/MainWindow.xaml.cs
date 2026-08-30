@@ -121,13 +121,14 @@ internal sealed partial class MainWindow : Window
             migrationWarning = "Existing manager state migration was not completed. " +
                 "Original files were preserved. " + exception.Message;
         }
-        var loaded = await new ManagerSettingsService(managerStateRoot).LoadAsync().ConfigureAwait(true);
+        var loaded = await new ManagerSettingsService(managerStateRoot)
+            .ReconcileSelectionsAsync().ConfigureAwait(true);
         if (!string.IsNullOrWhiteSpace(loaded.Settings.GameDirectory) &&
             Directory.Exists(loaded.Settings.GameDirectory))
         {
             GameDirectoryText.Text = loaded.Settings.GameDirectory;
         }
-        else if (loaded.Settings.GameDirectory is null)
+        else if (loaded.Settings.GameDirectory is null && !loaded.Recovered)
         {
             TryDiscoverGame();
         }

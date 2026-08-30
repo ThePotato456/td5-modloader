@@ -231,6 +231,7 @@ contains no Ninja Kiwi files.
 - [Mod package format](docs/mod-packages.md)
 - [Manager workflow and recovery](docs/manager-revamp.md)
 - [Manager storage and file ownership](docs/manager-storage.md)
+- [Phase 5R manager reliability validation](docs/validation-phase5r.md)
 - [Supported Steam build validation](docs/validation-steam-win32-4.8.md)
 - [Live lives-event and cancellation validation](docs/validation-phase6-lives-changed.md)
 - [Tower-event validation](docs/validation-phase6-tower-actions.md)

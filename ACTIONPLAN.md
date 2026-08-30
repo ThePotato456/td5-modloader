@@ -162,15 +162,15 @@ Initial supported build fingerprints:
 
 ### Phase 5R implementation gate
 
-- [ ] Automated tests cover settings persistence/recovery, profile lifecycle, configuration edits,
+- [x] Automated tests cover settings persistence/recovery, profile lifecycle, configuration edits,
   every loader health state, interrupted operations, post-operation verification, and migrations.
 - [ ] From a fresh state, a player can choose BTD5 once, install the loader with one primary action,
   install a mod, enable and configure it in the current profile, and launch without editing files.
-- [ ] Restarting the manager preserves the game and current profile; invalid saved selections recover
+- [x] Restarting the manager preserves the game and current profile; invalid saved selections recover
   to an explicit safe state without silently selecting an unrelated profile.
-- [ ] Missing loader files can be repaired, while modified or foreign files are preserved and shown
+- [x] Missing loader files can be repaired, while modified or foreign files are preserved and shown
   with a clear manual recovery path; uninstall removes only verified loader-owned files.
-- [ ] A profile cannot launch with broken dependencies or invalid configuration, and the manager
+- [x] A profile cannot launch with broken dependencies or invalid configuration, and the manager
   identifies the affected mod and corrective action.
 
 ---
