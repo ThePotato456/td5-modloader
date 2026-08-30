@@ -5,7 +5,7 @@
 namespace btd5loader {
 
 inline constexpr std::string_view kProductName = "BTD5 Mod Loader";
-inline constexpr std::string_view kVersion = "0.0.1";
+inline constexpr std::string_view kVersion = "0.0.2";
 
 }  // namespace btd5loader
 
