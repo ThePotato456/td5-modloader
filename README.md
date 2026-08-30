@@ -50,6 +50,24 @@ by Ninja Kiwi. Bloons TD 5 and its assets belong to their respective owners.
 Progress is tracked by checked implementation steps and mandatory phase gates in
 [ACTIONPLAN.md](ACTIONPLAN.md).
 
+## Using the manager
+
+1. Download and extract a complete release, then run
+   `BTD5ModLoader.Manager.exe` from the extracted directory.
+2. Open **Options** to confirm the detected Steam Win32 4.8 copy and choose
+   **Install loader**.
+3. Create a profile with the **+** button.
+4. Drag a `.btd5mod` archive onto **Mods**, then use its switch to add and enable
+   that version in the current profile.
+5. Select the mod to configure it or review dependencies in **Details**.
+6. Put Steam in Offline Mode, acknowledge the offline requirement in **Options**,
+   and launch after every readiness check passes.
+
+Installing a package does not automatically change a profile. **Remove from
+profile** keeps the archive installed; **Uninstall** removes it and is blocked
+while a profile still references it. See the complete
+[manager workflow and recovery guide](docs/manager-revamp.md).
+
 ## Design
 
 - **Lua is the public mod format.** Mod authors do not need to compile C++ or
@@ -211,6 +229,7 @@ contains no Ninja Kiwi files.
 - [Lua API reference](lua-api/README.md)
 - [Gameplay events and wrapper lifetimes](docs/gameplay-events.md)
 - [Mod package format](docs/mod-packages.md)
+- [Manager workflow and recovery](docs/manager-revamp.md)
 - [Manager storage and file ownership](docs/manager-storage.md)
 - [Supported Steam build validation](docs/validation-steam-win32-4.8.md)
 - [Live lives-event and cancellation validation](docs/validation-phase6-lives-changed.md)
