@@ -13,6 +13,18 @@ public sealed record LoaderInstallationRecord(
     string LoaderVersion,
     IReadOnlyList<InstalledFile> Files);
 
+public enum LoaderOperationKind
+{
+    Install,
+    Repair
+}
+
+public sealed record LoaderOperationJournal(
+    int SchemaVersion,
+    string GameDirectory,
+    LoaderOperationKind Operation,
+    IReadOnlyList<InstalledFile> Files);
+
 public sealed record InstallationResult(
     bool Success,
     string Message,
@@ -48,6 +60,10 @@ public sealed record LoaderHealthResult(
 
 public sealed class LoaderInstallationService
 {
+    private sealed record JournalRecoveryResult(
+        bool Invalid,
+        string? Message);
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -76,6 +92,13 @@ public sealed class LoaderInstallationService
         if (!installation.Supported || installation.BuildId is null)
         {
             return new(false, installation.Error ?? "Game validation failed.", []);
+        }
+
+        var recovery = await ReconcileOperationJournalAsync(
+            installation.Directory, cancellationToken).ConfigureAwait(false);
+        if (recovery.Invalid)
+        {
+            return new(false, recovery.Message ?? "The loader operation journal is invalid.", []);
         }
 
         var recordPath = GetRecordPath(installation.Directory);
@@ -110,8 +133,24 @@ public sealed class LoaderInstallationService
 
         var installed = new List<InstalledFile>();
         var recordWritten = false;
+        var journalPath = GetOperationJournalPath(installation.Directory);
+        var journalWritten = false;
         try
         {
+            var journal = new LoaderOperationJournal(
+                1,
+                installation.Directory,
+                LoaderOperationKind.Install,
+                prepared.Select(artifact => new InstalledFile(
+                    artifact.RelativePath, artifact.Sha256)).ToArray());
+            Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
+            await WriteAllTextAtomicallyAsync(
+                journalPath,
+                JsonSerializer.Serialize(journal, JsonOptions),
+                false,
+                cancellationToken).ConfigureAwait(false);
+            journalWritten = true;
+
             foreach (var artifact in prepared)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -148,6 +187,7 @@ public sealed class LoaderInstallationService
                 throw new IOException("The loader did not pass verification after installation: " +
                     verification.Message);
             }
+            _ = TryDelete(journalPath);
             return new(true, "Loader installed successfully.", []);
         }
         catch (OperationCanceledException)
@@ -157,6 +197,10 @@ public sealed class LoaderInstallationService
             {
                 _ = TryDelete(recordPath);
             }
+            if (journalWritten)
+            {
+                _ = TryDelete(journalPath);
+            }
             throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -165,6 +209,10 @@ public sealed class LoaderInstallationService
             if (recordWritten && !TryDelete(recordPath))
             {
                 preserved.Add("installation record");
+            }
+            if (journalWritten && !TryDelete(journalPath))
+            {
+                preserved.Add("operation journal");
             }
             var message = preserved.Count == 0
                 ? "Loader installation failed and all changes were rolled back."
@@ -189,6 +237,22 @@ public sealed class LoaderInstallationService
                 []);
         }
 
+        var recovery = await ReconcileOperationJournalAsync(
+            installation.Directory, cancellationToken).ConfigureAwait(false);
+        if (recovery.Invalid)
+        {
+            return new(
+                LoaderHealthState.InvalidRecord,
+                recovery.Message ?? "The loader operation journal is damaged or unsupported.",
+                installation.BuildId,
+                []);
+        }
+
+        LoaderHealthResult IncludeRecovery(LoaderHealthResult result) =>
+            string.IsNullOrWhiteSpace(recovery.Message)
+                ? result
+                : result with { Message = recovery.Message + " " + result.Message };
+
         LoaderInstallationRecord? record;
         try
         {
@@ -196,11 +260,11 @@ public sealed class LoaderInstallationService
         }
         catch (Exception exception) when (exception is JsonException or InvalidDataException)
         {
-            return new(
+            return IncludeRecovery(new(
                 LoaderHealthState.InvalidRecord,
                 "The loader installation record is damaged or unsupported. It was preserved for recovery.",
                 installation.BuildId,
-                []);
+                []));
         }
 
         var artifacts = EnumerateArtifacts(artifactDirectory)
@@ -209,32 +273,32 @@ public sealed class LoaderInstallationService
         {
             if (artifacts.Count == 0)
             {
-                return new(
+                return IncludeRecovery(new(
                     LoaderHealthState.ArtifactUnavailable,
                     "Loader release files were not found beside the manager.",
                     installation.BuildId,
-                    []);
+                    []));
             }
             var foreign = artifacts.Keys
                 .Where(relative => File.Exists(ToGamePath(installation.Directory, relative)))
                 .Select(relative => new LoaderFileHealth(relative, LoaderFileState.Foreign))
                 .ToArray();
-            return foreign.Length == 0
+            return IncludeRecovery(foreign.Length == 0
                 ? new(LoaderHealthState.NotInstalled, "The loader is not installed.", installation.BuildId, [])
                 : new(
                     LoaderHealthState.Conflict,
                     "Files not owned by this manager conflict with loader installation.",
                     installation.BuildId,
-                    foreign);
+                    foreign));
         }
 
         if (!string.Equals(record.BuildId, installation.BuildId, StringComparison.Ordinal))
         {
-            return new(
+            return IncludeRecovery(new(
                 LoaderHealthState.Conflict,
                 "The recorded loader build does not match this game build.",
                 installation.BuildId,
-                []);
+                []));
         }
 
         var files = new List<LoaderFileHealth>();
@@ -264,33 +328,33 @@ public sealed class LoaderInstallationService
 
         if (files.Any(file => file.State == LoaderFileState.Modified))
         {
-            return new(
+            return IncludeRecovery(new(
                 LoaderHealthState.Conflict,
                 "Modified loader-owned files were found and will not be overwritten.",
                 installation.BuildId,
-                files);
+                files));
         }
         if (files.Any(file => file.State == LoaderFileState.SourceUnavailable))
         {
-            return new(
+            return IncludeRecovery(new(
                 LoaderHealthState.ArtifactUnavailable,
                 "Missing loader files cannot be repaired because matching release files are unavailable.",
                 installation.BuildId,
-                files);
+                files));
         }
         if (files.Any(file => file.State == LoaderFileState.Missing))
         {
-            return new(
+            return IncludeRecovery(new(
                 LoaderHealthState.Repairable,
                 "Loader files are missing and can be repaired.",
                 installation.BuildId,
-                files);
+                files));
         }
-        return new(
+        return IncludeRecovery(new(
             LoaderHealthState.Healthy,
             "The loader is installed and healthy.",
             installation.BuildId,
-            files);
+            files));
     }
 
     public async Task<InstallationResult> VerifyAsync(
@@ -336,6 +400,13 @@ public sealed class LoaderInstallationService
         string artifactDirectory,
         CancellationToken cancellationToken = default)
     {
+        var recovery = await ReconcileOperationJournalAsync(gameDirectory, cancellationToken)
+            .ConfigureAwait(false);
+        if (recovery.Invalid)
+        {
+            return new(false, recovery.Message ?? "The loader operation journal is invalid.", []);
+        }
+
         var record = await ReadRecordAsync(gameDirectory, cancellationToken).ConfigureAwait(false);
         if (record is null)
         {
@@ -385,8 +456,26 @@ public sealed class LoaderInstallationService
         }
 
         var restored = new List<InstalledFile>();
+        var journalPath = GetOperationJournalPath(record.GameDirectory);
+        var journalWritten = false;
         try
         {
+            if (pending.Count != 0)
+            {
+                var journal = new LoaderOperationJournal(
+                    1,
+                    record.GameDirectory,
+                    LoaderOperationKind.Repair,
+                    pending.Select(repair => repair.Installed).ToArray());
+                Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
+                await WriteAllTextAtomicallyAsync(
+                    journalPath,
+                    JsonSerializer.Serialize(journal, JsonOptions),
+                    false,
+                    cancellationToken).ConfigureAwait(false);
+                journalWritten = true;
+            }
+
             foreach (var repair in pending)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -409,10 +498,18 @@ public sealed class LoaderInstallationService
             var verification = await VerifyAsync(gameDirectory, cancellationToken).ConfigureAwait(false);
             if (verification.Success)
             {
+                if (journalWritten)
+                {
+                    _ = TryDelete(journalPath);
+                }
                 return new(true, "Loader installation repaired and verified.", []);
             }
 
             var preserved = await RollBackCopiesAsync(record.GameDirectory, restored).ConfigureAwait(false);
+            if (journalWritten && !TryDelete(journalPath))
+            {
+                preserved.Add("operation journal");
+            }
             return new(
                 false,
                 preserved.Count == 0
@@ -423,11 +520,19 @@ public sealed class LoaderInstallationService
         catch (OperationCanceledException)
         {
             await RollBackCopiesAsync(record.GameDirectory, restored).ConfigureAwait(false);
+            if (journalWritten)
+            {
+                _ = TryDelete(journalPath);
+            }
             throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             var preserved = await RollBackCopiesAsync(record.GameDirectory, restored).ConfigureAwait(false);
+            if (journalWritten && !TryDelete(journalPath))
+            {
+                preserved.Add("operation journal");
+            }
             return new(
                 false,
                 preserved.Count == 0
@@ -494,6 +599,160 @@ public sealed class LoaderInstallationService
         return Path.Combine(stateRoot, "installations", key + ".json");
     }
 
+    public string GetOperationJournalPath(string gameDirectory)
+    {
+        var normalized = Path.GetFullPath(gameDirectory).TrimEnd(Path.DirectorySeparatorChar).ToUpperInvariant();
+        var key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
+        return Path.Combine(stateRoot, "operations", key + ".json");
+    }
+
+    private async Task<JournalRecoveryResult> ReconcileOperationJournalAsync(
+        string gameDirectory,
+        CancellationToken cancellationToken)
+    {
+        var journalPath = GetOperationJournalPath(gameDirectory);
+        if (!File.Exists(journalPath))
+        {
+            return new(false, null);
+        }
+
+        LoaderOperationJournal journal;
+        try
+        {
+            journal = await ReadOperationJournalAsync(gameDirectory, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException)
+        {
+            return new(
+                true,
+                "The loader operation journal is damaged or unsafe. It was preserved for manual recovery.");
+        }
+
+        LoaderInstallationRecord? record;
+        try
+        {
+            record = await ReadRecordAsync(gameDirectory, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException)
+        {
+            return new(
+                true,
+                "An interrupted loader operation and a damaged installation record require manual recovery.");
+        }
+
+        if (record is null && journal.Operation != LoaderOperationKind.Install)
+        {
+            return new(
+                true,
+                "An interrupted repair journal has no matching installation record and was preserved.");
+        }
+        if (record is not null && journal.Files.Any(journalFile => !record.Files.Any(recordFile =>
+                string.Equals(
+                    recordFile.RelativePath,
+                    journalFile.RelativePath,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(recordFile.Sha256, journalFile.Sha256, StringComparison.OrdinalIgnoreCase))))
+        {
+            return new(
+                true,
+                "The loader operation journal does not match the installation record and was preserved.");
+        }
+
+        if (record is not null && await IsRecordHealthyAsync(record, cancellationToken).ConfigureAwait(false))
+        {
+            return TryDelete(journalPath)
+                ? new(false, "A completed loader operation was confirmed after an interrupted manager session.")
+                : new(false, "The loader operation completed, but its stale journal could not be removed.");
+        }
+
+        var preserved = await RollBackCopiesAsync(journal.GameDirectory, journal.Files).ConfigureAwait(false);
+        preserved.AddRange(CleanTemporaryCopies(journal.GameDirectory, journal.Files));
+        if (!TryDelete(journalPath))
+        {
+            preserved.Add("operation journal");
+        }
+        var operation = journal.Operation == LoaderOperationKind.Install ? "installation" : "repair";
+        return preserved.Count == 0
+            ? new(false, $"An interrupted loader {operation} was safely rolled back.")
+            : new(
+                false,
+                $"An interrupted loader {operation} was reconciled; changed files were preserved for recovery.");
+    }
+
+    private async Task<LoaderOperationJournal> ReadOperationJournalAsync(
+        string gameDirectory,
+        CancellationToken cancellationToken)
+    {
+        var path = GetOperationJournalPath(gameDirectory);
+        using var stream = File.OpenRead(path);
+        var journal = await JsonSerializer.DeserializeAsync<LoaderOperationJournal>(
+            stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+        if (journal is null)
+        {
+            throw new InvalidDataException("The loader operation journal is empty.");
+        }
+
+        if (journal.SchemaVersion != 1 ||
+            string.IsNullOrWhiteSpace(journal.GameDirectory) ||
+            !Enum.IsDefined(journal.Operation) ||
+            journal.Files is null ||
+            journal.Files.Count == 0 ||
+            journal.Files.Any(file =>
+                file is null ||
+                string.IsNullOrWhiteSpace(file.RelativePath) ||
+                string.IsNullOrWhiteSpace(file.Sha256) ||
+                file.Sha256.Length != 64 ||
+                !IsLoaderArtifactPath(file.RelativePath)) ||
+            journal.Files.Select(file => file.RelativePath).Distinct(StringComparer.OrdinalIgnoreCase).Count() !=
+                journal.Files.Count)
+        {
+            throw new InvalidDataException("The loader operation journal is invalid.");
+        }
+        var requestedDirectory = Path.GetFullPath(gameDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        var recordedDirectory = Path.GetFullPath(journal.GameDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        if (!string.Equals(requestedDirectory, recordedDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("The loader operation journal belongs to another game directory.");
+        }
+        foreach (var file in journal.Files)
+        {
+            _ = ToGamePath(recordedDirectory, file.RelativePath);
+        }
+        return journal;
+    }
+
+    private static async Task<bool> IsRecordHealthyAsync(
+        LoaderInstallationRecord record,
+        CancellationToken cancellationToken)
+    {
+        foreach (var installed in record.Files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var target = ToGamePath(record.GameDirectory, installed.RelativePath);
+            if (!File.Exists(target) ||
+                !string.Equals(
+                    await GameDiscovery.HashFileAsync(target, cancellationToken).ConfigureAwait(false),
+                    installed.Sha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool IsLoaderArtifactPath(string relativePath)
+    {
+        if (string.Equals(relativePath, "wininet.dll", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(relativePath, "btd5loader_runtime.dll", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        return string.Equals(Path.GetDirectoryName(relativePath), "symbols", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Path.GetExtension(relativePath), ".json", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(Path.GetFileNameWithoutExtension(relativePath));
+    }
+
     private async Task<LoaderInstallationRecord?> ReadRecordAsync(
         string gameDirectory,
         CancellationToken cancellationToken)
@@ -510,17 +769,26 @@ public sealed class LoaderInstallationService
         {
             throw new InvalidDataException("The installation record is empty.");
         }
-        var requestedDirectory = Path.GetFullPath(gameDirectory).TrimEnd(Path.DirectorySeparatorChar);
-        var recordedDirectory = Path.GetFullPath(record.GameDirectory).TrimEnd(Path.DirectorySeparatorChar);
         if (record.SchemaVersion != 1 ||
-            !string.Equals(requestedDirectory, recordedDirectory, StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(record.GameDirectory) ||
             string.IsNullOrWhiteSpace(record.BuildId) ||
+            record.Files is null ||
             record.Files.Count == 0 ||
+            record.Files.Any(file =>
+                file is null ||
+                string.IsNullOrWhiteSpace(file.RelativePath) ||
+                string.IsNullOrWhiteSpace(file.Sha256) ||
+                file.Sha256.Length != 64) ||
             record.Files.Select(file => file.RelativePath).Distinct(StringComparer.OrdinalIgnoreCase).Count() !=
-                record.Files.Count ||
-            record.Files.Any(file => string.IsNullOrWhiteSpace(file.Sha256) || file.Sha256.Length != 64))
+                record.Files.Count)
         {
             throw new InvalidDataException("The installation record is invalid.");
+        }
+        var requestedDirectory = Path.GetFullPath(gameDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        var recordedDirectory = Path.GetFullPath(record.GameDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        if (!string.Equals(requestedDirectory, recordedDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("The installation record belongs to another game directory.");
         }
         foreach (var file in record.Files)
         {
@@ -611,6 +879,35 @@ public sealed class LoaderInstallationService
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 preserved.Add(copied.RelativePath);
+            }
+        }
+        return preserved;
+    }
+
+    private static List<string> CleanTemporaryCopies(
+        string gameDirectory,
+        IEnumerable<InstalledFile> copiedFiles)
+    {
+        var preserved = new List<string>();
+        foreach (var copied in copiedFiles)
+        {
+            var target = ToGamePath(gameDirectory, copied.RelativePath);
+            var parent = Path.GetDirectoryName(target)!;
+            if (!Directory.Exists(parent))
+            {
+                continue;
+            }
+            var pattern = Path.GetFileName(target) + ".btd5ml-*.tmp";
+            foreach (var temporary in Directory.EnumerateFiles(parent, pattern, SearchOption.TopDirectoryOnly))
+            {
+                try
+                {
+                    File.Delete(temporary);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    preserved.Add(Path.GetRelativePath(gameDirectory, temporary));
+                }
             }
         }
         return preserved;

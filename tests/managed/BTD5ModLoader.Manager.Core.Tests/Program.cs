@@ -1,5 +1,6 @@
 using BTD5ModLoader.Manager.Core;
 using System.IO.Compression;
+using System.Text.Json;
 
 if (string.IsNullOrWhiteSpace(ProductInfo.Name) ||
     string.IsNullOrWhiteSpace(ProductInfo.Version))
@@ -63,6 +64,33 @@ try
         "Install changed the pre-existing proxy.");
     File.Delete(proxyTarget);
 
+    var proxyHash = await GameDiscovery.HashFileAsync(Path.Combine(artifactDirectory, "wininet.dll"));
+    var runtimeHash = await GameDiscovery.HashFileAsync(
+        Path.Combine(artifactDirectory, "btd5loader_runtime.dll"));
+    var symbolHash = await GameDiscovery.HashFileAsync(
+        Path.Combine(artifactDirectory, "symbols", "steam-win32-4.8.json"));
+    File.Copy(Path.Combine(artifactDirectory, "wininet.dll"), proxyTarget);
+    var interruptedInstallTemporary =
+        Path.Combine(gameDirectory, "btd5loader_runtime.dll.btd5ml-interrupted.tmp");
+    await File.WriteAllTextAsync(interruptedInstallTemporary, "partial install copy");
+    await WriteOperationJournalAsync(
+        service.GetOperationJournalPath(gameDirectory),
+        new(
+            1,
+            gameDirectory,
+            LoaderOperationKind.Install,
+            [
+                new("wininet.dll", proxyHash),
+                new("btd5loader_runtime.dll", runtimeHash),
+                new(Path.Combine("symbols", "steam-win32-4.8.json"), symbolHash)
+            ]));
+    var interruptedInstall = await service.InspectAsync(gameDirectory, artifactDirectory);
+    Assert(interruptedInstall.State == LoaderHealthState.NotInstalled &&
+        interruptedInstall.Message.Contains("rolled back", StringComparison.OrdinalIgnoreCase) &&
+        !File.Exists(proxyTarget) && !File.Exists(interruptedInstallTemporary) &&
+        !File.Exists(service.GetOperationJournalPath(gameDirectory)),
+        "Health inspection did not roll back an interrupted installation journal.");
+
     var install = await service.InstallAsync(gameDirectory, artifactDirectory);
     Assert(install.Success && File.Exists(service.GetRecordPath(gameDirectory)),
         "Loader installation failed.");
@@ -71,6 +99,37 @@ try
     Assert((await service.VerifyAsync(gameDirectory)).Success, "Installed loader did not verify.");
 
     var runtimeTarget = Path.Combine(gameDirectory, "btd5loader_runtime.dll");
+    File.Delete(proxyTarget);
+    File.Delete(runtimeTarget);
+    File.Copy(Path.Combine(artifactDirectory, "wininet.dll"), proxyTarget);
+    var interruptedTemporary = runtimeTarget + ".btd5ml-interrupted.tmp";
+    await File.WriteAllTextAsync(interruptedTemporary, "partial copy");
+    await WriteOperationJournalAsync(
+        service.GetOperationJournalPath(gameDirectory),
+        new(
+            1,
+            gameDirectory,
+            LoaderOperationKind.Repair,
+            [new("wininet.dll", proxyHash), new("btd5loader_runtime.dll", runtimeHash)]));
+    var interruptedRepair = await service.InspectAsync(gameDirectory, artifactDirectory);
+    Assert(interruptedRepair.State == LoaderHealthState.Repairable &&
+        interruptedRepair.Message.Contains("rolled back", StringComparison.OrdinalIgnoreCase) &&
+        !File.Exists(proxyTarget) && !File.Exists(runtimeTarget) &&
+        !File.Exists(interruptedTemporary) &&
+        !File.Exists(service.GetOperationJournalPath(gameDirectory)),
+        "Health inspection did not roll back an interrupted repair journal.");
+    Assert((await service.RepairAsync(gameDirectory, artifactDirectory)).Success,
+        "Repair did not recover after interrupted-operation reconciliation.");
+
+    await WriteOperationJournalAsync(
+        service.GetOperationJournalPath(gameDirectory),
+        new(1, gameDirectory, LoaderOperationKind.Repair, [new("wininet.dll", proxyHash)]));
+    var completedRepair = await service.InspectAsync(gameDirectory, artifactDirectory);
+    Assert(completedRepair.State == LoaderHealthState.Healthy && File.Exists(proxyTarget) &&
+        completedRepair.Message.Contains("confirmed", StringComparison.OrdinalIgnoreCase) &&
+        !File.Exists(service.GetOperationJournalPath(gameDirectory)),
+        "Health inspection did not safely clear a completed operation journal.");
+
     File.Delete(proxyTarget);
     await File.WriteAllTextAsync(runtimeTarget, "user-modified runtime");
     var transactionalRepairConflict = await service.RepairAsync(gameDirectory, artifactDirectory);
@@ -109,6 +168,12 @@ try
     var uninstall = await service.UninstallAsync(gameDirectory);
     Assert(uninstall.Success && !File.Exists(proxyTarget) && !File.Exists(service.GetRecordPath(gameDirectory)),
         "Uninstall did not finish after the conflict was recovered.");
+    Directory.CreateDirectory(Path.GetDirectoryName(service.GetOperationJournalPath(gameDirectory))!);
+    await File.WriteAllTextAsync(service.GetOperationJournalPath(gameDirectory), "{}");
+    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
+        LoaderHealthState.InvalidRecord && File.Exists(service.GetOperationJournalPath(gameDirectory)),
+        "An invalid operation journal was not reported and preserved for recovery.");
+    File.Delete(service.GetOperationJournalPath(gameDirectory));
     Assert((await service.InspectAsync(gameDirectory, Path.Combine(testRoot, "missing-artifacts"))).State ==
         LoaderHealthState.ArtifactUnavailable,
         "Missing release artifacts were not distinguished from a normal uninstalled state.");
@@ -385,6 +450,18 @@ static void Assert(bool condition, string message)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+static async Task WriteOperationJournalAsync(string path, LoaderOperationJournal journal)
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+    await File.WriteAllTextAsync(
+        path,
+        JsonSerializer.Serialize(journal, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        }));
 }
 
 static bool PathsEqual(string left, string right) =>
