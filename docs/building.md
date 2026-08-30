@@ -36,6 +36,25 @@ The result is written to `out/stage/debug`. The manager, proxy, runtime, symbol
 maps, and sample package are colocated there so installation does not require
 manually collecting build outputs.
 
+## Fresh-state manager acceptance
+
+The final manager workflow can be exercised without touching normal manager
+state or the registered Steam installation:
+
+```powershell
+./scripts/start-manager-acceptance.ps1 -Configuration Debug
+```
+
+The script reads the ignored `config/local.json` by default, creates a
+timestamped copy under `.local/manager-acceptance`, excludes existing loader
+artifacts, uses an isolated state directory, and starts the staged manager with
+automatic Steam discovery disabled. Choose the printed game-copy path in
+Options and drag a package from the printed samples directory.
+
+After the modded launch succeeds, close the game and manager and run the printed
+verification command. Acceptance copies and state remain ignored and can be
+removed manually after review.
+
 ## Read-only game compatibility check
 
 After building, inspect a legally obtained installation without launching or

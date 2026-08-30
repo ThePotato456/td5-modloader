@@ -16,9 +16,7 @@ namespace BTD5ModLoader.Manager;
 internal sealed partial class MainWindow : Window
 {
     private const string SupportedBuildId = "steam-win32-4.8";
-    private readonly string managerStateRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "BTD5ModLoader");
+    private readonly string managerStateRoot = ManagerStateDirectory;
     private IReadOnlyList<ModPackageInfo> installedPackages = [];
     private IReadOnlyList<ModProfile> profilesSnapshot = [];
     private ModProfile? selectedProfile;
@@ -48,6 +46,22 @@ internal sealed partial class MainWindow : Window
                 : Path.GetFullPath(developerOverride);
         }
     }
+    private static string ManagerStateDirectory
+    {
+        get
+        {
+            var developerOverride = Environment.GetEnvironmentVariable("BTD5ML_STATE_DIRECTORY");
+            return string.IsNullOrWhiteSpace(developerOverride)
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "BTD5ModLoader")
+                : Path.GetFullPath(developerOverride);
+        }
+    }
+    private static bool AutomaticGameDiscoveryDisabled => string.Equals(
+        Environment.GetEnvironmentVariable("BTD5ML_DISABLE_GAME_DISCOVERY"),
+        "1",
+        StringComparison.Ordinal);
 
     public MainWindow()
     {
@@ -128,7 +142,8 @@ internal sealed partial class MainWindow : Window
         {
             GameDirectoryText.Text = loaded.Settings.GameDirectory;
         }
-        else if (loaded.Settings.GameDirectory is null && !loaded.Recovered)
+        else if (loaded.Settings.GameDirectory is null && !loaded.Recovered &&
+                 !AutomaticGameDiscoveryDisabled)
         {
             TryDiscoverGame();
         }
