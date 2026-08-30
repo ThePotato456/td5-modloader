@@ -271,6 +271,82 @@ try
     await profileService.DeleteAsync("Renamed");
     Assert(await profileService.LoadAsync("Renamed") is null, "Profile deletion failed.");
 
+    var migrationRoot = Path.Combine(testRoot, "migration-state");
+    var migrationProfiles = new ProfileService(migrationRoot);
+    await migrationProfiles.CreateAsync("Legacy");
+    await migrationProfiles.SaveModsAsync("Legacy", configuredMods);
+    await migrationProfiles.RecordLaunchAsync("Legacy", "modded", false, "legacy launch");
+    var legacyProfilePath = Directory
+        .EnumerateFiles(Path.Combine(migrationRoot, "profiles"), "*.json")
+        .Single();
+    var legacyProfileBytes = await File.ReadAllBytesAsync(legacyProfilePath);
+
+    var migrationLoader = new LoaderInstallationService(migrationRoot, builds);
+    var legacyInstallationPath = migrationLoader.GetRecordPath(gameDirectory);
+    Directory.CreateDirectory(Path.GetDirectoryName(legacyInstallationPath)!);
+    var legacyInstallation = new LoaderInstallationRecord(
+        1,
+        gameDirectory,
+        "fixture-build",
+        "0.0.1",
+        [new InstalledFile("wininet.dll", new string('0', 64))]);
+    await File.WriteAllTextAsync(
+        legacyInstallationPath,
+        JsonSerializer.Serialize(legacyInstallation, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true
+        }));
+    var legacyInstallationBytes = await File.ReadAllBytesAsync(legacyInstallationPath);
+    var legacyPackageDirectory = Path.Combine(migrationRoot, "packages", "legacy");
+    Directory.CreateDirectory(legacyPackageDirectory);
+    File.Copy(packagePath, Path.Combine(legacyPackageDirectory, "legacy.btd5mod"));
+
+    var migration = await new ManagerStateMigrationService(migrationRoot).MigrateAsync();
+    Assert(migration is
+    {
+        Migrated: true,
+        ProfilesPreserved: 1,
+        InstallationsPreserved: 1,
+        PackagesPreserved: 1,
+        InferredCurrentProfile: "Legacy"
+    } && PathsEqual(migration.InferredGameDirectory!, gameDirectory),
+        "Existing manager state was not migrated with unambiguous selections.");
+    var migratedSettings = (await new ManagerSettingsService(migrationRoot).LoadAsync()).Settings;
+    Assert(migratedSettings.CurrentProfile == "Legacy" &&
+        PathsEqual(migratedSettings.GameDirectory!, gameDirectory),
+        "Migration did not persist the inferred legacy selections.");
+    var migratedProfile = await migrationProfiles.LoadAsync("Legacy");
+    Assert(migratedProfile is { LaunchHistory: [{ Detail: "legacy launch" }] } &&
+        migratedProfile.Mods[0].Configuration["greeting"].GetString() == "hello",
+        "Migration did not preserve profile configuration and launch history.");
+    var preservedProfileBytes = await File.ReadAllBytesAsync(legacyProfilePath);
+    var preservedInstallationBytes = await File.ReadAllBytesAsync(legacyInstallationPath);
+    Assert(legacyProfileBytes.SequenceEqual(preservedProfileBytes) &&
+        legacyInstallationBytes.SequenceEqual(preservedInstallationBytes),
+        "Migration rewrote legacy profile or installation state.");
+    var profileBackupBytes = await File.ReadAllBytesAsync(Path.Combine(
+        migrationRoot, "backups", "revamped-manager-v1", "profiles", Path.GetFileName(legacyProfilePath)));
+    var installationBackupBytes = await File.ReadAllBytesAsync(Path.Combine(
+        migrationRoot, "backups", "revamped-manager-v1", "installations",
+        Path.GetFileName(legacyInstallationPath)));
+    Assert(legacyProfileBytes.SequenceEqual(profileBackupBytes) &&
+        legacyInstallationBytes.SequenceEqual(installationBackupBytes),
+        "Migration backups were not byte-for-byte copies of legacy state.");
+    Assert(!(await new ManagerStateMigrationService(migrationRoot).MigrateAsync()).Migrated,
+        "Completed migration was not idempotent.");
+
+    var ambiguousMigrationRoot = Path.Combine(testRoot, "ambiguous-migration-state");
+    var ambiguousProfiles = new ProfileService(ambiguousMigrationRoot);
+    await ambiguousProfiles.CreateAsync("First");
+    await ambiguousProfiles.CreateAsync("Second");
+    var ambiguousMigration = await new ManagerStateMigrationService(ambiguousMigrationRoot).MigrateAsync();
+    Assert(ambiguousMigration.Migrated && ambiguousMigration.InferredCurrentProfile is null &&
+        ambiguousMigration.Warning?.Contains("multiple existing profiles", StringComparison.Ordinal) == true &&
+        (await new ManagerSettingsService(ambiguousMigrationRoot).LoadAsync())
+            .Settings.CurrentProfile is null,
+        "Migration silently selected one of multiple legacy profiles.");
+
     var settingsService = new ManagerSettingsService(stateRoot);
     await settingsService.SetGameDirectoryAsync(gameDirectory);
     var savedSettings = await settingsService.SetCurrentProfileAsync("Testing");

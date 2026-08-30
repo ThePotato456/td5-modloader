@@ -157,7 +157,7 @@ Initial supported build fingerprints:
   numbers, and strings, with validation plus per-setting and whole-mod reset controls.
 - [x] Automatically inspect loader, game, and current-profile readiness at startup and before launch;
   route failures to the exact corrective action instead of a generic status string.
-- [ ] Migrate existing profile and installation state without losing configuration or launch history.
+- [x] Migrate existing profile and installation state without losing configuration or launch history.
 - [ ] Update manager documentation and screenshots after the workflow stabilizes.
 
 ### Phase 5R implementation gate

@@ -108,6 +108,19 @@ internal sealed partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         VersionText.Text = $"v{ProductInfo.Version}";
+        string? migrationWarning = null;
+        try
+        {
+            var migration = await new ManagerStateMigrationService(managerStateRoot)
+                .MigrateAsync().ConfigureAwait(true);
+            migrationWarning = migration.Warning;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or
+            UnauthorizedAccessException or JsonException)
+        {
+            migrationWarning = "Existing manager state migration was not completed. " +
+                "Original files were preserved. " + exception.Message;
+        }
         var loaded = await new ManagerSettingsService(managerStateRoot).LoadAsync().ConfigureAwait(true);
         if (!string.IsNullOrWhiteSpace(loaded.Settings.GameDirectory) &&
             Directory.Exists(loaded.Settings.GameDirectory))
@@ -124,6 +137,10 @@ internal sealed partial class MainWindow : Window
         if (loaded.Recovered)
         {
             StatusText.Text = loaded.Warning;
+        }
+        else if (!string.IsNullOrWhiteSpace(migrationWarning))
+        {
+            StatusText.Text = migrationWarning;
         }
         windowLoaded = true;
     }
