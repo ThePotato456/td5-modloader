@@ -10,7 +10,8 @@ Install `api-debug-console.btd5mod`, enable its newest version in a profile,
 launch BTD5, and watch the manager's live Runtime Log. Every record from this
 package starts with `[API Debug]`. Package versions are immutable: if an older
 debug package is already installed, install this newer version and select it in
-the profile instead of copying over the existing archive.
+the profile instead of copying over the existing archive. Packaged resource
+files belong under `assets/`; this sample reads `assets/about.txt`.
 
 ## Demonstrated APIs
 

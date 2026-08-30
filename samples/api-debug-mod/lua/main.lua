@@ -166,7 +166,7 @@ end)
 function on_load()
     local launches = tonumber(btd5.storage.get("launches") or "0") + 1
     btd5.storage.set("launches", tostring(launches))
-    local resource = btd5.resource.read_text("resources/about.txt")
+    local resource = btd5.resource.read_text("assets/about.txt")
     log("loaded launch=" .. launches)
     log(resource)
 end
