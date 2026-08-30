@@ -217,6 +217,15 @@ the tools at the normal Steam directory or place an ignored test copy under
 `.local/game/`. Machine-specific settings belong in ignored
 `config/local.json`.
 
+### Temporary offline firewall guard
+
+Until built-in network enforcement is implemented, developers can install a
+persistent Windows Firewall block for the game executable:
+
+```powershell
+.\scripts\offline-game.ps1 -Action Enable
+.\scripts\offline-game.ps1 -Action Status
+
 Never commit or redistribute the game executable, assets, saves, Steam account
 data, installed mods, logs, or local paths. The repository intentionally
 contains no Ninja Kiwi files.
