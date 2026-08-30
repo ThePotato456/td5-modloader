@@ -157,8 +157,10 @@ event.tower: GameObject
 - `tower.upgrading`, `tower.upgraded`; and
 - `tower.selling`, `tower.sold`.
 
-All tower events are currently read-only. The wrapper passed to `tower.sold`
-becomes stale after all handlers return.
+Tower payloads and wrappers are currently read-only. `tower.upgrading` is
+cancellable; setting `event.cancelled = true` rejects the pending upgrade before
+its first mutation and suppresses `tower.upgraded`. The wrapper passed to
+`tower.sold` becomes stale after all handlers return.
 
 ### Bloon events
 

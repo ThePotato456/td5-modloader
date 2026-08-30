@@ -10,13 +10,13 @@ namespace btd5loader::runtime {
 
 class TowerUpgradeHook final {
 public:
-    using Callback = std::function<void(void*)>;
+    using Callback = std::function<bool(void*)>;
 
     ~TowerUpgradeHook();
     [[nodiscard]] bool install(void* target, Callback upgrading, std::string& error);
     void remove() noexcept;
     [[nodiscard]] bool installed() const noexcept;
-    static void __stdcall dispatch(void* tower) noexcept;
+    [[nodiscard]] static bool __stdcall dispatch(void* tower) noexcept;
 
 private:
     static TowerUpgradeHook* active_;

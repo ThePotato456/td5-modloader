@@ -107,22 +107,33 @@ void* capture_game_object_event(void* const event) noexcept {
     return event != nullptr ? static_cast<void**>(event)[1] : nullptr;
 }
 
-void dispatch_tower_event(
+bool dispatch_tower_event(
     const std::string_view name,
     void* const tower,
-    const bool invalidate_after) {
+    const bool invalidate_after,
+    const bool cancellable = false) {
     using btd5loader::runtime::GameObjectKind;
+    using btd5loader::runtime::State;
 
-    if (tower == nullptr) {
-        return;
+    if (tower == nullptr || g_state.current() != State::GameReady) {
+        return false;
     }
     const auto handle = g_game_objects.find_or_add(GameObjectKind::Tower, tower);
     if (handle.id == 0) {
         g_logger.error("events", "tower_handle_unavailable");
-        return;
+        return false;
     }
+    bool cancelled = false;
     try {
-        dispatch_game_event(name, {{"tower", handle}});
+        const btd5loader::runtime::LuaEventFields fields{{"tower", handle}};
+        std::scoped_lock lock(g_mods_mutex);
+        g_logger.info("events", std::string(name));
+        for (const auto& mod : g_mods) {
+            cancelled = mod->dispatch_event(name, fields, cancellable).cancelled || cancelled;
+        }
+        if (cancelled) {
+            g_logger.info("events", std::string(name) + ":cancelled");
+        }
     } catch (...) {
         if (invalidate_after) {
             (void)g_game_objects.invalidate(handle);
@@ -132,6 +143,7 @@ void dispatch_tower_event(
     if (invalidate_after) {
         (void)g_game_objects.invalidate(handle);
     }
+    return cancelled;
 }
 
 void dispatch_bloon_event(
@@ -738,7 +750,9 @@ DWORD WINAPI initialize_worker(LPVOID) {
             std::string error;
             const bool installed = g_tower_upgrade_hook.install(
                 tower_upgrade_commit_target,
-                [](void* tower) { dispatch_tower_event("tower.upgrading", tower, false); },
+                [](void* tower) {
+                    return dispatch_tower_event("tower.upgrading", tower, false, true);
+                },
                 error);
             if (!installed) {
                 g_logger.error("hooks", error);

@@ -10,6 +10,7 @@
 namespace btd5loader::runtime {
 void* g_tower_upgrade_continue{};
 void* g_tower_upgrade_commit{};
+void* g_tower_upgrade_cancel{};
 void hooked_tower_upgrade() noexcept;
 
 TowerUpgradeHook* TowerUpgradeHook::active_{};
@@ -34,6 +35,15 @@ bool TowerUpgradeHook::install(void* const target, Callback upgrading, std::stri
         error = "tower upgrade commit instruction validation failed";
         return false;
     }
+    const auto* const eligibility = bytes - 8;
+    if (eligibility[0] != std::byte{0x84} || eligibility[1] != std::byte{0xC0} ||
+        eligibility[2] != std::byte{0x0F} || eligibility[3] != std::byte{0x84}) {
+        error = "tower upgrade rejection branch validation failed";
+        return false;
+    }
+    std::int32_t rejection_displacement = 0;
+    std::memcpy(&rejection_displacement, eligibility + 4, sizeof(rejection_displacement));
+    g_tower_upgrade_cancel = const_cast<std::byte*>(bytes) + rejection_displacement;
     std::int32_t call_displacement = 0;
     std::memcpy(&call_displacement, bytes + 4, sizeof(call_displacement));
     g_tower_upgrade_commit = const_cast<std::byte*>(bytes) + 8 + call_displacement;
@@ -80,16 +90,21 @@ void TowerUpgradeHook::remove() noexcept {
     target_ = nullptr;
     g_tower_upgrade_continue = nullptr;
     g_tower_upgrade_commit = nullptr;
+    g_tower_upgrade_cancel = nullptr;
     installed_ = false;
 }
 
 bool TowerUpgradeHook::installed() const noexcept { return installed_; }
 
-void __stdcall TowerUpgradeHook::dispatch(void* const tower) noexcept {
+bool __stdcall TowerUpgradeHook::dispatch(void* const tower) noexcept {
     auto* const active = active_;
     if (active != nullptr && active->upgrading_) {
-        try { active->upgrading_(tower); } catch (...) {}
+        try {
+            return active->upgrading_(tower);
+        } catch (...) {
+        }
     }
+    return false;
 }
 
 void __declspec(naked) hooked_tower_upgrade() noexcept {
@@ -98,12 +113,17 @@ void __declspec(naked) hooked_tower_upgrade() noexcept {
         pushad
         push edi
         call TowerUpgradeHook::dispatch
+        mov dword ptr [esp + 28], eax
         popad
         popfd
+        test al, al
+        jne cancelled
         push esi
         mov ecx, edi
         call dword ptr [g_tower_upgrade_commit]
         jmp dword ptr [g_tower_upgrade_continue]
+    cancelled:
+        jmp dword ptr [g_tower_upgrade_cancel]
     }
 }
 

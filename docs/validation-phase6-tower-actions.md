@@ -55,6 +55,14 @@ mutation and `tower.selling` before sale UI, removal, and refund side effects.
 Both validate the exact displaced instructions before patching and restore
 those bytes when removed.
 
+The upgrade hook also validates the immediately preceding native eligibility
+branch. A cancelled `tower.upgrading` event jumps to that branch's original
+rejection target at RVA `0x232900`, preserving the game's cleanup and return
+path. A non-cancelled event executes the displaced upgrade call and resumes at
+RVA `0x232524`. Automated coverage verifies callback cancellation propagation,
+exact instruction restoration, and fail-safe exception behavior. Interactive
+acceptance of the cancellation path remains part of the Phase 6 gate.
+
 ## Interactive copied-game acceptance
 
 The strengthened Release smoke workflow launched the ignored copied game
@@ -104,6 +112,7 @@ no BTD5 process running. The copied game retained its supported hashes:
 
 These are read-only notifications. The wrapper supports only
 `is_valid()`, `id()`, and `kind()`; it exposes no native address, gameplay
-properties, or mutation. `tower.placing`, `tower.upgrading`, and
-`tower.selling` are not yet cancellable or mutable. This result does not claim custom-tower
-registration, an on-screen overlay, or online safety enforcement.
+properties, or mutation. `tower.upgrading` is cancellable but its payload is not
+yet mutable. `tower.placing` and `tower.selling` are not yet cancellable or
+mutable. This result does not claim custom-tower registration, an on-screen
+overlay, or online safety enforcement.

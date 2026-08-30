@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,6 +32,7 @@
 #include "../../src/native/runtime/runtime_state.hpp"
 #include "../../src/native/runtime/symbol_resolver.hpp"
 #include "../../src/native/runtime/tower_placement_hook.hpp"
+#include "../../src/native/runtime/tower_upgrade_hook.hpp"
 
 namespace {
 
@@ -656,6 +658,49 @@ TEST_CASE("tower placement hook fires before manager ownership", "[hooks]") {
     fake_tower_placement(&manager, nullptr, &tower);
     REQUIRE(manager.placed == &tower);
     REQUIRE(calls == std::vector<std::string>{"original"});
+}
+
+TEST_CASE("tower upgrade hook propagates cancellation and restores its commit boundary", "[hooks]") {
+    constexpr std::array<std::byte, 16> instructions{
+        std::byte{0x84}, std::byte{0xC0}, std::byte{0x0F}, std::byte{0x84},
+        std::byte{0x08}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x56}, std::byte{0x8B}, std::byte{0xCF}, std::byte{0xE8},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00}};
+    auto* const code = static_cast<std::byte*>(VirtualAlloc(
+        nullptr, instructions.size(), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    REQUIRE(code != nullptr);
+    std::memcpy(code, instructions.data(), instructions.size());
+
+    bool cancel = false;
+    bool throw_on_dispatch = false;
+    int tower = 1;
+    void* observed = nullptr;
+    btd5loader::runtime::TowerUpgradeHook hook;
+    std::string error;
+    REQUIRE(hook.install(
+        code + 8,
+        [&cancel, &throw_on_dispatch, &observed](void* const candidate) {
+            observed = candidate;
+            if (throw_on_dispatch) {
+                throw std::runtime_error("fixture failure");
+            }
+            return cancel;
+        },
+        error));
+    REQUIRE(error.empty());
+    REQUIRE(hook.installed());
+
+    REQUIRE_FALSE(btd5loader::runtime::TowerUpgradeHook::dispatch(&tower));
+    REQUIRE(observed == &tower);
+    cancel = true;
+    REQUIRE(btd5loader::runtime::TowerUpgradeHook::dispatch(&tower));
+    throw_on_dispatch = true;
+    REQUIRE_FALSE(btd5loader::runtime::TowerUpgradeHook::dispatch(&tower));
+
+    hook.remove();
+    REQUIRE_FALSE(hook.installed());
+    REQUIRE(std::memcmp(code + 8, instructions.data() + 8, 8) == 0);
+    REQUIRE(VirtualFree(code, 0, MEM_RELEASE) != FALSE);
 }
 
 TEST_CASE("native event hook filters vtables and preserves dispatch ordering", "[hooks]") {

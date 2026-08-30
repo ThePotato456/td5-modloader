@@ -193,7 +193,7 @@ Every handler receives one shared event table. It always contains `name` and
 | `lives.changed` | `old_lives`, `new_lives` | After a verified lives change | No |
 | `tower.placing` | `tower` | Before tower-manager ownership | No |
 | `tower.placed` | `tower` | After placement observer dispatch | No |
-| `tower.upgrading` | `tower` | After eligibility and before upgrade mutation | No |
+| `tower.upgrading` | `tower` | After eligibility and before upgrade mutation | **Yes** |
 | `tower.upgraded` | `tower` | After upgrade observer dispatch | No |
 | `tower.selling` | `tower` | After eligibility and before sale side effects | No |
 | `tower.sold` | `tower` | After sale observer dispatch | No |
@@ -207,9 +207,9 @@ Every handler receives one shared event table. It always contains `name` and
 `old_lives` and `new_lives` are Lua integers. Tower and bloon payloads are
 opaque game-object userdata.
 
-### Cancelling a lives change
+### Cancelling a lives change or tower upgrade
 
-Only `lives.changing` currently honors `event.cancelled`:
+`lives.changing` and `tower.upgrading` honor `event.cancelled`:
 
 ```lua
 btd5.events.on("lives.changing", function(event)
@@ -217,11 +217,19 @@ btd5.events.on("lives.changing", function(event)
         event.cancelled = true
     end
 end)
+
+btd5.events.on("tower.upgrading", function(event)
+    if should_block_upgrade(event.tower) then
+        event.cancelled = true
+    end
+end)
 ```
 
 Cancellation skips the pending lives write and suppresses `lives.changed` for
 that transition. It does not undo the originating bloon leak or reward action.
-Setting `cancelled` on any other event currently has no gameplay effect.
+Cancelling `tower.upgrading` resumes the game's own rejected-upgrade path before
+the first mutation, so `tower.upgraded` does not run. Setting `cancelled` on any
+other event currently has no gameplay effect.
 
 The detailed ordering contract is maintained in
 [Gameplay event contract v1](../docs/gameplay-events.md).

@@ -40,18 +40,20 @@ Currently live in the supported Steam Win32 4.8 build:
 Lives events carry `old_lives` and `new_lives`; cash events currently carry no
 value fields. Each
 live tower notification carries `event.tower`, and each live bloon notification
-carries `event.bloon`. Payload fields are not yet mutable. `lives.changing` is
-the first live cancellable event; setting `event.cancelled = true` skips the
-pending lives write. Other live events cannot cancel or modify an action. The
+carries `event.bloon`. Payload fields are not yet mutable. `lives.changing` and
+`tower.upgrading` are cancellable. Setting `event.cancelled = true` skips the
+pending lives write or routes the accepted upgrade into the game's own rejected
+upgrade path. Other live events cannot cancel or modify an action. The
 game has already updated its internal balance when
 `cash.changing` runs; the pre/post distinction describes the native observer
 dispatch boundary. `lives.changing` runs at the exact add/subtract instruction,
 after the game has accepted the update, and `new_lives` reflects the clamped
 result for losses. Cancellation affects only the lives delta: it does not undo
 the originating reward or bloon leak. When cancelled, `lives.changed` does not
-run because the stored value remains unchanged. `tower.placing`,
-`tower.upgrading`, and `tower.selling` are read-only pre-events at verified
-native boundaries. They are not yet cancellable.
+run because the stored value remains unchanged. Cancelling `tower.upgrading`
+occurs before the first upgrade mutation, so `tower.upgraded` does not run.
+`tower.placing` and `tower.selling` remain non-cancellable read-only pre-events
+at verified native boundaries. The `tower.upgrading` payload remains read-only.
 `bloon.spawning`, `bloon.popping`, and `bloon.leaking` are likewise read-only
 and not yet cancellable.
 
