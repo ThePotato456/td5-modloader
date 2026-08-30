@@ -129,7 +129,8 @@ public sealed class ManagerStateMigrationService
         string path,
         CancellationToken cancellationToken)
     {
-        await using var stream = File.OpenRead(path);
+        var stream = File.OpenRead(path);
+        await using var streamLifetime = stream.ConfigureAwait(false);
         var profile = await JsonSerializer.DeserializeAsync<ModProfile>(
             stream, JsonOptions, cancellationToken).ConfigureAwait(false) ??
             throw new InvalidDataException($"The existing profile is empty: {Path.GetFileName(path)}");
@@ -148,7 +149,8 @@ public sealed class ManagerStateMigrationService
         string path,
         CancellationToken cancellationToken)
     {
-        await using var stream = File.OpenRead(path);
+        var stream = File.OpenRead(path);
+        await using var streamLifetime = stream.ConfigureAwait(false);
         var record = await JsonSerializer.DeserializeAsync<LoaderInstallationRecord>(
             stream, JsonOptions, cancellationToken).ConfigureAwait(false) ??
             throw new InvalidDataException($"The existing installation record is empty: {Path.GetFileName(path)}");

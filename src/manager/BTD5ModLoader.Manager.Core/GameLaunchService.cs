@@ -324,8 +324,8 @@ public sealed class GameLaunchService
         return "No runtime log available";
     }
 
-    private static string FormatItems(IReadOnlyList<string> items) =>
-        items.Count == 0 ? string.Empty : " (" + string.Join(", ", items) + ")";
+    private static string FormatItems(string[] items) =>
+        items.Length == 0 ? string.Empty : " (" + string.Join(", ", items) + ")";
 
     private static ReadinessProblem LoaderIssue(LoaderHealthResult loader)
     {

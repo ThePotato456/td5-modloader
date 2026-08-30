@@ -692,6 +692,7 @@ TEST_CASE("tower upgrade hook propagates cancellation and restores its commit bo
     auto* const code = static_cast<std::byte*>(VirtualAlloc(
         nullptr, instructions.size(), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
     REQUIRE(code != nullptr);
+    if (code == nullptr) return;
     std::memcpy(code, instructions.data(), instructions.size());
 
     bool cancel = false;
@@ -723,6 +724,7 @@ TEST_CASE("tower upgrade hook propagates cancellation and restores its commit bo
     hook.remove();
     REQUIRE_FALSE(hook.installed());
     REQUIRE(std::memcmp(code + 8, instructions.data() + 8, 8) == 0);
+#pragma warning(suppress : 6001)  // Guarded above; Catch2 REQUIRE confuses code analysis.
     REQUIRE(VirtualFree(code, 0, MEM_RELEASE) != FALSE);
 }
 
@@ -735,6 +737,7 @@ TEST_CASE("tower sale hook propagates cancellation and restores its commit bound
     auto* const code = static_cast<std::byte*>(VirtualAlloc(
         nullptr, instructions.size(), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
     REQUIRE(code != nullptr);
+    if (code == nullptr) return;
     std::memcpy(code, instructions.data(), instructions.size());
 
     bool cancel = false;
@@ -766,6 +769,7 @@ TEST_CASE("tower sale hook propagates cancellation and restores its commit bound
     hook.remove();
     REQUIRE_FALSE(hook.installed());
     REQUIRE(std::memcmp(code + 8, instructions.data() + 8, 6) == 0);
+#pragma warning(suppress : 6001)  // Guarded above; Catch2 REQUIRE confuses code analysis.
     REQUIRE(VirtualFree(code, 0, MEM_RELEASE) != FALSE);
 }
 
@@ -778,6 +782,7 @@ TEST_CASE("bloon leak hook propagates cancellation and restores its commit bound
     auto* const code = static_cast<std::byte*>(VirtualAlloc(
         nullptr, instructions.size(), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
     REQUIRE(code != nullptr);
+    if (code == nullptr) return;
     std::memcpy(code, instructions.data(), instructions.size());
 
     bool cancel = false;
@@ -814,6 +819,7 @@ TEST_CASE("bloon leak hook propagates cancellation and restores its commit bound
     hook.remove();
     REQUIRE_FALSE(hook.installed());
     REQUIRE(std::memcmp(code + 6, instructions.data() + 6, 7) == 0);
+#pragma warning(suppress : 6001)  // Guarded above; Catch2 REQUIRE confuses code analysis.
     REQUIRE(VirtualFree(code, 0, MEM_RELEASE) != FALSE);
 }
 

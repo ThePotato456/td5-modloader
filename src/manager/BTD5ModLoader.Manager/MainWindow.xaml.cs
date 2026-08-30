@@ -1055,7 +1055,7 @@ internal sealed partial class MainWindow : Window
             var status = await new GameLaunchService(managerStateRoot)
                 .GetStatusAsync(GameDirectoryText.Text, selectedProfile.Name).ConfigureAwait(true);
             launchReady = status.Issues.Count == 0;
-            readinessProblem = status.Issues.FirstOrDefault();
+            readinessProblem = launchReady ? null : status.Issues[0];
             readinessSummary = launchReady
                 ? $"Ready • {selectedProfile.Mods.Count(mod => mod.Enabled)} mods • {status.BuildId}"
                 : readinessProblem!.Message + " • " + readinessProblem.Correction;
@@ -1315,7 +1315,7 @@ internal sealed partial class MainWindow : Window
         }
         if (currentProfileValidation is not { Valid: true } validation)
         {
-            var problem = currentProfileValidation?.Errors.FirstOrDefault(error =>
+            var problem = currentProfileValidation.Errors.FirstOrDefault(error =>
                 package.Id is not null && error.Contains(package.Id, StringComparison.Ordinal));
             return "Enabled • dependencies need attention" +
                 (problem is null ? string.Empty : ": " + problem);
