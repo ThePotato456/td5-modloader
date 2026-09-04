@@ -1489,6 +1489,7 @@ TEST_CASE("API Debug sample exercises opt-in mutations and cancellations", "[sam
     btd5loader::runtime::GameObjectRegistry registry;
     const auto tower_handle = registry.add(GameObjectKind::Tower, &tower);
     const auto bloon_handle = registry.add(GameObjectKind::Bloon, &bloon);
+    std::vector<std::string> logs;
 
     btd5loader::runtime::LuaModOptions options;
     options.mod_id = "example.api-debug";
@@ -1496,8 +1497,12 @@ TEST_CASE("API Debug sample exercises opt-in mutations and cancellations", "[sam
     options.resource_directory = source;
     options.localization.emplace("example.api-debug.ready", "ready");
     options.configuration = {
-        {"log_every_event", "false"},
+        {"log_event_details", "true"},
+        {"detailed_event_limit", "2"},
+        {"log_round_summaries", "false"},
         {"log_object_properties", "true"},
+        {"verify_terminal_wrappers", "false"},
+        {"operation_limit", "1"},
         {"mutate_tower_pop_count", "true"},
         {"tower_pop_count", "321"},
         {"mutate_tower_sell_price", "true"},
@@ -1511,6 +1516,9 @@ TEST_CASE("API Debug sample exercises opt-in mutations and cancellations", "[sam
         {"cancel_tower_sales", "true"},
         {"cancel_bloon_leaks", "true"}};
     options.object_registry = &registry;
+    options.log = [&logs](const std::string_view, const std::string_view message) {
+        logs.emplace_back(message);
+    };
     options.game_object_integer_get = [](
         const GameObjectKind kind,
         void* const object,
@@ -1568,6 +1576,20 @@ TEST_CASE("API Debug sample exercises opt-in mutations and cancellations", "[sam
     REQUIRE(tower.sell_price == 654);
     REQUIRE(mod.dispatch_event("bloon.spawned", {{"bloon", bloon_handle}}).succeeded);
     REQUIRE(bloon.health == 4.5F);
+    tower.pop_count = 7;
+    tower.sell_price = 200;
+    REQUIRE(mod.dispatch_event("tower.placed", {{"tower", tower_handle}}).succeeded);
+    REQUIRE(tower.pop_count == 7);
+    REQUIRE(tower.sell_price == 200);
+    bloon.health = 3.0F;
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        REQUIRE(mod.dispatch_event("bloon.spawned", {{"bloon", bloon_handle}}).succeeded);
+    }
+    REQUIRE(bloon.health == 3.0F);
+    REQUIRE(std::count_if(logs.begin(), logs.end(), [](const std::string& message) {
+        return message.find("event #") != std::string::npos &&
+               message.find("bloon.spawned") != std::string::npos;
+    }) == 2);
 
     const auto lives = mod.dispatch_event(
         "lives.changing",
@@ -1576,9 +1598,17 @@ TEST_CASE("API Debug sample exercises opt-in mutations and cancellations", "[sam
     REQUIRE(lives.succeeded);
     REQUIRE_FALSE(lives.cancelled);
     REQUIRE(std::get<std::int64_t>(lives.fields.at(1).second) == 5);
+    const auto second_lives = mod.dispatch_event(
+        "lives.changing",
+        {{"old_lives", std::int64_t{10}}, {"new_lives", std::int64_t{1}}},
+        true);
+    REQUIRE(std::get<std::int64_t>(second_lives.fields.at(1).second) == 1);
     REQUIRE(mod.dispatch_event("tower.upgrading", {{"tower", tower_handle}}, true).cancelled);
+    REQUIRE_FALSE(mod.dispatch_event("tower.upgrading", {{"tower", tower_handle}}, true).cancelled);
     REQUIRE(mod.dispatch_event("tower.selling", {{"tower", tower_handle}}, true).cancelled);
+    REQUIRE_FALSE(mod.dispatch_event("tower.selling", {{"tower", tower_handle}}, true).cancelled);
     REQUIRE(mod.dispatch_event("bloon.leaking", {{"bloon", bloon_handle}}, true).cancelled);
+    REQUIRE_FALSE(mod.dispatch_event("bloon.leaking", {{"bloon", bloon_handle}}, true).cancelled);
 
     mod.advance_timers(60);
     REQUIRE(mod.invoke("on_shutdown"));
