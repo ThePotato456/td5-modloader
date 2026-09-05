@@ -225,7 +225,10 @@ LuaEventDispatchResult LuaMod::dispatch_event(
     }
 
     lua_rawgeti(state_, LUA_REGISTRYINDEX, event_reference);
-    lua_getfield(state_, -1, "cancelled");
+    // Payload inspection is outside the protected callback. Never invoke a
+    // mod-controlled __index metamethod here, even for a deleted field.
+    lua_pushliteral(state_, "cancelled");
+    lua_rawget(state_, -2);
     result.cancelled = cancellable && lua_isboolean(state_, -1) && lua_toboolean(state_, -1) != 0;
     lua_pop(state_, 1);
     result.fields.reserve(fields.size());
@@ -233,7 +236,8 @@ LuaEventDispatchResult LuaMod::dispatch_event(
         LuaEventValue updated = original;
         bool valid = true;
         if (!std::holds_alternative<GameObjectHandle>(original)) {
-            lua_getfield(state_, -1, name.c_str());
+            lua_pushlstring(state_, name.data(), name.size());
+            lua_rawget(state_, -2);
             if (std::holds_alternative<bool>(original)) {
                 valid = lua_isboolean(state_, -1);
                 if (valid) updated = lua_toboolean(state_, -1) != 0;
@@ -241,7 +245,8 @@ LuaEventDispatchResult LuaMod::dispatch_event(
                 valid = lua_isinteger(state_, -1);
                 if (valid) updated = static_cast<std::int64_t>(lua_tointeger(state_, -1));
             } else if (std::holds_alternative<double>(original)) {
-                valid = lua_isnumber(state_, -1);
+                valid = lua_type(state_, -1) == LUA_TNUMBER &&
+                    std::isfinite(static_cast<double>(lua_tonumber(state_, -1)));
                 if (valid) updated = static_cast<double>(lua_tonumber(state_, -1));
             } else if (std::holds_alternative<std::string>(original)) {
                 valid = lua_type(state_, -1) == LUA_TSTRING;

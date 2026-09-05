@@ -212,6 +212,8 @@ Initial supported build fingerprints:
   - [ ] Add cancellation for the remaining pre-events only after each action's ownership,
     cleanup, and return path is independently verified.
   - [ ] Add validated mutable payload fields at their exact native commit boundaries.
+    - [x] Harden payload readback against Lua metatable execution outside protected
+      callbacks; reject coerced and non-finite numeric fields with regression coverage.
     - [x] Allow `lives.changing.new_lives` replacement at the verified gain/loss write,
       with deterministic propagation and strict integer/range validation.
       - [x] Prove replacement in the copied game with the dedicated

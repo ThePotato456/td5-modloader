@@ -419,6 +419,60 @@ TEST_CASE("Lua event mutation rejects incompatible field types", "[lua][events]"
     REQUIRE(mod.last_error().find("new_lives") != std::string_view::npos);
 }
 
+TEST_CASE("event payload inspection never executes Lua metatable code", "[lua][events]") {
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.payload-metatable";
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        local reads = 0
+        btd5.events.on("lives.changing", function(event)
+            event.cancelled = nil
+            event.new_lives = nil
+            setmetatable(event, { __index = function()
+                reads = reads + 1
+                error("payload inspection escaped the callback")
+            end })
+        end)
+        btd5.events.on("round.started", function() assert(reads == 0) end)
+    )lua", "payload-metatable.lua"));
+
+    const btd5loader::runtime::LuaEventFields fields{{"new_lives", std::int64_t{95}}};
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        const auto result = mod.dispatch_event("lives.changing", fields, true);
+        REQUIRE_FALSE(result.succeeded);
+        REQUIRE_FALSE(result.cancelled);
+        REQUIRE(std::get<std::int64_t>(result.fields.at(0).second) == 95);
+        REQUIRE(mod.dispatch_event("round.started").succeeded);
+    }
+}
+
+TEST_CASE("numeric event mutations reject coercion and non-finite values", "[lua][events]") {
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.numeric-mutation";
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        local values = { "42", math.huge, -math.huge, 0/0, false, {}, 4.5, 6 }
+        local index = 0
+        btd5.events.on("cash.changing", function(event)
+            index = index + 1
+            event.value = values[index]
+        end)
+    )lua", "numeric-mutation.lua"));
+
+    const btd5loader::runtime::LuaEventFields fields{{"value", 3.0}};
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        const auto result = mod.dispatch_event("cash.changing", fields);
+        REQUIRE_FALSE(result.succeeded);
+        REQUIRE(std::get<double>(result.fields.at(0).second) == 3.0);
+    }
+    const auto fractional = mod.dispatch_event("cash.changing", fields);
+    REQUIRE(fractional.succeeded);
+    REQUIRE(std::get<double>(fractional.fields.at(0).second) == 4.5);
+    const auto integer = mod.dispatch_event("cash.changing", fields);
+    REQUIRE(integer.succeeded);
+    REQUIRE(std::get<double>(integer.fields.at(0).second) == 6.0);
+}
+
 TEST_CASE("documented v1 Lua event names are accepted", "[lua][events]") {
     btd5loader::runtime::LuaModOptions options;
     options.mod_id = "sample.event-catalog";

@@ -113,6 +113,12 @@ is read-only and `new_lives` accepts integers in
 Other event fields remain read-only until their validators and exact commit
 boundaries are implemented.
 
+After callbacks return, the host reads payload fields directly without invoking
+Lua metatable methods. Deleted or incorrectly typed scalar fields retain their
+original host values and report a validation error. Numeric payload validation
+rejects numeric strings, NaN, and infinities. A missing or non-boolean
+`cancelled` value does not cancel the action.
+
 ## Object wrappers
 
 The v1 object kinds are `match`, `round`, `player`, `tower`, `attack`,
