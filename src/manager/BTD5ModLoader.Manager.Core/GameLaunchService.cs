@@ -52,6 +52,7 @@ public enum ReadinessAction
     ChooseGame,
     InstallLoader,
     RepairLoader,
+    UpdateLoader,
     RecoverLoader,
     RestoreReleaseFiles,
     SelectProfile,
@@ -255,8 +256,70 @@ public sealed class GameLaunchService
         {
             return [];
         }
-        var lines = await File.ReadAllLinesAsync(path, cancellationToken).ConfigureAwait(false);
-        return lines.TakeLast(maximumLines).ToArray();
+
+        const int blockSize = 64 * 1024;
+        var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            blockSize,
+            FileOptions.Asynchronous);
+        await using (stream.ConfigureAwait(false))
+        {
+            var buffer = new byte[blockSize];
+            var start = stream.Length;
+            var lineBreaks = 0;
+            while (start > 0 && lineBreaks <= maximumLines)
+            {
+                var count = (int)Math.Min(blockSize, start);
+                start -= count;
+                stream.Seek(start, SeekOrigin.Begin);
+                var read = await stream.ReadAsync(
+                    buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+                lineBreaks += buffer.AsSpan(0, read).Count((byte)'\n');
+            }
+
+            stream.Seek(start, SeekOrigin.Begin);
+            using var reader = new StreamReader(stream, leaveOpen: true);
+            if (start > 0)
+            {
+                _ = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            var lines = new Queue<string>(maximumLines);
+            while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+            {
+                if (lines.Count == maximumLines)
+                {
+                    _ = lines.Dequeue();
+                }
+                lines.Enqueue(line);
+            }
+            return lines.ToArray();
+        }
+    }
+
+    public async Task ClearRuntimeLogAsync(CancellationToken cancellationToken = default)
+    {
+        var path = Path.Combine(managerStateRoot, "logs", "runtime.jsonl");
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.ReadWrite | FileShare.Delete,
+            4096,
+            FileOptions.Asynchronous);
+        await using (stream.ConfigureAwait(false))
+        {
+            stream.SetLength(0);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async Task<string> WriteRuntimeHandoffAsync(
@@ -340,6 +403,10 @@ public sealed class GameLaunchService
             LoaderHealthState.Repairable => new(
                 "loader.repairable", message, "Open Options and repair the loader.",
                 ReadinessAction.RepairLoader),
+            LoaderHealthState.VersionMismatch => new(
+                "loader.version_mismatch", message,
+                "Open Options and reinstall the bundled loader version.",
+                ReadinessAction.UpdateLoader),
             LoaderHealthState.ArtifactUnavailable => new(
                 "loader.release_files_missing", message,
                 "Restore the release files beside the manager, then recheck.",

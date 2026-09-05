@@ -29,6 +29,7 @@ internal sealed partial class MainWindow : Window
     private bool windowLoaded;
     private bool refreshingActivation;
     private bool refreshingLogs;
+    private bool runtimeLogVisible;
     private string readinessSummary = "Preparing manager state";
     private readonly DispatcherTimer runtimeLogTimer;
     private static readonly JsonSerializerOptions ProfileJsonOptions = new()
@@ -95,10 +96,13 @@ internal sealed partial class MainWindow : Window
     private async void Options_Click(object sender, RoutedEventArgs e)
     {
         OptionsOverlay.Visibility = Visibility.Visible;
-        runtimeLogTimer.Start();
         await RefreshLoaderHealthAsync().ConfigureAwait(true);
         await RefreshReadinessAsync().ConfigureAwait(true);
-        await RefreshLogsAsync().ConfigureAwait(true);
+        if (runtimeLogVisible)
+        {
+            runtimeLogTimer.Start();
+            await RefreshLogsAsync().ConfigureAwait(true);
+        }
     }
 
     private void CloseOptions_Click(object sender, RoutedEventArgs e) => CloseOptions();
@@ -216,6 +220,10 @@ internal sealed partial class MainWindow : Window
             await RunLoaderOperationAsync(service => service.RepairAsync(
                 GameDirectoryText.Text, ArtifactDirectory)).ConfigureAwait(true);
         }
+        else if (loaderHealth.State == LoaderHealthState.VersionMismatch)
+        {
+            await ReinstallBundledLoaderAsync().ConfigureAwait(true);
+        }
         else
         {
             await RefreshLoaderHealthAsync().ConfigureAwait(true);
@@ -257,12 +265,52 @@ internal sealed partial class MainWindow : Window
         }
     }
 
+    private async Task ReinstallBundledLoaderAsync()
+    {
+        if (MessageBox.Show(this,
+                $"Replace loader {loaderHealth?.InstalledVersion ?? "unknown"} with the bundled " +
+                $"version {ProductInfo.Version}? Unchanged loader-owned files will be replaced.",
+                "Update loader", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var service = new LoaderInstallationService(managerStateRoot);
+        try
+        {
+            StatusText.Text = "Updating loader…";
+            var uninstall = await service.UninstallAsync(GameDirectoryText.Text).ConfigureAwait(true);
+            if (!uninstall.Success)
+            {
+                StatusText.Text = uninstall.Message + FormatSuffix(uninstall.Conflicts);
+                await RefreshLoaderHealthAsync().ConfigureAwait(true);
+                return;
+            }
+
+            var install = await service.InstallAsync(GameDirectoryText.Text, ArtifactDirectory)
+                .ConfigureAwait(true);
+            StatusText.Text = install.Success
+                ? $"Loader updated to {ProductInfo.Version}."
+                : "The old loader was removed, but the bundled loader could not be installed. " +
+                  install.Message + FormatSuffix(install.Conflicts);
+            await RefreshLoaderHealthAsync().ConfigureAwait(true);
+            await RefreshReadinessAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+            InvalidDataException)
+        {
+            StatusText.Text = "Loader update failed safely: " + exception.Message;
+            await RefreshLoaderHealthAsync().ConfigureAwait(true);
+        }
+    }
+
     private async Task RefreshLoaderHealthAsync()
     {
         if (string.IsNullOrWhiteSpace(GameDirectoryText.Text))
         {
             loaderHealth = null;
             LoaderStatusText.Text = "No game copy selected";
+            LoaderVersionText.Text = $"Bundled loader: {ProductInfo.Version}";
             LoaderPrimaryButton.Content = "Choose game";
             HealthIndicator.Background = Brushes.Goldenrod;
             UpdateActionState();
@@ -275,16 +323,21 @@ internal sealed partial class MainWindow : Window
             LoaderStatusText.Text = loaderHealth.State == LoaderHealthState.Healthy
                 ? "Game Detected"
                 : loaderHealth.Message;
+            LoaderVersionText.Text = loaderHealth.InstalledVersion is null
+                ? $"Bundled loader: {ProductInfo.Version} • not installed"
+                : $"Installed loader: {loaderHealth.InstalledVersion} • bundled: {ProductInfo.Version}";
             LoaderPrimaryButton.Content = loaderHealth.State switch
             {
                 LoaderHealthState.NotInstalled => "Install loader",
                 LoaderHealthState.Repairable => "Repair loader",
+                LoaderHealthState.VersionMismatch => "Update loader",
                 _ => "Recheck"
             };
             HealthIndicator.Background = loaderHealth.State switch
             {
                 LoaderHealthState.Healthy => Brushes.LimeGreen,
-                LoaderHealthState.NotInstalled or LoaderHealthState.Repairable => Brushes.Goldenrod,
+                LoaderHealthState.NotInstalled or LoaderHealthState.Repairable or
+                    LoaderHealthState.VersionMismatch => Brushes.Goldenrod,
                 _ => Brushes.IndianRed
             };
             UpdateActionState();
@@ -293,6 +346,7 @@ internal sealed partial class MainWindow : Window
         {
             loaderHealth = null;
             LoaderStatusText.Text = exception.Message;
+            LoaderVersionText.Text = $"Bundled loader: {ProductInfo.Version} • check failed";
             LoaderPrimaryButton.Content = "Recheck";
             HealthIndicator.Background = Brushes.IndianRed;
             UpdateActionState();
@@ -800,7 +854,10 @@ internal sealed partial class MainWindow : Window
         if (OfflineRiskCheck.IsChecked != true)
         {
             OptionsOverlay.Visibility = Visibility.Visible;
-            runtimeLogTimer.Start();
+            if (runtimeLogVisible)
+            {
+                runtimeLogTimer.Start();
+            }
             OfflineRiskCheck.Focus();
             StatusText.Text = "Modded launch is blocked: acknowledge Steam Offline Mode above.";
             return;
@@ -820,6 +877,46 @@ internal sealed partial class MainWindow : Window
     private async void RefreshLogs_Click(object sender, RoutedEventArgs e)
     {
         await RefreshLogsAsync().ConfigureAwait(true);
+    }
+
+    private async void ToggleRuntimeLog_Click(object sender, RoutedEventArgs e)
+    {
+        runtimeLogVisible = !runtimeLogVisible;
+        RuntimeLogText.Visibility = runtimeLogVisible ? Visibility.Visible : Visibility.Collapsed;
+        RuntimeLogStatePanel.Visibility = runtimeLogVisible ? Visibility.Visible : Visibility.Collapsed;
+        RuntimeLogRow.Height = runtimeLogVisible ? new GridLength(1, GridUnitType.Star) : new GridLength(58);
+        ToggleRuntimeLogButton.Content = runtimeLogVisible ? "Hide console" : "Show console";
+        RefreshRuntimeLogButton.IsEnabled = runtimeLogVisible;
+
+        if (!runtimeLogVisible)
+        {
+            runtimeLogTimer.Stop();
+            return;
+        }
+
+        runtimeLogTimer.Start();
+        await RefreshLogsAsync().ConfigureAwait(true);
+    }
+
+    private async void ClearRuntimeLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this,
+                "Clear the runtime log? Export diagnostics first if you need to preserve it.",
+                "Clear runtime log", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            await new GameLaunchService(managerStateRoot).ClearRuntimeLogAsync().ConfigureAwait(true);
+            RuntimeLogText.Text = "Waiting for runtime output…";
+            StatusText.Text = "Runtime log cleared.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            StatusText.Text = "The runtime log could not be cleared: " + exception.Message;
+        }
     }
 
     private async Task RefreshLogsAsync()
@@ -1153,6 +1250,7 @@ internal sealed partial class MainWindow : Window
                 break;
             case ReadinessAction.InstallLoader:
             case ReadinessAction.RepairLoader:
+            case ReadinessAction.UpdateLoader:
             case ReadinessAction.RecoverLoader:
             case ReadinessAction.RestoreReleaseFiles:
                 ShowOptionsForCorrection();
@@ -1180,7 +1278,10 @@ internal sealed partial class MainWindow : Window
     private void ShowOptionsForCorrection()
     {
         OptionsOverlay.Visibility = Visibility.Visible;
-        runtimeLogTimer.Start();
+        if (runtimeLogVisible)
+        {
+            runtimeLogTimer.Start();
+        }
     }
 
     private void SelectReadinessPackage(string? modId)

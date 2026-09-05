@@ -101,9 +101,28 @@ try
     var install = await service.InstallAsync(gameDirectory, artifactDirectory);
     Assert(install.Success && File.Exists(service.GetRecordPath(gameDirectory)),
         "Loader installation failed.");
-    Assert((await service.InspectAsync(gameDirectory, artifactDirectory)).State ==
-        LoaderHealthState.Healthy, "A verified loader was not reported as healthy.");
+    var healthyInstallation = await service.InspectAsync(gameDirectory, artifactDirectory);
+    Assert(healthyInstallation.State == LoaderHealthState.Healthy &&
+        healthyInstallation.InstalledVersion == ProductInfo.Version &&
+        healthyInstallation.AvailableVersion == ProductInfo.Version,
+        "A verified loader was not reported with its installed and available versions.");
     Assert((await service.VerifyAsync(gameDirectory)).Success, "Installed loader did not verify.");
+
+    var installationRecordPath = service.GetRecordPath(gameDirectory);
+    var currentInstallationRecord = await File.ReadAllTextAsync(installationRecordPath);
+    var outdatedInstallationRecord = currentInstallationRecord.Replace(
+        $"\"loaderVersion\": \"{ProductInfo.Version}\"",
+        "\"loaderVersion\": \"0.0.1-test\"",
+        StringComparison.Ordinal);
+    Assert(!string.Equals(currentInstallationRecord, outdatedInstallationRecord, StringComparison.Ordinal),
+        "The version-check fixture could not update the installation record.");
+    await File.WriteAllTextAsync(installationRecordPath, outdatedInstallationRecord);
+    var outdatedInstallation = await service.InspectAsync(gameDirectory, artifactDirectory);
+    Assert(outdatedInstallation.State == LoaderHealthState.VersionMismatch &&
+        outdatedInstallation.InstalledVersion == "0.0.1-test" &&
+        outdatedInstallation.AvailableVersion == ProductInfo.Version,
+        "An outdated installed loader version was not identified.");
+    await File.WriteAllTextAsync(installationRecordPath, currentInstallationRecord);
 
     var runtimeTarget = Path.Combine(gameDirectory, "btd5loader_runtime.dll");
     File.Delete(proxyTarget);
@@ -510,6 +529,20 @@ try
     }, "Launch readiness status was incorrect.");
     Assert(launchStatus.Issues.Count == 0, "A ready launch reported corrective actions.");
 
+    var launchInstallationService = new LoaderInstallationService(operationsStateRoot, builds);
+    var launchRecordPath = launchInstallationService.GetRecordPath(gameDirectory);
+    var launchRecord = await File.ReadAllTextAsync(launchRecordPath);
+    var outdatedLaunchRecord = launchRecord.Replace(
+        $"\"loaderVersion\": \"{ProductInfo.Version}\"",
+        "\"loaderVersion\": \"0.0.1-test\"",
+        StringComparison.Ordinal);
+    await File.WriteAllTextAsync(launchRecordPath, outdatedLaunchRecord);
+    var outdatedReadiness = await launches.GetStatusAsync(gameDirectory, "Operations");
+    Assert(!outdatedReadiness.LoaderVerified && outdatedReadiness.Issues.Any(issue =>
+            issue is { Code: "loader.version_mismatch", Action: ReadinessAction.UpdateLoader }),
+        "An outdated loader was not routed to the update action.");
+    await File.WriteAllTextAsync(launchRecordPath, launchRecord);
+
     File.Delete(Path.Combine(gameDirectory, "btd5loader_runtime.dll"));
     var repairReadiness = await launches.GetStatusAsync(gameDirectory, "Operations");
     Assert(repairReadiness.Issues.Any(issue =>
@@ -610,6 +643,16 @@ try
             exportedLog.Contains("[GAME_DIRECTORY]", StringComparison.Ordinal),
             "Diagnostics export did not redact machine-specific paths.");
     }
+
+    var runtimeLogPath = Path.Combine(operationsStateRoot, "logs", "runtime.jsonl");
+    await File.WriteAllLinesAsync(runtimeLogPath, Enumerable.Range(1, 600).Select(index => $"line-{index}"));
+    Assert((await launches.ReadRuntimeLogAsync(5)).SequenceEqual(
+        new[] { "line-596", "line-597", "line-598", "line-599", "line-600" }),
+        "Runtime log tailing did not return only the requested newest records.");
+    await launches.ClearRuntimeLogAsync();
+    Assert((await launches.ReadRuntimeLogAsync()).Count == 0,
+        "Clearing the runtime log left old records behind.");
+    await launches.ClearRuntimeLogAsync();
 
     Console.WriteLine("Manager core integration tests passed.");
     return 0;

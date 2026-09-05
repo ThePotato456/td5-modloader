@@ -471,7 +471,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="221" />
                                 <RowDefinition Height="8" />
-                                <RowDefinition Height="*" />
+                                <RowDefinition x:Name="RuntimeLogRow" Height="58" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
@@ -513,8 +513,13 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11"
-                                                   Text="{Binding ElementName=LoaderStatusText, Path=Text}" />
+                                        <StackPanel>
+                                            <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11"
+                                                       Text="{Binding ElementName=LoaderStatusText, Path=Text}" />
+                                            <TextBlock x:Name="LoaderVersionText" Margin="0,3,0,0"
+                                                       Foreground="#81909A" FontSize="10"
+                                                       Text="Installed version: checking…" />
+                                        </StackPanel>
                                         <WrapPanel Grid.Row="1" Margin="0,7,0,0">
                                             <Button x:Name="LoaderPrimaryButton" Margin="0,0,6,0"
                                                     Padding="9,5" Style="{StaticResource FlatButton}"
@@ -605,19 +610,30 @@
                                         </StackPanel>
                                         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal"
                                                     VerticalAlignment="Center">
+                                            <StackPanel x:Name="RuntimeLogStatePanel" Margin="0,0,3,0"
+                                                        Orientation="Horizontal" Visibility="Collapsed">
                                             <Ellipse x:Name="RuntimeLogLiveIndicator" Width="8" Height="8"
                                                      Fill="#37C92F" />
                                             <TextBlock x:Name="RuntimeLogLiveText" Margin="5,0,9,0"
                                                        VerticalAlignment="Center" Foreground="#7DDE79"
                                                        FontSize="10" FontWeight="Bold" Text="LIVE" />
-                                            <Button Padding="9,4" Style="{StaticResource FlatButton}"
+                                            </StackPanel>
+                                            <Button x:Name="ToggleRuntimeLogButton" Margin="0,0,6,0"
+                                                    Padding="9,4" Style="{StaticResource FlatButton}"
+                                                    Click="ToggleRuntimeLog_Click" Content="Show console" />
+                                            <Button x:Name="ClearRuntimeLogButton" Margin="0,0,6,0"
+                                                    Padding="9,4" Style="{StaticResource DangerButton}"
+                                                    Click="ClearRuntimeLog_Click" Content="Clear" />
+                                            <Button x:Name="RefreshRuntimeLogButton" Padding="9,4"
+                                                    Style="{StaticResource FlatButton}"
+                                                    IsEnabled="False"
                                                     Click="RefreshLogs_Click" Content="Refresh now" />
                                         </StackPanel>
                                     </Grid>
                                     <TextBox x:Name="RuntimeLogText" Grid.Row="1" Margin="0,8,0,0"
                                              Style="{StaticResource DarkTextBox}" IsReadOnly="True"
                                              AcceptsReturn="True" FontFamily="Consolas" FontSize="10"
-                                             VerticalScrollBarVisibility="Auto" />
+                                             VerticalScrollBarVisibility="Auto" Visibility="Collapsed" />
                                 </Grid>
                             </Border>
 

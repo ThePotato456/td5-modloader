@@ -142,6 +142,8 @@ Initial supported build fingerprints:
   context-aware primary action. Keep uninstall in an advanced recovery area.
 - [x] Report loader files individually as healthy, missing, modified, unavailable, or foreign;
   distinguish a missing record, invalid record, unsupported game, and partial installation.
+- [x] Compare the installed loader version with the manager bundle, block mismatched launches,
+  and offer a safe reinstall of the bundled version.
 - [x] Make install and repair transactional, automatically verify their result, preserve foreign or
   modified files, and leave an actionable recovery result after interruption or partial failure.
   - [x] Preflight every repair before writing so conflicts and unavailable release files leave the
@@ -157,6 +159,8 @@ Initial supported build fingerprints:
   numbers, and strings, with validation plus per-setting and whole-mod reset controls.
 - [x] Automatically inspect loader, game, and current-profile readiness at startup and before launch;
   route failures to the exact corrective action instead of a generic status string.
+- [x] Make the runtime log console optional and live only while visible; support confirmed log
+  clearing and bounded tail reads so large logs do not freeze the manager.
 - [x] Migrate existing profile and installation state without losing configuration or launch history.
 - [x] Update manager documentation and screenshots after the workflow stabilizes.
 

@@ -89,6 +89,7 @@ file it owns. The primary Options action follows the current health state:
 | `UnsupportedGame` | The directory is not the supported BTD5 build. | Refuse installation and ask for another copy |
 | `NotInstalled` | No ownership record or conflicting loader files exist. | Offer **Install loader** |
 | `Healthy` | Every recorded loader-owned file matches its hash. | Show ready and allow a recheck |
+| `VersionMismatch` | Loader files are intact, but the recorded installed version differs from the manager bundle. | Block modded launch and offer **Update loader** |
 | `Repairable` | An owned file is missing and its matching release file exists. | Offer **Repair loader** |
 | `Conflict` | A foreign target or modified owned file exists. | Preserve it and require manual review |
 | `ArtifactUnavailable` | Matching release files are unavailable. | Ask the player to restore the complete release |
@@ -126,9 +127,10 @@ load order before writing the runtime handoff.
 ## Options, logs, and diagnostics
 
 **Options** contains game selection, loader health and recovery, the offline
-acknowledgement, vanilla launch, diagnostics export, and the live runtime log.
-The log refreshes while Options is open and formats the loader's JSON-lines log
-for quick inspection.
+acknowledgement, vanilla launch, diagnostics export, and an optional live runtime
+console. The console polls only while it is visible, reads a bounded tail of the
+JSON-lines log, and can clear the log after a confirmation. Export diagnostics
+before clearing when the session needs to be preserved.
 
 Diagnostics include build hashes, loader and profile validation, resolved
 package identities, and runtime messages. They redact machine-specific paths and

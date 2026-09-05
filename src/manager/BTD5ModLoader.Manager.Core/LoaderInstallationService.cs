@@ -35,6 +35,7 @@ public enum LoaderHealthState
     UnsupportedGame,
     NotInstalled,
     Healthy,
+    VersionMismatch,
     Repairable,
     Conflict,
     ArtifactUnavailable,
@@ -56,7 +57,9 @@ public sealed record LoaderHealthResult(
     LoaderHealthState State,
     string Message,
     string? BuildId,
-    IReadOnlyList<LoaderFileHealth> Files);
+    IReadOnlyList<LoaderFileHealth> Files,
+    string? InstalledVersion = null,
+    string? AvailableVersion = null);
 
 public sealed class LoaderInstallationService
 {
@@ -350,11 +353,23 @@ public sealed class LoaderInstallationService
                 installation.BuildId,
                 files));
         }
+        if (!string.Equals(record.LoaderVersion, ProductInfo.Version, StringComparison.Ordinal))
+        {
+            return IncludeRecovery(new(
+                LoaderHealthState.VersionMismatch,
+                $"Loader {record.LoaderVersion} is installed; this manager provides {ProductInfo.Version}.",
+                installation.BuildId,
+                files,
+                record.LoaderVersion,
+                ProductInfo.Version));
+        }
         return IncludeRecovery(new(
             LoaderHealthState.Healthy,
             "The loader is installed and healthy.",
             installation.BuildId,
-            files));
+            files,
+            record.LoaderVersion,
+            ProductInfo.Version));
     }
 
     public async Task<InstallationResult> VerifyAsync(
@@ -772,6 +787,7 @@ public sealed class LoaderInstallationService
         if (record.SchemaVersion != 1 ||
             string.IsNullOrWhiteSpace(record.GameDirectory) ||
             string.IsNullOrWhiteSpace(record.BuildId) ||
+            string.IsNullOrWhiteSpace(record.LoaderVersion) ||
             record.Files is null ||
             record.Files.Count == 0 ||
             record.Files.Any(file =>
