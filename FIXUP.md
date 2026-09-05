@@ -33,30 +33,32 @@ gameplay, custom tower, asset, offline protection, or v1 release work.
 
 Original scope: ACTIONPLAN Phases 2, 4, 5, 5R, and 6; audit findings 1–6.
 
-- [ ] Add a dated audit note to ACTIONPLAN explaining why earlier completed
+Completed 2026-09-05. [Document review and finding map](docs/validation-fixup-phase1.md).
+
+- [x] Add a dated audit note to ACTIONPLAN explaining why earlier completed
   guarantees require repair before forward feature work resumes.
-- [ ] Reopen the Phase 4 instruction-budget and every-host-boundary containment
+- [x] Reopen the Phase 4 instruction-budget and every-host-boundary containment
   claims, preserving checked items for APIs that actually exist.
-- [ ] Separate the implemented `on_shutdown` API from the missing normal-game-exit
+- [x] Separate the implemented `on_shutdown` API from the missing normal-game-exit
   integration; reopen the live clean-shutdown acceptance claim.
-- [ ] Split Phase 5's launch item into modded launch, verified vanilla launch,
+- [x] Split Phase 5's launch item into modded launch, verified vanilla launch,
   and the other existing status/diagnostic operations; reopen vanilla assurance.
-- [ ] Reopen Phase 5R's bounded-tail guarantee while preserving its implemented
+- [x] Reopen Phase 5R's bounded-tail guarantee while preserving its implemented
   visibility, refresh, and confirmed-clear behavior.
-- [ ] Mark partially implemented Phase 6 mutation and setter parent items `[~]`.
-- [ ] Split the seven-kind generic wrapper foundation from unfinished live
+- [x] Mark partially implemented Phase 6 mutation and setter parent items `[~]`.
+- [x] Split the seven-kind generic wrapper foundation from unfinished live
   integration for matches, rounds, players, attacks, and projectiles.
-- [ ] Replace the universal Phase 6 automated-coverage statement with explicit
+- [x] Replace the universal Phase 6 automated-coverage statement with explicit
   tested behaviors and outstanding production-integration checks.
-- [ ] Clarify that locked v1 decisions are scope commitments and that shared
+- [x] Clarify that locked v1 decisions are scope commitments and that shared
   groundwork in later phases does not pass those phases' feature gates.
 
 ### Fixup Phase 1 implementation gate
 
-- [ ] Every audit finding maps to an open repair or explicitly unfinished feature.
-- [ ] A document review confirms no historical acceptance run is presented as a
+- [x] Every audit finding maps to an open repair or explicitly unfinished feature.
+- [x] A document review confirms no historical acceptance run is presented as a
   fresh test or evidence for a broader guarantee.
-- [ ] ACTIONPLAN formatting and checkbox conventions pass repository checks.
+- [x] ACTIONPLAN formatting and checkbox conventions pass repository checks.
 
 ---
 
