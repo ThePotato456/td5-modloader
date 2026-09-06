@@ -7,15 +7,70 @@ public sealed record GameProcessRequest(
     string FileName,
     string? WorkingDirectory,
     bool UseShellExecute,
-    IReadOnlyDictionary<string, string> Environment);
+    IReadOnlyDictionary<string, string> Environment,
+    IReadOnlyList<string>? Arguments = null);
 
 public interface IGameProcessLauncher
 {
     int Start(GameProcessRequest request);
+    bool IsGameRunning();
+    long GetProcessStartTime(int processId);
+    Task<int?> AwaitRuntimeAsync(string ticketPath, CancellationToken cancellationToken);
+    Task<int?> AwaitGameProcessAsync(string gameDirectory, DateTime startedAfter, CancellationToken cancellationToken);
 }
 
 public sealed class SystemGameProcessLauncher : IGameProcessLauncher
 {
+    public long GetProcessStartTime(int processId)
+    {
+        using var process = Process.GetProcessById(processId);
+        return process.StartTime.ToUniversalTime().ToFileTimeUtc();
+    }
+    public async Task<int?> AwaitGameProcessAsync(
+        string gameDirectory, DateTime startedAfter, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            foreach (var process in Process.GetProcessesByName("BTD5-Win"))
+            {
+                using (process)
+                {
+                    if (process.StartTime.ToUniversalTime() >= startedAfter &&
+                        string.Equals(process.MainModule?.FileName,
+                            Path.Combine(gameDirectory, "BTD5-Win.exe"), StringComparison.OrdinalIgnoreCase))
+                        return process.Id;
+                }
+            }
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        }
+        return null;
+    }
+    public bool IsGameRunning()
+    {
+        var processes = Process.GetProcessesByName("BTD5-Win");
+        try { return processes.Length != 0; }
+        finally { foreach (var process in processes) process.Dispose(); }
+    }
+
+    public async Task<int?> AwaitRuntimeAsync(string ticketPath, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (File.Exists(ticketPath + ".started") && int.TryParse(
+                    await File.ReadAllTextAsync(ticketPath + ".started", cancellationToken)
+                        .ConfigureAwait(false), out var processId)) return processId;
+            }
+            catch (IOException) { /* The acknowledgment may still be being flushed. */ }
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        }
+        return null;
+    }
+
     public int Start(GameProcessRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -35,6 +90,7 @@ public sealed class SystemGameProcessLauncher : IGameProcessLauncher
                 startInfo.Environment[name] = value;
             }
         }
+        foreach (var argument in request.Arguments ?? []) startInfo.ArgumentList.Add(argument);
         using var process = Process.Start(startInfo) ??
             throw new InvalidOperationException("Windows did not start the game process.");
         return process.Id;
@@ -91,18 +147,21 @@ public sealed class GameLaunchService
     private readonly IReadOnlyList<KnownGameBuild> knownBuilds;
     private readonly IGameProcessLauncher processLauncher;
     private readonly string artifactDirectory;
+    private readonly SteamLaunchTarget? steamTarget;
 
     public GameLaunchService(
         string managerStateRoot,
         IReadOnlyList<KnownGameBuild>? knownBuilds = null,
         IGameProcessLauncher? processLauncher = null,
-        string? artifactDirectory = null)
+        string? artifactDirectory = null,
+        SteamLaunchTarget? steamTarget = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(managerStateRoot);
         this.managerStateRoot = Path.GetFullPath(managerStateRoot);
         this.knownBuilds = knownBuilds ?? GameDiscovery.SupportedBuilds;
         this.processLauncher = processLauncher ?? new SystemGameProcessLauncher();
         this.artifactDirectory = Path.GetFullPath(artifactDirectory ?? AppContext.BaseDirectory);
+        this.steamTarget = steamTarget ?? LaunchIsolation.DiscoverSteamTarget();
     }
 
     public async Task<LoaderStatusResult> GetStatusAsync(
@@ -165,6 +224,27 @@ public sealed class GameLaunchService
         bool offlineRiskAcknowledged,
         CancellationToken cancellationToken = default)
     {
+        try
+        {
+            using var launchLock = LaunchIsolation.Acquire(gameDirectory);
+            if (processLauncher.IsGameRunning())
+                return new(false, "Close the running game before starting another launch.", null, []);
+            return await LaunchModdedCoreAsync(gameDirectory, profileName, offlineRiskAcknowledged,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return new(false, "Launch isolation could not be acquired. Another launch may be in progress.",
+                null, [exception.Message]);
+        }
+    }
+
+    private async Task<GameLaunchResult> LaunchModdedCoreAsync(
+        string gameDirectory,
+        string profileName,
+        bool offlineRiskAcknowledged,
+        CancellationToken cancellationToken = default)
+    {
         if (!offlineRiskAcknowledged)
         {
             return new(
@@ -185,30 +265,53 @@ public sealed class GameLaunchService
             throw new InvalidOperationException("The profile does not exist.");
         var validation = await new ProfileModService(managerStateRoot, status.BuildId)
             .ValidateAsync(profileName, cancellationToken).ConfigureAwait(false);
-        var handoffPath = await WriteRuntimeHandoffAsync(
-            profile, status.BuildId, validation.OrderedPackages, cancellationToken).ConfigureAwait(false);
+        string? handoffPath = null;
         var gamePath = Path.Combine(Path.GetFullPath(gameDirectory), "BTD5-Win.exe");
         try
         {
-            var processId = processLauncher.Start(new(
-                gamePath,
+            var throughSteam = steamTarget is not null && string.Equals(
+                Path.GetFullPath(gameDirectory), Path.GetFullPath(steamTarget.GameDirectory),
+                StringComparison.OrdinalIgnoreCase);
+            var startedAfter = DateTime.UtcNow;
+            _ = processLauncher.Start(new(
+                throughSteam ? steamTarget!.SteamExecutable : gamePath,
                 Path.GetDirectoryName(gamePath),
                 false,
-                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                throughSteam ? new Dictionary<string, string>() : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["BTD5ML_DATA_ROOT"] = managerStateRoot,
-                    ["BTD5ML_ACTIVE_PROFILE"] = handoffPath
-                }));
+                    ["SteamAppId"] = "306020",
+                    ["SteamGameId"] = "306020"
+                },
+                throughSteam ? ["-applaunch", "306020"] : []));
+            var observedProcessId = await processLauncher.AwaitGameProcessAsync(gameDirectory, startedAfter,
+                cancellationToken).ConfigureAwait(false) ?? throw new InvalidOperationException("The intended game process did not start.");
+            handoffPath = await WriteRuntimeHandoffAsync(gameDirectory, observedProcessId,
+                processLauncher.GetProcessStartTime(observedProcessId), profile, status.BuildId,
+                validation.OrderedPackages, cancellationToken).ConfigureAwait(false);
+            var processId = await processLauncher.AwaitRuntimeAsync(handoffPath, cancellationToken)
+                .ConfigureAwait(false) ?? throw new InvalidOperationException(
+                    "The runtime did not acknowledge the launch ticket. Check startup logs; no reusable intent remains.");
+            if (processId != observedProcessId) throw new InvalidOperationException("Launch acknowledgment came from a different process.");
             await profileService.RecordLaunchAsync(
                 profileName, "modded", true, $"Started process {processId}.", cancellationToken)
                 .ConfigureAwait(false);
             return new(true, "Modded game process started.", processId, []);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
         {
             await profileService.RecordLaunchAsync(
                 profileName, "modded", false, exception.Message, cancellationToken).ConfigureAwait(false);
-            return new(false, "Windows could not start the modded game process.", null, [exception.Message]);
+            return new(false, "Modded launch could not be confirmed.", null, [exception.Message]);
+        }
+        finally
+        {
+            if (handoffPath is not null)
+            {
+                File.Delete(handoffPath);
+                File.Delete(handoffPath + ".claimed");
+                File.Delete(handoffPath + ".started");
+                File.Delete(handoffPath + ".started.tmp");
+            }
         }
     }
 
@@ -218,20 +321,41 @@ public sealed class GameLaunchService
     {
         try
         {
-            var processId = processLauncher.Start(new(
-                "steam://run/306020",
+            if (steamTarget is null)
+                return new(false, "The registered Steam installation could not be identified.", null, []);
+            using var launchLock = LaunchIsolation.Acquire(steamTarget.GameDirectory);
+            if (processLauncher.IsGameRunning())
+                return new(false, "Close the running game before starting another launch.", null, []);
+            var game = await GameDiscovery.ValidateAsync(steamTarget.GameDirectory, knownBuilds,
+                cancellationToken).ConfigureAwait(false);
+            if (!game.Supported)
+                return new(false, "The registered Steam game could not be validated.", null, [game.Error ?? "Unknown build."]);
+            var health = await new LoaderInstallationService(managerStateRoot, knownBuilds)
+                .InspectAsync(steamTarget.GameDirectory, artifactDirectory, cancellationToken).ConfigureAwait(false);
+            if (health.State is not (LoaderHealthState.Healthy or LoaderHealthState.NotInstalled))
+                return new(false, "Vanilla isolation requires the current verified loader or no loader. Repair or uninstall it first.",
+                    null, [health.Message]);
+            if (health.State == LoaderHealthState.Healthy && !RuntimeCapabilities.HasLaunchIsolation(
+                Path.Combine(steamTarget.GameDirectory, "btd5loader_runtime.dll")))
+                return new(false, "This loader predates vanilla isolation. Update or uninstall it before a vanilla launch.", null, []);
+            var startedAfter = DateTime.UtcNow;
+            _ = processLauncher.Start(new(
+                steamTarget.SteamExecutable,
                 null,
-                true,
-                new Dictionary<string, string>()));
+                false,
+                new Dictionary<string, string>(), ["-applaunch", "306020"]));
+            var processId = await processLauncher.AwaitGameProcessAsync(steamTarget.GameDirectory, startedAfter,
+                cancellationToken).ConfigureAwait(false) ?? throw new InvalidOperationException(
+                    "Steam did not start the verified game installation.");
             if (!string.IsNullOrWhiteSpace(profileName))
             {
                 await new ProfileService(managerStateRoot).RecordLaunchAsync(
                     profileName, "vanilla", true, $"Started process {processId}.", cancellationToken)
                     .ConfigureAwait(false);
             }
-            return new(true, "Vanilla launch was handed to Steam.", processId, []);
+            return new(true, "Vanilla game started with mod loading excluded.", processId, []);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
             if (!string.IsNullOrWhiteSpace(profileName))
             {
@@ -239,7 +363,7 @@ public sealed class GameLaunchService
                     profileName, "vanilla", false, exception.Message, cancellationToken)
                     .ConfigureAwait(false);
             }
-            return new(false, "Steam could not be opened.", null, [exception.Message]);
+            return new(false, "Vanilla launch could not be confirmed.", null, [exception.Message]);
         }
     }
 
@@ -323,15 +447,27 @@ public sealed class GameLaunchService
     }
 
     private async Task<string> WriteRuntimeHandoffAsync(
+        string gameDirectory,
+        int processId,
+        long processStartedAt,
         ModProfile profile,
         string selectedBuildId,
         IReadOnlyList<ModPackageInfo> orderedPackages,
         CancellationToken cancellationToken)
     {
         var profileEntries = profile.Mods.ToDictionary(mod => mod.Id, StringComparer.Ordinal);
+        var issuedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var document = new
         {
             schemaVersion = 1,
+            launchProtocol = 1,
+            mode = "modded",
+            processId,
+            processStartedAt = processStartedAt.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            issuedAt,
+            expiresAt = issuedAt + 60,
+            gameDirectory = Path.GetFullPath(gameDirectory),
+            dataRoot = managerStateRoot,
             profile = profile.Name,
             buildId = selectedBuildId,
             mods = orderedPackages.Select(package => new
@@ -347,7 +483,9 @@ public sealed class GameLaunchService
                     StringComparer.Ordinal)
             }).ToArray()
         };
-        var path = Path.Combine(managerStateRoot, "runtime", "active-profile.json");
+        var identity = processId.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-" +
+            processStartedAt.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var path = Path.Combine(Path.GetFullPath(gameDirectory), ".btd5ml-launch", identity + ".json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + ".btd5ml-" + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -355,7 +493,7 @@ public sealed class GameLaunchService
             await File.WriteAllTextAsync(
                 temporary, JsonSerializer.Serialize(document, JsonOptions), cancellationToken)
                 .ConfigureAwait(false);
-            File.Move(temporary, path, true);
+            File.Move(temporary, path, false);
         }
         finally
         {

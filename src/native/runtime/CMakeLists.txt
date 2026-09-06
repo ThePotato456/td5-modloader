@@ -8,8 +8,10 @@ add_library(
         match_hook.cpp
         native_event_hook.cpp
         active_profile.cpp
+        launch_ticket.cpp
         compatibility.cpp
         frame_hook.cpp
+        exit_hook.cpp
         game_object.cpp
         hook_transaction.cpp
         lua_mod.cpp

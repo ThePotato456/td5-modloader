@@ -33,6 +33,19 @@ function on_shutdown() end
 | `on_ready()` | Once on the first rendered frame after mod loading |
 | `on_shutdown()` | Once during orderly loader shutdown |
 
+On the supported build, normal return from the game main function triggers
+shutdown before CRT teardown. Loaded mods receive callbacks in reverse load order;
+a failed callback does not skip other mods. Startup rollback uses the same order.
+Game-object handles are already invalid during shutdown; logging, storage, and
+packaged-resource access remain available until callbacks finish. No further
+frame, event, or timer dispatch is admitted once shutdown begins.
+
+An explicit native shutdown request drains Lua work and destroys its states, but
+keeps inert native hooks installed until normal game exit so an in-flight native
+detour can finish safely. Unloading the runtime DLL while the game is running is
+unsupported. Forced termination and crashes cannot guarantee shutdown callbacks
+or session cleanup; crash recovery remains ACTIONPLAN Phase 9 work.
+
 ## `btd5`
 
 ### `btd5.log`
@@ -219,7 +232,6 @@ handlers return.
 Available standard libraries:
 
 - base;
-- coroutine;
 - math;
 - string;
 - table; and
@@ -228,6 +240,24 @@ Available standard libraries:
 Unavailable facilities include `io`, `os`, `package`, `debug`, `require`,
 `load`, `loadfile`, `dofile`, `collectgarbage`, native DLL loading, process
 launch, arbitrary filesystem access, and networking.
+
+Coroutines are also unavailable until the host owns their resume/close budgets.
+The sandbox's `setmetatable` rejects a metatable with `__gc` or `__close` fields.
+Adding `__gc` after attachment does not register a finalizer, and reattaching
+that metatable is rejected. Use explicit lifecycle callbacks for cleanup.
+Lifecycle functions are read directly from globals without `_G.__index` lookup.
+
+Lua state setup, script loading, lifecycle dispatch, event construction/readback,
+and timer dispatch run through protected host entry points. A boundary allocation
+failure reports the mod and boundary and rejects the operation; it does not
+authorize a partial event result.
+
+Each outermost callback starts one instruction allowance and wall-clock deadline.
+Callbacks nested through host re-entry share that allowance and deadline; they
+cannot reset either or restart the instruction-hook countdown. Exhaustion remains
+effective even if an inner error is caught. A later independent callback gets a
+fresh allowance. Time checks occur at Lua instruction-hook intervals and before
+and after callbacks; they cannot interrupt a currently executing native API call.
 
 ## Not yet implemented
 

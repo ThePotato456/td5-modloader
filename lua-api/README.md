@@ -60,16 +60,28 @@ it to `.btd5mod`. The manager validates and installs the package. See the
 
 ## Execution model
 
-The host opens Lua's base, table, string, math, UTF-8, and coroutine libraries.
+The host opens Lua's base, table, string, math, and UTF-8 libraries.
+Coroutines are unavailable until the host can enforce resume and close budgets.
+`setmetatable` rejects metatables containing `__gc` or `__close`; use explicit
+lifecycle callbacks for cleanup. Other metatable behavior remains available.
 Use `btd5.log` instead of relying on console output.
 
 The following lifecycle functions are optional:
+
+Callbacks must be functions stored directly in the global table. The host does
+not consult `_G.__index` when a callback is absent.
 
 | Callback | Timing |
 | --- | --- |
 | `on_load()` | Runs while the enabled profile is loading. The game scene is not ready. |
 | `on_ready()` | Runs once on the first rendered frame after all enabled mods load. |
 | `on_shutdown()` | Runs during an orderly loader shutdown. |
+
+Normal game exit now invokes shutdown in reverse mod load order. Game-object
+handles are invalid before these callbacks run; storage and packaged resources
+remain available until callbacks finish. A failing callback does not prevent
+other mods from shutting down. Crashes and forced termination cannot guarantee
+callbacks or cleanup. See the [shutdown contract](reference.md#optional-lifecycle-callbacks).
 
 A callback error is logged with the mod ID and callback name. The failing
 callback is disabled when continuing is safe; other callbacks and mods continue.
@@ -374,29 +386,41 @@ is absent from `btd5.lua`, mods should not depend on it.
 
 ## Troubleshooting mod startup
 
-The manager writes the selected profile to
-`%LocalAppData%\BTD5ModLoader\runtime\active-profile.json` immediately before a
-modded launch. It normally passes that path to the runtime through the
-`BTD5ML_ACTIVE_PROFILE` environment variable.
+The manager starts the game normally, observes the new process at the selected
+installation, then creates a single-use ticket under `.btd5ml-launch`. Its filename
+and contents bind the profile to that process's PID and exact creation time, as
+well as the installation path. Steam receives only `-applaunch 306020`; the game
+receives no custom launch options and need not inherit the manager's environment.
 
-Steam can start the game in a process that does not inherit the manager's
-environment. Commit `c950737` fixed that launch path: when the environment
-variable is absent, the runtime may use the manager-owned active-profile file
-only if its modification time is no more than 60 seconds old. The freshness
-limit prevents a later ordinary launch from silently reusing an old modded
-profile.
+The runtime waits up to 10 seconds for its own ticket before remaining vanilla.
+A ticket expires after 60 seconds and is claimed atomically. The manager waits
+for that process to acknowledge mod loading before reporting success and removes
+the ticket afterward. A timestamp alone never authorizes mods.
+
+The old `BTD5ML_ACTIVE_PROFILE` variable and shared `runtime/active-profile.json`
+file are ignored, including fresh or future-dated files. Without its own valid
+ticket, the runtime loads no Lua states and installs no game hooks. Vanilla launch
+verifies the installation named by Steam's app manifest and requires either no
+loader or a verified loader exporting the current launch-isolation capability.
+Modified, foreign, or legacy files require repair or removal first.
+
+The launch service rejects an already-running game and serializes requests for
+the same installation. It never temporarily removes loader files to switch modes.
+A failed or interrupted request removes its ticket when the manager can finish
+cleanup. After a manager crash, leftover tickets cannot authorize another process:
+PID reuse is excluded by the creation-time binding. Runtime crash recovery remains
+ACTIONPLAN Phase 9 work.
 
 Useful runtime log records:
 
-- `active_profile_fallback`: the fresh manager handoff was recovered;
-- `active_profile_fallback_stale`: an old handoff was deliberately ignored;
-- `active_profile_fallback_timestamp_failed`: freshness could not be verified;
-- `no_active_profile`: no manager handoff was available, so no Lua mods loaded.
+- `vanilla_no_ticket`: no matching process ticket; Lua and game hooks were skipped;
+- `invalid_launch_token`: the internal process identity was malformed;
+- `launch_ticket_missing_or_consumed`: no unused ticket was available;
+- `launch_ticket_binding_or_expiry_invalid`: process, installation, or time validation failed;
+- `launch_ticket_malformed`: the ticket could not be interpreted safely.
 
-Therefore, an installed mod producing no `on_load` record is first a profile
-handoff/enablement issue, not necessarily a Lua script failure. Launch the
-enabled profile from the manager and inspect these records before debugging the
-script itself.
+Retry failed launches from the manager after closing any game process. The full
+Steam-path acceptance is tracked in [FIXUP Phase 5](../FIXUP.md).
 
 ## Example mods
 

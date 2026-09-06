@@ -8,6 +8,36 @@ tracking, tests, and documentation into agreement with the implementation.
 It supplements [ACTIONPLAN.md](ACTIONPLAN.md); it does not replace the remaining
 gameplay, custom tower, asset, offline protection, or v1 release work.
 
+## Current status — 2026-09-05
+
+| Phase | Status | Evidence / next work |
+| --- | --- | --- |
+| 1 — Baseline correction | Complete; committed as `59bda5a` | [Document review](docs/validation-fixup-phase1.md) |
+| 2 — Lua boundaries | Complete | [Boundary review and regression results](docs/validation-fixup-phase2.md) |
+| 3 — Nested limits | Complete | [Budget policy and regression results](docs/validation-fixup-phase3.md) |
+| 4 — Orderly shutdown | Complete | [Boundary review, regression results, and two normal-exit runs](docs/validation-fixup-phase4.md) |
+| 5 — Vanilla isolation | Complete | [Process-bound protocol, regressions, and registered-Steam acceptance](docs/validation-fixup-phase5.md) |
+| 6 — Bounded logs | Not started | Bound scanned bytes and individual line size. |
+| 7 — Gameplay coverage | Not started | Test production coordination and align capability documentation. |
+| 8 — Release contents and closure | Not started | Package required notices, verify artifacts, and close the audit. |
+
+Phases 2–3 passed Debug and Release suites, isolated Lua boundary regressions,
+native/managed static analysis, formatting, and whitespace checks. Their source
+reviews are recorded above; no new live-game acceptance is claimed for those phases.
+
+Phases 4–5 additionally passed normal-exit and registered-Steam launch acceptance.
+Vanilla now excludes Lua and game hooks, including after a recent modded launch
+or an interrupted launch ticket. General crash recovery remains unfinished.
+
+The sandbox now omits coroutines and rejects finalizer-bearing metatables at
+attachment. Lua errors unwind C++ host objects, lifecycle lookup uses raw globals,
+and nested callbacks share the enclosing instruction allowance and deadline.
+Time limits are cooperative and cannot interrupt a native API call mid-execution.
+
+Next: begin **Fixup Phase 6**. Log bounds,
+remaining gameplay integration, and release closure are still open. New ACTIONPLAN
+Phase 6 features remain paused until this fixup plan is complete.
+
 ## Tracker rules
 
 - `[ ]` means not started, `[~]` means in progress, and `[x]` means complete.
@@ -65,130 +95,140 @@ Completed 2026-09-05. [Document review and finding map](docs/validation-fixup-ph
 ## Fixup Phase 2 — Contain Lua execution at every host boundary
 
 Original scope: ACTIONPLAN Phase 4; audit finding 1.
+
+Completed 2026-09-05. [Boundary review and verification](docs/validation-fixup-phase2.md).
+
 Primary implementation: `src/native/runtime/lua_mod.cpp` and native Lua tests.
 
-- [ ] Make lifecycle callback lookup unable to execute mod-controlled metatable
+- [x] Make lifecycle callback lookup unable to execute mod-controlled metatable
   code outside protected execution. Define whether callbacks require raw global
   entries or whether lookup itself runs inside the protected call.
-- [ ] Audit state setup, API registration, script loading, lifecycle lookup,
+- [x] Audit state setup, API registration, script loading, lifecycle lookup,
   event construction/readback, timer dispatch, userdata creation, error handling,
   and state destruction for Lua execution or allocation outside protection.
-- [ ] Handle allocation failure at host boundaries without a Lua panic escaping
+- [x] Handle allocation failure at host boundaries without a Lua panic escaping
   into the game; keep error reporting usable after memory exhaustion.
-- [ ] Preserve the existing raw event-payload inspection and strict numeric
+- [x] Preserve the existing raw event-payload inspection and strict numeric
   validation when restructuring protected execution.
-- [ ] Define containment behavior for finalizers and coroutine execution exposed
+- [x] Define containment behavior for finalizers and coroutine execution exposed
   by the sandbox; record and close any gaps found during this review.
-- [ ] Add regressions for absent callbacks with `_G.__index`, throwing lookup
+- [x] Add regressions for absent callbacks with `_G.__index`, throwing lookup
   metamethods, bounded runaway probes, and low-memory setup/event paths.
-- [ ] Verify that a failure reports mod ID and boundary, leaves the Lua stack
+- [x] Verify that a failure reports mod ID and boundary, leaves the Lua stack
   usable where recovery is supported, and does not corrupt a healthy mod.
 
 ### Fixup Phase 2 implementation gate
 
-- [ ] The audit's lifecycle metatable probe cannot run outside protection.
-- [ ] Boundary/error/memory regressions pass in Debug and Release; use isolated
+- [x] The audit's lifecycle metatable probe cannot run outside protection.
+- [x] Boundary/error/memory regressions pass in Debug and Release; use isolated
   subprocesses with timeouts for probes that could otherwise abort or hang tests.
-- [ ] A recorded boundary review identifies the protection mechanism for every
+- [x] A recorded boundary review identifies the protection mechanism for every
   host entry/exit path and documents any unsupported behavior explicitly.
-- [ ] Native static analysis passes for the changed code.
+- [x] Native static analysis passes for the changed code.
 
 ---
 
 ## Fixup Phase 3 — Preserve limits across nested callbacks
 
 Original scope: ACTIONPLAN Phases 4 and 6; audit finding 2.
+
+Completed 2026-09-05. [Budget policy and verification](docs/validation-fixup-phase3.md).
+
 Primary implementation: `LuaMod::execute_at_stack_top` and recursive-event tests.
 
-- [ ] Give nested execution explicit state for instruction allowance, deadline,
+- [x] Give nested execution explicit state for instruction allowance, deadline,
   recursion depth, and the installed Lua hook.
-- [ ] Restore enclosing execution state after nested success, Lua error,
+- [x] Restore enclosing execution state after nested success, Lua error,
   instruction exhaustion, time exhaustion, and recursion refusal.
-- [ ] Define budget accounting so nested calls cannot replenish the enclosing
+- [x] Define budget accounting so nested calls cannot replenish the enclosing
   allowance or extend its deadline. Document how nested work is charged.
-- [ ] Preserve the outer hook after inner execution returns; clear hooks only
+- [x] Preserve the outer hook after inner execution returns; clear hooks only
   when the corresponding protected execution has finished.
-- [ ] Turn the audit's reentrant-host probe into a permanent regression with an
+- [x] Turn the audit's reentrant-host probe into a permanent regression with an
   equivalent non-nested control and a healthy second mod.
-- [ ] Cover nested lifecycle, event, and timer paths where supported, including
+- [x] Cover nested lifecycle, event, and timer paths where supported, including
   caught inner errors followed by substantial outer work.
 
 ### Fixup Phase 3 implementation gate
 
-- [ ] Both nested and control probes stop at the documented budget rather than
+- [x] Both nested and control probes stop at the documented budget rather than
   allowing the nested case to finish an over-budget loop.
-- [ ] Tests verify depth, deadline, allowance, and hook restoration after each
+- [x] Tests verify depth, deadline, allowance, and hook restoration after each
   failure path and after repeated dispatch.
-- [ ] Debug/Release Lua tests and static analysis pass.
-- [ ] A recorded review confirms the documented budget policy matches the
+- [x] Debug/Release Lua tests and static analysis pass.
+- [x] A recorded review confirms the documented budget policy matches the
   production host and its reentrant test adapters.
 
 ---
 
 ## Fixup Phase 4 — Wire orderly shutdown into normal game exit
 
+Completed 2026-09-05. [Shutdown review and acceptance](docs/validation-fixup-phase4.md).
+
 Original scope: ACTIONPLAN Phases 2 and 4; audit finding 3.
 Primary implementation: runtime lifecycle, bootstrap/exit integration, live smoke.
 
-- [ ] Identify and independently verify an orderly exit boundary in the supported
+- [x] Identify and independently verify an orderly exit boundary in the supported
   build, including thread, object-lifetime, and hook-removal constraints.
-- [ ] Connect that boundary to runtime shutdown before Lua state destruction;
+- [x] Connect that boundary to runtime shutdown before Lua state destruction;
   do not rely on the manager forcibly terminating the game or on a fixture
   directly invoking `on_shutdown`.
-- [ ] Make shutdown idempotent across explicit requests, startup rollback,
+- [x] Make shutdown idempotent across explicit requests, startup rollback,
   repeated exit notifications, and partially initialized runtime states.
-- [ ] Stop new frame/event/timer work and coordinate in-flight dispatch before
+- [x] Stop new frame/event/timer work and coordinate in-flight dispatch before
   destroying states or removing resources they can still access.
-- [ ] Deliver `on_shutdown` once per eligible loaded mod in documented order;
+- [x] Deliver `on_shutdown` once per eligible loaded mod in documented order;
   contain a failing callback so other mods still receive shutdown.
-- [ ] Define wrapper availability during shutdown, then invalidate handles,
+- [x] Define wrapper availability during shutdown, then invalidate handles,
   release hooks/states, and remove only the current session's extracted files.
-- [ ] Document that forced termination and crashes cannot promise orderly Lua
+- [x] Document that forced termination and crashes cannot promise orderly Lua
   callbacks; retain crash recovery as unfinished ACTIONPLAN Phase 9 work.
 
 ### Fixup Phase 4 implementation gate
 
-- [ ] Automated lifecycle tests cover repeated shutdown, partial initialization,
+- [x] Automated lifecycle tests cover repeated shutdown, partial initialization,
   callback failure, and prevention of dispatch after shutdown begins.
-- [ ] A copied-game normal-exit run records exactly-once shutdown callbacks and
+- [x] A copied-game normal-exit run records exactly-once shutdown callbacks and
   session cleanup through the production exit path.
-- [ ] A second launch works and game executable/asset hashes remain unchanged.
-- [ ] Debug/Release suites and static analysis pass; the new exit acceptance is
+- [x] A second launch works and game executable/asset hashes remain unchanged.
+- [x] Debug/Release suites and static analysis pass; the new exit acceptance is
   recorded separately from prior callback-only fixture evidence.
 
 ---
 
 ## Fixup Phase 5 — Make vanilla launch reliably exclude mods
 
+Completed 2026-09-05. [Protocol review and Steam acceptance](docs/validation-fixup-phase5.md).
+
 Original scope: ACTIONPLAN Phase 5 and future Phase 9 recovery; audit finding 4.
 Primary implementation: `GameLaunchService`, active-profile handoff, bootstrap/runtime.
 
-- [ ] Define an explicit vanilla launch contract covering a loader installed in
+- [x] Define an explicit vanilla launch contract covering a loader installed in
   the registered Steam copy, as well as disposable copies.
-- [ ] Replace timestamp-only launch intent with a reliable protocol so a recent
+- [x] Replace timestamp-only launch intent with a reliable protocol so a recent
   shared handoff cannot authorize an unrelated vanilla launch.
-- [ ] Preserve supported modded launching when Steam starts or restarts the game
+- [x] Preserve supported modded launching when Steam starts or restarts the game
   without inheriting the manager's environment variables.
-- [ ] Bind and consume modded launch intent appropriately; handle stale, future-
+- [x] Bind and consume modded launch intent appropriately; handle stale, future-
   dated, malformed, missing, and previously consumed handoffs safely.
-- [ ] Define behavior for concurrent launch requests and an already-running game.
+- [x] Define behavior for concurrent launch requests and an already-running game.
   Ensure one request cannot silently change another request's launch mode.
-- [ ] If loader files must be temporarily changed, use verified ownership,
+- [x] If loader files must be temporarily changed, use verified ownership,
   reversible operations, and interruption recovery; preserve foreign files.
-- [ ] Report failure when vanilla isolation cannot be established instead of
+- [x] Report failure when vanilla isolation cannot be established instead of
   reporting success solely because Windows accepted a Steam URI.
-- [ ] Add production-path tests that establish the absence of Lua loading, not
+- [x] Add production-path tests that establish the absence of Lua loading, not
   just the shape of the process-launch request.
 
 ### Fixup Phase 5 implementation gate
 
-- [ ] A modded launch followed immediately by vanilla launch cannot reuse its
+- [x] A modded launch followed immediately by vanilla launch cannot reuse its
   profile, including within the former 60-second fallback window.
-- [ ] Automated tests cover the handoff cases, concurrent requests, interrupted
+- [x] Automated tests cover the handoff cases, concurrent requests, interrupted
   transitions, and subsequent successful modded launch.
-- [ ] Recorded manual acceptance exercises the Steam launch path with a loader
+- [x] Recorded manual acceptance exercises the Steam launch path with a loader
   installed where that path starts the game; copy-only URI tests are insufficient.
-- [ ] Vanilla acceptance shows no Lua callbacks or gameplay mutations, preserves
+- [x] Vanilla acceptance shows no Lua callbacks or gameplay mutations, preserves
   game hashes, and leaves an actionable recovery state after simulated failure.
 
 ---

@@ -69,7 +69,7 @@ Initial supported build fingerprints:
 - [x] Locate the game directory from the current process rather than hard-coding a Steam path.
 - [x] Initialize structured file logging before installing hooks or loading mods.
 - [x] Add runtime states for bootstrap, compatibility check, hooks ready, mods loading, game ready, shutting down, and failed.
-- [ ] Connect normal game exit to orderly runtime shutdown with exactly-once Lua
+- [x] Connect normal game exit to orderly runtime shutdown with exactly-once Lua
   callbacks and session cleanup (FIXUP Phase 4).
 - [x] Make loader installation reversible without modifying `BTD5-Win.exe` or `BTD5.jet`.
 - [x] Create a fixture executable that imports `wininet.dll` and exercises every forwarded function used by the game.
@@ -79,7 +79,7 @@ Initial supported build fingerprints:
 - [x] The fixture runs identically with and without the proxy present.
 - [x] Installing and removing the proxy leaves fixture and game binaries byte-for-byte unchanged.
 - [x] Runtime initialization failures produce a readable log and return control without recursive loading or an unexplained crash.
-- [ ] A normal copied-game exit reaches orderly shutdown through the production
+- [x] A normal copied-game exit reaches orderly shutdown through the production
   exit path, cleans up its session, and permits a subsequent launch (FIXUP Phase 4).
 
 ---
@@ -106,18 +106,18 @@ Initial supported build fingerprints:
 
 - [x] Embed Lua 5.4 in the runtime and create one isolated Lua state per enabled mod.
 - [x] Expose lifecycle callbacks for `on_load`, `on_ready`, and `on_shutdown`.
-- [ ] Deliver `on_shutdown` on normal game exit; direct fixture invocation proves
-  API availability only (FIXUP Phase 4).
+- [x] Deliver `on_shutdown` on normal game exit (FIXUP Phase 4;
+  [production acceptance](docs/validation-fixup-phase4.md)).
 - [x] Remove unrestricted `io`, `os`, `package`, `debug`, `loadfile`, `dofile`, native-library loading, process launch, and networking from mod environments.
 - [x] Provide sandboxed APIs for logging, configuration, deterministic timers, mod-owned storage, localization, and packaged-resource lookup.
-- [~] Enforce CPU instruction budgets, callback time limits, memory limits, and recursion limits per mod.
+- [x] Enforce CPU instruction budgets, cooperative callback time limits, memory limits, and recursion limits per mod.
   - [x] Implement limits and fixture coverage for ordinary protected callbacks.
-  - [ ] Close unprotected execution/allocation boundaries and preserve limits
-    across nested callbacks (FIXUP Phases 2–3).
-- [~] Catch Lua errors at every host boundary, annotate them with mod ID and callback, and disable only the failing callback when continuing is safe.
+  - [x] Protect host execution/allocation boundaries (FIXUP Phase 2).
+  - [x] Preserve limits across nested callbacks (FIXUP Phase 3).
+- [x] Catch Lua errors at protected host boundaries, annotate them with mod ID and callback, and disable only the failing callback when continuing is safe.
   - [x] Contain failures inside existing protected callback calls and annotate errors.
-  - [ ] Contain lifecycle lookup and audit all host boundaries, including setup,
-    payload construction, and destruction (FIXUP Phase 2).
+  - [x] Contain lifecycle lookup and audit host boundaries, including setup,
+    payload construction, and destruction (FIXUP Phase 2; see its boundary review).
 - [x] Define `.btd5mod` as a ZIP package with `mod.json`, Lua entry points, assets, localization, configuration defaults, and optional documentation.
 - [x] Require manifests to declare stable ID, name, author, semantic version, entry point, loader API version, supported game builds, dependencies, load-order constraints, and capabilities.
 - [x] Reject path traversal, duplicate IDs, malformed archives, unsupported API versions, dependency cycles, and files outside package limits.
@@ -127,14 +127,16 @@ Initial supported build fingerprints:
 
 - [x] A sample Lua mod loads, logs, stores configuration, and receives lifecycle
   callbacks when explicitly invoked by the host fixture.
-- [ ] A live sample receives exactly-once `on_shutdown` and cleans up on normal
+- [x] A live sample receives exactly-once `on_shutdown` and cleans up on normal
   game exit through production integration (FIXUP Phase 4).
 - [x] Sandbox tests prove that a Lua mod cannot access arbitrary files, processes, networking, Windows APIs, native DLLs, or another mod's storage.
 - [x] Malformed packages and dependency cycles are rejected without starting the game runtime.
-- [~] A deliberately failing or runaway Lua callback is contained without corrupting another Lua state.
+- [x] A deliberately failing or runaway Lua callback is contained in the documented
+  protected execution model without corrupting another Lua state.
   - [x] Ordinary protected callback fixtures demonstrate failure isolation.
-  - [ ] Lifecycle lookup, low-memory boundaries, and nested execution regressions
-    prove containment and budget restoration (FIXUP Phases 2–3).
+  - [x] Lifecycle lookup and low-memory boundary regressions prove containment
+    (FIXUP Phase 2).
+  - [x] Nested execution regressions prove budget restoration (FIXUP Phase 3).
 
 ---
 
@@ -148,9 +150,9 @@ Initial supported build fingerprints:
 - [x] Implement named profiles with enabled mods, deterministic load order, configuration, and launch history.
 - [x] Add enable, disable, reorder, upgrade, downgrade, and uninstall operations with dependency checks.
 - [x] Add modded launch with profile validation and runtime handoff.
-- [~] Add verified vanilla launch that cannot load an enabled mod profile.
-  - [x] Provide a vanilla button that starts the Steam launch URI.
-  - [ ] Prevent reuse of recent modded handoffs and verify the actual Steam
+- [x] Add verified vanilla launch that cannot load an enabled mod profile.
+  - [x] Provide a vanilla button that launches the registered game through Steam.
+  - [x] Prevent reuse of recent modded handoffs and verify the actual Steam
     launch path excludes Lua mods (FIXUP Phase 5).
 - [x] Add log viewing, diagnostics export, and loader status views.
 - [x] Keep installed packages and manager state under `%LocalAppData%\BTD5ModLoader`, not in the repository.
@@ -160,7 +162,7 @@ Initial supported build fingerprints:
 - [x] A new user can locate BTD5, install the loader, install a sample package, create a profile, and launch it without manual file editing.
 - [x] Repair restores missing loader-owned files, and uninstall removes only files recorded as loader-owned.
 - [x] Conflicting, incompatible, or dependency-broken profiles cannot launch and display an actionable explanation.
-- [ ] A vanilla launch immediately after a modded launch excludes mods even with
+- [x] A vanilla launch immediately after a modded launch excludes mods even with
   the loader installed in the Steam-launched copy (FIXUP Phase 5).
 
 ---
@@ -283,9 +285,9 @@ Initial supported build fingerprints:
     strict kind, lifetime, type, finiteness, and range validation.
   - [x] Prove sell-price and health replacement in the copied game with the
     dedicated `--expect-direct-properties` smoke scenario.
-- [~] Guard against recursive event loops when a mod mutation triggers another game event.
+- [x] Guard against recursive event loops with depth limits and shared nested budgets.
   - [x] Enforce callback/event recursion depth with mock-host recursive dispatch coverage.
-  - [ ] Preserve enclosing budgets and hooks after nested dispatch (FIXUP Phase 3).
+  - [x] Preserve enclosing budgets and hooks after nested dispatch (FIXUP Phase 3).
 - [x] Document which fields are mutable, when changes take effect, and which mutations may be rejected.
 
 ### Phase 6 implementation gate

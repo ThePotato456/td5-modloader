@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdlib>
 #include <cmath>
+#include <exception>
 #include <fstream>
 #include <limits>
 #include <system_error>
@@ -13,11 +14,9 @@
 
 #include <nlohmann/json.hpp>
 
-extern "C" {
 #include <lauxlib.h>
 #include <lua.h>
 #include <lualib.h>
-}
 
 namespace btd5loader::runtime {
 namespace {
@@ -25,6 +24,32 @@ namespace {
 constexpr int kInstructionHookInterval = 1'000;
 constexpr std::uintmax_t kMaximumResourceBytes = 1024U * 1024U;
 constexpr char kGameObjectMetatable[] = "btd5.game_object.v1";
+struct ProtectedContext final {
+    void (*operation)(void*);
+    void* context;
+};
+
+class LuaReference final {
+public:
+    LuaReference(lua_State* state, int reference) : state_(state), reference_(reference) {}
+    ~LuaReference() { if (reference_ >= 0) luaL_unref(state_, LUA_REGISTRYINDEX, reference_); }
+    void release() noexcept { reference_ = LUA_NOREF; }
+    LuaReference(const LuaReference&) = delete;
+    LuaReference& operator=(const LuaReference&) = delete;
+private:
+    lua_State* state_;
+    int reference_;
+};
+
+template <lua_CFunction Function>
+int guarded_api(lua_State* state) {
+    try {
+        return Function(state);
+    } catch (const std::exception&) {
+        // Lua's own C++ error object is not a std::exception: let it reach pcall.
+    }
+    return luaL_error(state, "host API operation failed");
+}
 constexpr std::array<std::string_view, 24> kEventNames{
     "match.starting", "match.started", "match.ending", "match.ended",
     "round.starting", "round.started", "round.ending", "round.ended",
@@ -71,8 +96,15 @@ LuaMod::LuaMod(LuaModOptions options) : options_(std::move(options)) {
         return;
     }
     *static_cast<LuaMod**>(lua_getextraspace(state_)) = this;
-    open_sandbox();
-    register_api();
+    if (!protect("setup", [](void* context) {
+            auto* mod = static_cast<LuaMod*>(context);
+            mod->open_sandbox();
+            mod->register_api();
+        }, this)) {
+        lua_close(state_);
+        state_ = nullptr;
+        return;
+    }
     load_storage();
 }
 
@@ -86,7 +118,87 @@ bool LuaMod::valid() const noexcept {
     return state_ != nullptr;
 }
 
+int LuaMod::protected_operation(lua_State* state) {
+    auto* context = static_cast<ProtectedContext*>(lua_touserdata(state, 1));
+    try {
+        context->operation(context->context);
+    } catch (const std::exception&) {
+        return luaL_error(state, "host boundary operation failed");
+    }
+    return 0;
+}
+
+bool LuaMod::protect(
+    const std::string_view boundary, const ProtectedOperation operation, void* context) {
+    if (state_ == nullptr) return false;
+    if (!lua_checkstack(state_, 2)) {
+        report_error(boundary, "Lua stack allocation failed");
+        return false;
+    }
+    const int top = lua_gettop(state_);
+    ProtectedContext call{operation, context};
+    // A zero-upvalue C function and light userdata do not allocate.
+    lua_pushcfunction(state_, &LuaMod::protected_operation);
+    lua_pushlightuserdata(state_, &call);
+    const int status = lua_pcall(state_, 1, 0, 0);
+    if (status != LUA_OK) {
+        const char* message = lua_type(state_, -1) == LUA_TSTRING
+            ? lua_tostring(state_, -1) : "non-string Lua boundary error";
+        report_error(boundary, message);
+    }
+    lua_settop(state_, top);
+    return status == LUA_OK;
+}
+
 bool LuaMod::load_script(const std::string_view script, const std::string_view source_name) {
+    struct Context { LuaMod* mod; std::string_view script; std::string_view source; bool result{}; };
+    Context context{this, script, source_name};
+    const bool succeeded = protect("load", [](void* value) {
+        auto& call = *static_cast<Context*>(value);
+        call.result = call.mod->load_script_impl(call.script, call.source);
+    }, &context);
+    return succeeded && context.result;
+}
+
+bool LuaMod::invoke(const std::string_view callback) {
+    struct Context { LuaMod* mod; std::string_view callback; bool result{}; };
+    Context context{this, callback};
+    const bool succeeded = protect(callback, [](void* value) {
+        auto& call = *static_cast<Context*>(value);
+        call.result = call.mod->invoke_impl(call.callback);
+    }, &context);
+    if (!succeeded) disabled_callbacks_.insert(std::string(callback));
+    return succeeded && context.result;
+}
+
+void LuaMod::advance_timers(const std::uint64_t ticks) {
+    struct Context { LuaMod* mod; std::uint64_t ticks; };
+    Context context{this, ticks};
+    (void)protect("timer", [](void* value) {
+        auto& call = *static_cast<Context*>(value);
+        call.mod->advance_timers_impl(call.ticks);
+    }, &context);
+}
+
+LuaEventDispatchResult LuaMod::dispatch_event(
+    const std::string_view name, const LuaEventFields& fields, const bool cancellable) {
+    struct Context {
+        LuaMod* mod; std::string_view name; const LuaEventFields* fields;
+        bool cancellable; LuaEventDispatchResult result;
+    };
+    Context context{this, name, &fields, cancellable, {}};
+    const auto depth = event_dispatch_depth_;
+    if (!protect("event." + std::string(name), [](void* value) {
+            auto& call = *static_cast<Context*>(value);
+            call.result = call.mod->dispatch_event_impl(call.name, *call.fields, call.cancellable);
+        }, &context)) {
+        context.result = {};
+    }
+    event_dispatch_depth_ = depth;
+    return std::move(context.result);
+}
+
+bool LuaMod::load_script_impl(const std::string_view script, const std::string_view source_name) {
     if (state_ == nullptr) {
         return false;
     }
@@ -101,11 +213,14 @@ bool LuaMod::load_script(const std::string_view script, const std::string_view s
     return execute_at_stack_top("load");
 }
 
-bool LuaMod::invoke(const std::string_view callback) {
+bool LuaMod::invoke_impl(const std::string_view callback) {
     if (state_ == nullptr || disabled_callbacks_.contains(std::string(callback))) {
         return false;
     }
-    lua_getglobal(state_, std::string(callback).c_str());
+    lua_pushglobaltable(state_);
+    lua_pushlstring(state_, callback.data(), callback.size());
+    lua_rawget(state_, -2);
+    lua_remove(state_, -2);
     if (lua_isnil(state_, -1)) {
         lua_pop(state_, 1);
         return true;
@@ -123,7 +238,7 @@ bool LuaMod::invoke(const std::string_view callback) {
     return succeeded;
 }
 
-void LuaMod::advance_timers(const std::uint64_t ticks) {
+void LuaMod::advance_timers_impl(const std::uint64_t ticks) {
     if (state_ == nullptr || ticks > (std::numeric_limits<std::uint64_t>::max)() - current_tick_) {
         return;
     }
@@ -147,7 +262,7 @@ void LuaMod::advance_timers(const std::uint64_t ticks) {
     }
 }
 
-LuaEventDispatchResult LuaMod::dispatch_event(
+LuaEventDispatchResult LuaMod::dispatch_event_impl(
     const std::string_view event_name,
     const LuaEventFields& fields,
     const bool cancellable) {
@@ -188,6 +303,7 @@ LuaEventDispatchResult LuaMod::dispatch_event(
         lua_setfield(state_, -2, name.c_str());
     }
     const int event_reference = luaL_ref(state_, LUA_REGISTRYINDEX);
+    const LuaReference event_owner(state_, event_reference);
 
     std::vector<std::uint64_t> snapshot;
     for (const auto& handler : event_handlers_) {
@@ -267,7 +383,6 @@ LuaEventDispatchResult LuaMod::dispatch_event(
         result.fields.emplace_back(name, std::move(updated));
     }
     lua_pop(state_, 1);
-    luaL_unref(state_, LUA_REGISTRYINDEX, event_reference);
     --event_dispatch_depth_;
     event_handlers_.erase(
         std::remove_if(
@@ -330,11 +445,14 @@ void LuaMod::instruction_hook(lua_State* state, lua_Debug*) {
         return;
     }
     if (mod->instructions_remaining_ <= static_cast<std::uint64_t>(kInstructionHookInterval)) {
+        mod->instructions_remaining_ = 0;
+        mod->budget_failure_ = "CPU instruction budget exceeded";
         luaL_error(state, "CPU instruction budget exceeded");
         return;
     }
     mod->instructions_remaining_ -= static_cast<std::uint64_t>(kInstructionHookInterval);
     if (std::chrono::steady_clock::now() >= mod->deadline_) {
+        mod->budget_failure_ = "callback time limit exceeded";
         luaL_error(state, "callback time limit exceeded");
     }
 }
@@ -432,7 +550,9 @@ int LuaMod::api_timer_after(lua_State* state) {
     }
     lua_pushvalue(state, 2);
     const int reference = luaL_ref(state, LUA_REGISTRYINDEX);
+    LuaReference owner(state, reference);
     mod->timers_.push_back({mod->current_tick_ + static_cast<std::uint64_t>(ticks), reference});
+    owner.release();
     return 0;
 }
 
@@ -454,8 +574,10 @@ int LuaMod::api_event_on(lua_State* state) {
     }
     lua_pushvalue(state, 2);
     const int reference = luaL_ref(state, LUA_REGISTRYINDEX);
+    LuaReference owner(state, reference);
     const std::uint64_t token = mod->next_event_token_++;
     mod->event_handlers_.push_back({token, event_name, reference, true});
+    owner.release();
     lua_pushinteger(state, static_cast<lua_Integer>(token));
     return 1;
 }
@@ -703,8 +825,10 @@ void LuaMod::open_sandbox() {
     lua_pop(state_, 1);
     luaL_requiref(state_, LUA_UTF8LIBNAME, luaopen_utf8, 1);
     lua_pop(state_, 1);
-    luaL_requiref(state_, LUA_COLIBNAME, luaopen_coroutine, 1);
-    lua_pop(state_, 1);
+    // Suspended threads and user finalizers cannot outlive protected execution.
+    // Coroutines are unavailable until the host owns their resume/close budgets.
+    lua_pushcfunction(state_, &LuaMod::api_setmetatable);
+    lua_setglobal(state_, "setmetatable");
 
     set_nil(state_, "dofile");
     set_nil(state_, "loadfile");
@@ -712,26 +836,47 @@ void LuaMod::open_sandbox() {
     set_nil(state_, "collectgarbage");
 }
 
+int LuaMod::api_setmetatable(lua_State* state) {
+    luaL_checktype(state, 1, LUA_TTABLE);
+    if (!lua_isnil(state, 2)) {
+        luaL_checktype(state, 2, LUA_TTABLE);
+        for (const char* field : {"__gc", "__close"}) {
+            lua_pushstring(state, field);
+            lua_rawget(state, 2);
+            if (!lua_isnil(state, -1)) {
+                return luaL_error(state, "mod finalizers are unavailable");
+            }
+            lua_pop(state, 1);
+        }
+    }
+    if (luaL_getmetafield(state, 1, "__metatable") != LUA_TNIL) {
+        return luaL_error(state, "cannot change a protected metatable");
+    }
+    lua_settop(state, 2);
+    lua_setmetatable(state, 1);
+    return 1;
+}
+
 void LuaMod::register_api() {
     if (luaL_newmetatable(state_, kGameObjectMetatable) != 0) {
         lua_newtable(state_);
-        lua_pushcfunction(state_, &LuaMod::api_game_object_is_valid);
+        lua_pushcfunction(state_, &guarded_api<&LuaMod::api_game_object_is_valid>);
         lua_setfield(state_, -2, "is_valid");
-        lua_pushcfunction(state_, &LuaMod::api_game_object_id);
+        lua_pushcfunction(state_, &guarded_api<&LuaMod::api_game_object_id>);
         lua_setfield(state_, -2, "id");
-        lua_pushcfunction(state_, &LuaMod::api_game_object_kind);
+        lua_pushcfunction(state_, &guarded_api<&LuaMod::api_game_object_kind>);
         lua_setfield(state_, -2, "kind");
-        lua_pushcfunction(state_, &LuaMod::api_game_object_pop_count);
+        lua_pushcfunction(state_, &guarded_api<&LuaMod::api_game_object_pop_count>);
         lua_setfield(state_, -2, "pop_count");
-        lua_pushcfunction(state_, &LuaMod::api_game_object_set_pop_count);
+        lua_pushcfunction(state_, &guarded_api<&LuaMod::api_game_object_set_pop_count>);
         lua_setfield(state_, -2, "set_pop_count");
-        lua_pushcfunction(state_, &LuaMod::api_game_object_sell_price);
+        lua_pushcfunction(state_, &guarded_api<&LuaMod::api_game_object_sell_price>);
         lua_setfield(state_, -2, "sell_price");
-        lua_pushcfunction(state_, &LuaMod::api_game_object_set_sell_price);
+        lua_pushcfunction(state_, &guarded_api<&LuaMod::api_game_object_set_sell_price>);
         lua_setfield(state_, -2, "set_sell_price");
-        lua_pushcfunction(state_, &LuaMod::api_game_object_health);
+        lua_pushcfunction(state_, &guarded_api<&LuaMod::api_game_object_health>);
         lua_setfield(state_, -2, "health");
-        lua_pushcfunction(state_, &LuaMod::api_game_object_set_health);
+        lua_pushcfunction(state_, &guarded_api<&LuaMod::api_game_object_set_health>);
         lua_setfield(state_, -2, "set_health");
         lua_setfield(state_, -2, "__index");
         lua_pushliteral(state_, "BTD5 game object v1");
@@ -740,32 +885,32 @@ void LuaMod::register_api() {
     lua_pop(state_, 1);
 
     lua_newtable(state_);
-    set_api_function(state_, this, "log", &LuaMod::api_log);
+    set_api_function(state_, this, "log", &guarded_api<&LuaMod::api_log>);
 
     lua_newtable(state_);
-    set_api_function(state_, this, "get", &LuaMod::api_config_get);
+    set_api_function(state_, this, "get", &guarded_api<&LuaMod::api_config_get>);
     lua_setfield(state_, -2, "config");
 
     lua_newtable(state_);
-    set_api_function(state_, this, "get", &LuaMod::api_storage_get);
-    set_api_function(state_, this, "set", &LuaMod::api_storage_set);
+    set_api_function(state_, this, "get", &guarded_api<&LuaMod::api_storage_get>);
+    set_api_function(state_, this, "set", &guarded_api<&LuaMod::api_storage_set>);
     lua_setfield(state_, -2, "storage");
 
     lua_newtable(state_);
-    set_api_function(state_, this, "get", &LuaMod::api_localize);
+    set_api_function(state_, this, "get", &guarded_api<&LuaMod::api_localize>);
     lua_setfield(state_, -2, "localization");
 
     lua_newtable(state_);
-    set_api_function(state_, this, "read_text", &LuaMod::api_read_resource);
+    set_api_function(state_, this, "read_text", &guarded_api<&LuaMod::api_read_resource>);
     lua_setfield(state_, -2, "resource");
 
     lua_newtable(state_);
-    set_api_function(state_, this, "after", &LuaMod::api_timer_after);
+    set_api_function(state_, this, "after", &guarded_api<&LuaMod::api_timer_after>);
     lua_setfield(state_, -2, "timer");
 
     lua_newtable(state_);
-    set_api_function(state_, this, "on", &LuaMod::api_event_on);
-    set_api_function(state_, this, "off", &LuaMod::api_event_off);
+    set_api_function(state_, this, "on", &guarded_api<&LuaMod::api_event_on>);
+    set_api_function(state_, this, "off", &guarded_api<&LuaMod::api_event_off>);
     lua_setfield(state_, -2, "events");
 
     lua_setglobal(state_, "btd5");
@@ -814,17 +959,55 @@ bool LuaMod::execute_at_stack_top(
         report_error(callback, "callback recursion limit exceeded");
         return false;
     }
-    ++callback_depth_;
-    instructions_remaining_ = options_.instruction_budget;
-    deadline_ = std::chrono::steady_clock::now() + options_.callback_time_limit;
-    lua_sethook(state_, &LuaMod::instruction_hook, LUA_MASKCOUNT, kInstructionHookInterval);
-    const int result = lua_pcall(state_, argument_count, 0, 0);
-    lua_sethook(state_, nullptr, 0, 0);
-    --callback_depth_;
+    const bool outermost = callback_depth_ == 0;
+    if (outermost) {
+        instructions_remaining_ = options_.instruction_budget;
+        deadline_ = std::chrono::steady_clock::now() + options_.callback_time_limit;
+        budget_failure_ = nullptr;
+    }
+    if (std::chrono::steady_clock::now() >= deadline_) {
+        budget_failure_ = "callback time limit exceeded";
+    }
+    if (budget_failure_ != nullptr) {
+        lua_pop(state_, argument_count + 1);
+        report_error(callback, budget_failure_);
+        return false;
+    }
+
+    int result = LUA_OK;
+    {
+        struct ExecutionScope final {
+            lua_State* state;
+            std::size_t& depth;
+            bool outermost;
+            lua_Hook hook;
+            int mask;
+            int count;
+            ~ExecutionScope() {
+                --depth;
+                if (outermost) lua_sethook(state, hook, mask, count);
+            }
+        } scope{state_, callback_depth_, outermost, lua_gethook(state_),
+                lua_gethookmask(state_), lua_gethookcount(state_)};
+        ++callback_depth_;
+        if (outermost) {
+            lua_sethook(state_, &LuaMod::instruction_hook, LUA_MASKCOUNT, kInstructionHookInterval);
+        }
+        // Nested callbacks share the remaining allowance, deadline and hook
+        // countdown. Reinstalling the hook here would replenish partial ticks.
+        result = lua_pcall(state_, argument_count, 0, 0);
+    }
+    if (std::chrono::steady_clock::now() >= deadline_) {
+        budget_failure_ = "callback time limit exceeded";
+    }
     if (result != LUA_OK) {
-        const char* message = lua_tostring(state_, -1);
+        const char* message = lua_type(state_, -1) == LUA_TSTRING ? lua_tostring(state_, -1) : nullptr;
         report_error(callback, message != nullptr ? message : "unknown Lua callback error");
         lua_pop(state_, 1);
+        return false;
+    }
+    if (budget_failure_ != nullptr) {
+        report_error(callback, budget_failure_);
         return false;
     }
     return true;
@@ -863,7 +1046,11 @@ void LuaMod::push_game_object(const GameObjectHandle& handle) {
 void LuaMod::report_error(const std::string_view callback, const std::string_view message) {
     last_error_ = options_.mod_id + "." + std::string(callback) + ": " + std::string(message);
     if (options_.log) {
-        options_.log("error", last_error_);
+        try {
+            options_.log("error", last_error_);
+        } catch (const std::exception&) {
+            // A failed diagnostic sink must not replace the original Lua error.
+        }
     }
 }
 

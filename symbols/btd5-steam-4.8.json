@@ -19,6 +19,26 @@
       "validation": { "offset": 0, "pattern": "55 8B EC 6A" }
     },
     {
+      "name": "game.exit.predicate",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "6A 00 FF 15 70 E1 B9 00 8B C8 85 C9 75 03 32 C0 C3 B8 4D 5A 00 00 66 39 01",
+      "result_offset": 0,
+      "required": true,
+      "prerequisites": ["game.main"],
+      "validation": { "offset": 0, "pattern": "6A 00 FF 15 70 E1 B9 00" }
+    },
+    {
+      "name": "game.exit.call",
+      "module": "BTD5-Win.exe",
+      "section": ".text",
+      "pattern": "E8 EB 62 F1 FF 8B F0 E8 6E 0A 00 00 84 C0 75 06 56 E8 EC EC 00 00 84 DB",
+      "result_offset": 7,
+      "required": true,
+      "prerequisites": ["game.main", "game.exit.predicate"],
+      "validation": { "offset": 0, "pattern": "E8 6E 0A 00 00 84 C0 75 06" }
+    },
+    {
       "name": "game.load_assets",
       "module": "BTD5-Win.exe",
       "section": ".text",

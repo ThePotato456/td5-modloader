@@ -26,6 +26,11 @@ does.
 
 ## Adaptation ledger
 
+The Phase 4 `game.exit.call` and `game.exit.predicate` signatures were independently
+derived from the fingerprinted executable, without copying or translating
+upstream source. Their minimal patterns, calling convention, and validation
+evidence are described in [the exit-boundary review](validation-fixup-phase4.md).
+
 | Local file | Upstream project/path | Commit | Upstream copyright | What was adapted | Local modifications |
 | --- | --- | --- | --- | --- | --- |
 | `symbols/btd5-steam-4.8.json` | `NKHook5/Signatures/Signature.cpp`, `NKHook5/Classes/CBaseScreen.h`, `NKHook5/Classes/CBaseTower.h`, `NKHook5/Classes/CBloon.h` | `6bcac69de5b76bf2bed49e5db600841bfb42ccb2` | NKHook5 contributors | Steam patterns for main, asset loading, game-screen initialization, tower/weapon factories, virtual initialization/teardown ordering, and research leads for tower pop count, tower sell price, and bloon health fields | Renamed through a stable namespace; restricted to the fingerprinted 4.8 map; added prerequisites and validation patterns; independently derived the adjacent `CGameScreen::Uninit` target, native round/money/tower/bloon RTTI/vtable symbols, lives handlers, exact lives write sites, unique tower pop-count accessors, the sale-payout sell-price read, and the bloon damage health commit from the supported executable |

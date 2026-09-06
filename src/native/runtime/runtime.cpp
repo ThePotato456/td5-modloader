@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <thread>
 
 #include <btd5loader/runtime_api.hpp>
 #include <btd5loader/version.hpp>
@@ -18,9 +19,11 @@
 #include <nlohmann/json.hpp>
 
 #include "active_profile.hpp"
+#include "launch_ticket.hpp"
 #include "bloon_action_hook.hpp"
 #include "compatibility.hpp"
 #include "frame_hook.hpp"
+#include "exit_hook.hpp"
 #include "hook_transaction.hpp"
 #include "lives_hook.hpp"
 #include "lives_write_hook.hpp"
@@ -28,6 +31,7 @@
 #include "lua_mod.hpp"
 #include "match_hook.hpp"
 #include "mod_package.hpp"
+#include "mod_lifecycle.hpp"
 #include "native_event_hook.hpp"
 #include "runtime_state.hpp"
 #include "symbol_resolver.hpp"
@@ -35,17 +39,25 @@
 #include "tower_sale_hook.hpp"
 #include "tower_upgrade_hook.hpp"
 
+extern "C" void WINAPI BTD5Loader_Shutdown();
+static void shutdown_runtime(bool normal_exit);
+
 namespace {
 
 btd5loader::runtime::StateMachine g_state;
 btd5loader::runtime::Logger g_logger;
 std::filesystem::path g_game_directory;
 std::filesystem::path g_session_directory;
+std::optional<btd5loader::runtime::LaunchTicket> g_launch_ticket;
 std::vector<std::unique_ptr<btd5loader::runtime::LuaMod>> g_mods;
-std::mutex g_mods_mutex;
+btd5loader::runtime::ModDispatchGate g_dispatch_gate;
+std::mutex g_lifecycle_mutex;
+bool g_shutdown_started{}; // Protected by g_lifecycle_mutex.
+
 btd5loader::runtime::GameObjectRegistry g_game_objects;
 btd5loader::runtime::BloonActionHook g_bloon_action_hook;
 btd5loader::runtime::FrameHook g_frame_hook;
+btd5loader::runtime::ExitHook g_exit_hook;
 btd5loader::runtime::LivesHook g_lives_hook;
 btd5loader::runtime::LivesWriteHook g_lives_write_hook;
 btd5loader::runtime::MatchHook g_match_hook;
@@ -73,7 +85,8 @@ void dispatch_game_event(
     if (g_state.current() != State::GameReady) {
         return;
     }
-    std::scoped_lock lock(g_mods_mutex);
+    auto dispatch = g_dispatch_gate.enter();
+    if (!dispatch) return;
     g_logger.info("events", std::string(name));
     for (const auto& mod : g_mods) {
         (void)mod->dispatch_event(name, fields);
@@ -102,7 +115,8 @@ btd5loader::runtime::LivesChangeDecision dispatch_lives_changing(
     }
     std::int64_t new_lives = after;
     bool cancelled = false;
-    std::scoped_lock lock(g_mods_mutex);
+    auto dispatch = g_dispatch_gate.enter();
+    if (!dispatch) return {false, after};
     g_logger.info("events", "lives.changing");
     for (const auto& mod : g_mods) {
         const btd5loader::runtime::LuaEventFields fields{
@@ -144,6 +158,8 @@ bool dispatch_tower_event(
     if (tower == nullptr || g_state.current() != State::GameReady) {
         return false;
     }
+    auto dispatch = g_dispatch_gate.enter();
+    if (!dispatch) return false;
     const auto handle = g_game_objects.find_or_add(GameObjectKind::Tower, tower);
     if (handle.id == 0) {
         g_logger.error("events", "tower_handle_unavailable");
@@ -152,7 +168,6 @@ bool dispatch_tower_event(
     bool cancelled = false;
     try {
         const btd5loader::runtime::LuaEventFields fields{{"tower", handle}};
-        std::scoped_lock lock(g_mods_mutex);
         g_logger.info("events", std::string(name));
         for (const auto& mod : g_mods) {
             cancelled = mod->dispatch_event(name, fields, cancellable).cancelled || cancelled;
@@ -183,6 +198,8 @@ bool dispatch_bloon_event(
     if (bloon == nullptr || g_state.current() != State::GameReady) {
         return false;
     }
+    auto dispatch = g_dispatch_gate.enter();
+    if (!dispatch) return false;
     const auto handle = g_game_objects.find_or_add(GameObjectKind::Bloon, bloon);
     if (handle.id == 0) {
         g_logger.error("events", "bloon_handle_unavailable");
@@ -191,7 +208,6 @@ bool dispatch_bloon_event(
     bool cancelled = false;
     try {
         const btd5loader::runtime::LuaEventFields fields{{"bloon", handle}};
-        std::scoped_lock lock(g_mods_mutex);
         g_logger.info("events", std::string(name));
         for (const auto& mod : g_mods) {
             cancelled = mod->dispatch_event(name, fields, cancellable).cancelled || cancelled;
@@ -222,7 +238,11 @@ void dispatch_frame(HDC) {
     const auto reset_dispatching = []() { dispatching = false; };
 
     {
-        std::scoped_lock lock(g_mods_mutex);
+        auto dispatch = g_dispatch_gate.enter();
+        if (!dispatch) {
+            reset_dispatching();
+            return;
+        }
         if (g_state.current() == State::ModsLoading) {
             if (!g_state.transition_to(State::GameReady)) {
                 g_logger.error("runtime", "invalid_game_ready_transition");
@@ -319,46 +339,10 @@ bool load_active_mods(const std::string& build_id) {
     using btd5loader::runtime::LuaModOptions;
     using btd5loader::runtime::State;
 
-    auto handoff_path = environment_value(L"BTD5ML_ACTIVE_PROFILE");
-
-    if (handoff_path.empty()) {
-        const auto fallback_path =
-            data_root() / L"runtime" / L"active-profile.json";
-
-        std::error_code ec;
-
-        if (std::filesystem::is_regular_file(fallback_path, ec) && !ec) {
-            const auto modified_time =
-                std::filesystem::last_write_time(fallback_path, ec);
-
-            if (!ec) {
-                const auto now =
-                    std::filesystem::file_time_type::clock::now();
-
-                const auto age = now - modified_time;
-
-                if (age <= std::chrono::seconds(60)) {
-                    handoff_path = fallback_path.wstring();
-                    g_logger.info("mods", "active_profile_fallback");
-                } else {
-                    g_logger.info("mods", "active_profile_fallback_stale");
-                    return true;
-                }
-            } else {
-                g_logger.info("mods", "active_profile_fallback_timestamp_failed");
-                return true;
-            }
-        } else {
-            g_logger.info("mods", "no_active_profile");
-            return true;
-        }
-    }
+    const auto* active = &g_launch_ticket->profile;
     std::string error;
-    const auto active = btd5loader::runtime::load_active_profile(handoff_path, error);
-    if (!active || active->build_id != build_id) {
-        g_logger.error("mods", active ? "active_profile_build_mismatch" : error);
-        return false;
-    }
+    if (active->build_id != build_id) return false;
+    auto lock = g_dispatch_gate.exclusive();
     if (!g_state.transition_to(State::ModsLoading)) {
         g_logger.error("runtime", "invalid_mods_loading_transition");
         return false;
@@ -383,12 +367,8 @@ bool load_active_mods(const std::string& build_id) {
         return false;
     }
 
-    std::scoped_lock lock(g_mods_mutex);
     const auto rollback = []() {
-        for (auto iterator = g_mods.rbegin(); iterator != g_mods.rend(); ++iterator) {
-            (void)(*iterator)->invoke("on_shutdown");
-        }
-        g_mods.clear();
+        btd5loader::runtime::shutdown_mods(g_mods);
         std::error_code cleanup_error;
         if (!g_session_directory.empty()) {
             std::filesystem::remove_all(g_session_directory, cleanup_error);
@@ -397,6 +377,7 @@ bool load_active_mods(const std::string& build_id) {
         return false;
     };
     for (const auto& requested : active->mods) {
+        if (g_dispatch_gate.stopping()) return rollback();
         filesystem_error.clear();
         const auto archive_path = std::filesystem::weakly_canonical(
             requested.archive_path, filesystem_error);
@@ -549,6 +530,29 @@ bool load_active_mods(const std::string& build_id) {
 
 DWORD WINAPI initialize_worker(LPVOID) {
     using btd5loader::runtime::State;
+    std::scoped_lock lifecycle_lock(g_lifecycle_mutex);
+    if (g_dispatch_gate.stopping()) return ERROR_CANCELLED;
+
+    std::string launch_error;
+    const auto identity = btd5loader::runtime::current_launch_identity();
+    const auto pending_path = g_game_directory / L".btd5ml-launch" / (identity + L".json");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!identity.empty() && !g_dispatch_gate.stopping() && std::chrono::steady_clock::now() < deadline) {
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(pending_path, ec) && !ec) {
+            const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            g_launch_ticket = btd5loader::runtime::consume_launch_ticket(g_game_directory, identity, now, launch_error);
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+    if (g_launch_ticket) {
+        SetEnvironmentVariableW(L"BTD5ML_DATA_ROOT", g_launch_ticket->data_root.c_str());
+    } else {
+        // Steam may retain a legacy manager environment across launches.
+        SetEnvironmentVariableW(L"BTD5ML_DATA_ROOT", nullptr);
+    }
 
     if (!g_logger.initialize()) {
         (void)g_state.transition_to(State::Failed);
@@ -557,6 +561,11 @@ DWORD WINAPI initialize_worker(LPVOID) {
 
     g_logger.info("runtime", "bootstrap_started");
     g_logger.info("runtime", btd5loader::kVersion);
+
+    if (!g_launch_ticket) {
+        g_logger.info("launch", launch_error.empty() ? "vanilla_no_ticket" : launch_error);
+        return ERROR_SUCCESS;
+    }
 
     if (g_game_directory.empty() ||
         !std::filesystem::is_regular_file(g_game_directory / L"BTD5-Win.exe")) {
@@ -602,6 +611,27 @@ DWORD WINAPI initialize_worker(LPVOID) {
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_ADDRESS;
     }
+    const auto exit_call = std::find_if(resolution.resolved.begin(), resolution.resolved.end(),
+        [](const auto& symbol) { return symbol.name == "game.exit.call"; });
+    const auto exit_predicate = std::find_if(resolution.resolved.begin(), resolution.resolved.end(),
+        [](const auto& symbol) { return symbol.name == "game.exit.predicate"; });
+    if (exit_call == resolution.resolved.end() || exit_predicate == resolution.resolved.end()) {
+        g_logger.error("hooks", "normal_exit_boundary_unavailable");
+        (void)g_state.transition_to(State::Failed);
+        return ERROR_INVALID_ADDRESS;
+    }
+    const auto image_base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+    void* const exit_call_target = reinterpret_cast<void*>(image_base + exit_call->relative_virtual_address);
+    const auto exit_predicate_target = reinterpret_cast<btd5loader::runtime::ExitHook::Predicate>(
+        image_base + exit_predicate->relative_virtual_address);
+    g_hooks.add({"game.exit.call", true,
+        [exit_call_target, exit_predicate_target]() {
+            std::string error;
+            const bool installed = g_exit_hook.install(exit_call_target, exit_predicate_target,
+                []() { shutdown_runtime(true); }, error);
+            if (!installed) g_logger.error("hooks", error);
+            return installed;
+        }, []() { g_exit_hook.remove(); }});
     const auto game_screen_init = std::find_if(
         resolution.resolved.begin(),
         resolution.resolved.end(),
@@ -1092,10 +1122,20 @@ DWORD WINAPI initialize_worker(LPVOID) {
         "tower.placing,tower.upgrading,tower.selling,bloon.spawning,bloon.popping,bloon.leaking,"
         "player.lives.changing,player.lives.changed");
     if (!load_active_mods(detection.build->id)) {
-        g_hooks.rollback();
+        if (!g_dispatch_gate.stopping()) g_hooks.rollback();
         g_logger.error("runtime", "active_mod_loading_failed");
         (void)g_state.transition_to(State::Failed);
         return ERROR_INVALID_DATA;
+    }
+    {
+        const auto temporary = std::filesystem::path(g_launch_ticket->acknowledgment_path.wstring() + L".tmp");
+        {
+            std::ofstream acknowledgment(temporary, std::ios::binary);
+            acknowledgment << GetCurrentProcessId();
+        }
+        if (!MoveFileExW(temporary.c_str(), g_launch_ticket->acknowledgment_path.c_str(), MOVEFILE_WRITE_THROUGH)) {
+            g_logger.error("launch", "launch_acknowledgment_failed");
+        }
     }
     return ERROR_SUCCESS;
 }
@@ -1124,29 +1164,47 @@ extern "C" btd5loader::runtime::State WINAPI BTD5Loader_GetState() {
     return g_state.current();
 }
 
-extern "C" void WINAPI BTD5Loader_Shutdown() {
+extern "C" BOOL WINAPI BTD5Loader_LaunchProtocol1() { return TRUE; }
+
+static void shutdown_runtime(const bool normal_exit) {
     using btd5loader::runtime::State;
-    g_hooks.rollback();
-    g_tower_pop_count_get = nullptr;
-    g_tower_pop_count_set = nullptr;
-    g_tower_sell_price_verified = false;
-    g_bloon_health_verified = false;
-    g_game_objects.begin_scene();
-    {
-        std::scoped_lock lock(g_mods_mutex);
-        for (auto iterator = g_mods.rbegin(); iterator != g_mods.rend(); ++iterator) {
-            (void)(*iterator)->invoke("on_shutdown");
-        }
-        g_mods.clear();
+    if (g_state.current() == State::NotStarted) return;
+    (void)g_dispatch_gate.request_stop();
+    // Serialize with worker-owned installation/mod loading, then drain Lua work.
+    std::scoped_lock lifecycle_lock(g_lifecycle_mutex);
+    if (g_shutdown_started) {
+        if (normal_exit) g_hooks.rollback();
+        return;
     }
+    g_shutdown_started = true;
+    {
+        auto lock = g_dispatch_gate.exclusive();
+        (void)g_state.transition_to(State::ShuttingDown);
+        g_logger.info("runtime", "shutdown_requested");
+        g_tower_pop_count_get = nullptr;
+        g_tower_pop_count_set = nullptr;
+        g_tower_sell_price_verified = false;
+        g_bloon_health_verified = false;
+        g_game_objects.begin_scene();
+        btd5loader::runtime::shutdown_mods(g_mods);
+    }
+    // An explicit request can race a native detour outside its Lua dispatch.
+    // Leave inert hooks/trampolines installed until game.main has returned.
+    if (normal_exit) g_hooks.rollback();
     std::error_code filesystem_error;
     if (!g_session_directory.empty()) {
         std::filesystem::remove_all(g_session_directory, filesystem_error);
+        if (filesystem_error) {
+            g_logger.error("runtime", "shutdown_session_cleanup_failed");
+            return;
+        }
         g_session_directory.clear();
     }
-    if (g_state.transition_to(State::ShuttingDown)) {
-        g_logger.info("runtime", "shutdown_requested");
-    }
+    g_logger.info("runtime", "shutdown_complete");
+}
+
+extern "C" void WINAPI BTD5Loader_Shutdown() {
+    shutdown_runtime(false);
 }
 
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {

@@ -46,6 +46,16 @@ try
     var discovered = GameDiscovery.DiscoverGameDirectories(steamRoot).ToArray();
     Assert(discovered.Length == 1 && PathsEqual(discovered[0], gameDirectory),
         "Steam library discovery did not find the fixture game.");
+    Assert(!GameDiscovery.DiscoverRegisteredGameDirectories(steamRoot).Any(),
+        "A copied folder without an app manifest was treated as registered.");
+    var appManifest = Path.Combine(libraryRoot, "steamapps", "appmanifest_306020.acf");
+    await File.WriteAllTextAsync(appManifest, "\"appid\" \"306020\"\n\"installdir\" \"BloonsTD5\"");
+    Assert(GameDiscovery.DiscoverRegisteredGameDirectories(steamRoot).Single() == gameDirectory,
+        "Registered Steam discovery did not follow the app manifest.");
+    await File.WriteAllTextAsync(appManifest, "\"appid\" \"306020\"\n\"installdir\" \"..\"");
+    Assert(!GameDiscovery.DiscoverRegisteredGameDirectories(steamRoot).Any(),
+        "An invalid app manifest escaped the library directory.");
+    File.Delete(appManifest);
     var validation = await GameDiscovery.ValidateAsync(gameDirectory, builds);
     Assert(validation.Supported && validation.BuildId == "fixture-build",
         "Known game build validation failed.");
@@ -509,6 +519,11 @@ try
     Assert((await operations.UninstallPackageAsync("sample.application", "1.0.0")).Success,
         "An unreferenced package could not be uninstalled.");
 
+    Assert(!RuntimeCapabilities.HasLaunchIsolation(Path.Combine(artifactDirectory, "btd5loader_runtime.dll")),
+        "A legacy runtime advertised launch isolation.");
+    await File.WriteAllBytesAsync(Path.Combine(artifactDirectory, "btd5loader_runtime.dll"), ProtocolRuntimeFixture());
+    Assert(RuntimeCapabilities.HasLaunchIsolation(Path.Combine(artifactDirectory, "btd5loader_runtime.dll")),
+        "The protocol export was not detected in PE metadata.");
     Assert((await new LoaderInstallationService(operationsStateRoot, builds)
         .InstallAsync(gameDirectory, artifactDirectory)).Success,
         "Launch test loader installation failed.");
@@ -518,7 +533,8 @@ try
         "{\"component\":\"runtime\",\"message\":\"hooks_ready_no_hooks_registered\"}\n");
     var recordingLauncher = new RecordingGameProcessLauncher();
     var launches = new GameLaunchService(
-        operationsStateRoot, builds, recordingLauncher, artifactDirectory);
+        operationsStateRoot, builds, recordingLauncher, artifactDirectory,
+        new SteamLaunchTarget(gameDirectory, "fixture-steam.exe"));
     var launchStatus = await launches.GetStatusAsync(gameDirectory, "Operations");
     Assert(launchStatus is
     {
@@ -611,17 +627,61 @@ try
     Assert(moddedLaunch.Success && recordingLauncher.Requests is
         [{ UseShellExecute: false }], "Validated modded launch was not handed to the process launcher.");
     var moddedRequest = recordingLauncher.Requests[0];
-    Assert(moddedRequest.Environment.TryGetValue("BTD5ML_ACTIVE_PROFILE", out var handoffPath) &&
-        File.Exists(handoffPath) &&
-        (await File.ReadAllTextAsync(handoffPath)).Contains("sample.library", StringComparison.Ordinal),
-        "Modded launch did not write and pass the active-profile handoff.");
+    Assert(moddedRequest.Arguments!.SequenceEqual(new[] { "-applaunch", "306020" }) &&
+        recordingLauncher.LastTicket?.Contains("sample.library", StringComparison.Ordinal) == true &&
+        !moddedRequest.Environment.ContainsKey("BTD5ML_ACTIVE_PROFILE") &&
+        !File.Exists(recordingLauncher.LastTicketPath),
+        "Modded launch did not use and clean up an explicit ticket.");
     Assert((await launches.LaunchVanillaAsync("Operations")).Success &&
-        recordingLauncher.Requests is [_, { FileName: "steam://run/306020", UseShellExecute: true }],
-        "Vanilla launch was not handed to Steam.");
+        recordingLauncher.Requests is [_, { FileName: "fixture-steam.exe", UseShellExecute: false }] &&
+        recordingLauncher.Requests[1].Arguments!.SequenceEqual(new[] { "-applaunch", "306020" }),
+        "Vanilla launch carried modded arguments or was not handed to Steam.");
     var launchedProfile = await operationsProfiles.LoadAsync("Operations");
     Assert(launchedProfile?.LaunchHistory.Select(entry => entry.Mode)
         .SequenceEqual(new[] { "modded", "vanilla" }) == true,
         "Profile launch history did not record modded and vanilla launches.");
+    recordingLauncher.Running = true;
+    Assert(!(await launches.LaunchVanillaAsync()).Success &&
+        !(await launches.LaunchModdedAsync(gameDirectory, "Operations", true)).Success,
+        "An already-running game did not block mode changes.");
+    recordingLauncher.Running = false;
+    recordingLauncher.Pending = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var pendingLaunch = launches.LaunchModdedAsync(gameDirectory, "Operations", true);
+    await recordingLauncher.Observed.Task;
+    Assert(!(await launches.LaunchVanillaAsync()).Success,
+        "A concurrent vanilla request changed an in-flight modded launch.");
+    recordingLauncher.Pending.SetResult(1234);
+    Assert((await pendingLaunch).Success, "The original coordinated launch did not finish.");
+    recordingLauncher.Pending = null;
+    recordingLauncher.FailStart = true;
+    Assert(!(await launches.LaunchModdedAsync(gameDirectory, "Operations", true)).Success &&
+        !Directory.EnumerateFiles(Path.Combine(gameDirectory, ".btd5ml-launch"), "*.json").Any(),
+        "A failed process start left reusable intent.");
+    recordingLauncher.FailStart = false;
+    Assert((await launches.LaunchModdedAsync(gameDirectory, "Operations", true)).Success,
+        "A launch did not recover after a failed process start.");
+    using (var interrupted = new CancellationTokenSource())
+    {
+        recordingLauncher.Pending = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        recordingLauncher.OnObserved = interrupted.Cancel;
+        try
+        {
+            await launches.LaunchModdedAsync(gameDirectory, "Operations", true, interrupted.Token);
+            Assert(false, "Interrupted launch did not propagate cancellation.");
+        }
+        catch (OperationCanceledException) { }
+        Assert(!Directory.EnumerateFiles(Path.Combine(gameDirectory, ".btd5ml-launch"), "*.json").Any(),
+            "Interrupted launch left a reusable ticket.");
+        recordingLauncher.Pending = null;
+        recordingLauncher.OnObserved = null;
+    }
+    var verifiedProxy = await File.ReadAllBytesAsync(Path.Combine(gameDirectory, "wininet.dll"));
+    await File.WriteAllTextAsync(Path.Combine(gameDirectory, "wininet.dll"), "foreign proxy");
+    Assert(!(await launches.LaunchVanillaAsync()).Success,
+        "Vanilla launch accepted an unverified installed proxy.");
+    Assert(await File.ReadAllTextAsync(Path.Combine(gameDirectory, "wininet.dll")) == "foreign proxy",
+        "Vanilla validation overwrote a foreign proxy.");
+    await File.WriteAllBytesAsync(Path.Combine(gameDirectory, "wininet.dll"), verifiedProxy);
     await File.AppendAllTextAsync(
         Path.Combine(operationsStateRoot, "logs", "runtime.jsonl"),
         $"{{\"component\":\"test\",\"message\":\"{gameDirectory} {operationsStateRoot}\"}}\n");
@@ -758,12 +818,63 @@ static string BuildManifest(
         """;
 }
 
+static byte[] ProtocolRuntimeFixture()
+{
+    var bytes = new byte[1024];
+    void U16(int offset, ushort value) => System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(offset), value);
+    void U32(int offset, uint value) => System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), value);
+    U16(0, 0x5a4d);
+    U32(0x3c, 0x80);
+    U32(0x80, 0x4550);
+    U16(0x84, 0x14c);
+    U16(0x86, 1);
+    U16(0x94, 224);
+    U16(0x98, 0x10b);
+    U32(0xb8, 4096);
+    U32(0xbc, 512);
+    U32(0xd0, 8192);
+    U32(0xd4, 512);
+    U32(0xf4, 16);
+    U32(0xf8, 0x1000);
+    U32(0xfc, 0x100);
+    U32(0x180, 512);
+    U32(0x184, 0x1000);
+    U32(0x188, 512);
+    U32(0x18c, 512);
+    U32(0x218, 1);
+    U32(0x220, 0x1040);
+    U32(0x240, 0x1060);
+    System.Text.Encoding.ASCII.GetBytes("BTD5Loader_LaunchProtocol1").CopyTo(bytes, 0x260);
+    return bytes;
+}
+
 sealed class RecordingGameProcessLauncher : IGameProcessLauncher
 {
     public List<GameProcessRequest> Requests { get; } = [];
+    public string? LastTicket { get; private set; }
+    public string? LastTicketPath { get; private set; }
+    public bool Running { get; set; }
+    public bool FailStart { get; set; }
+    public TaskCompletionSource<int?>? Pending { get; set; }
+    public Action? OnObserved { get; set; }
+    public TaskCompletionSource Observed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public bool IsGameRunning() => Running;
+    public long GetProcessStartTime(int processId) => 123456789;
+    public async Task<int?> AwaitRuntimeAsync(string ticketPath, CancellationToken cancellationToken)
+    {
+        LastTicketPath = ticketPath;
+        LastTicket = await File.ReadAllTextAsync(ticketPath, cancellationToken);
+        if (Pending is null) return 1234;
+        Observed.TrySetResult();
+        OnObserved?.Invoke();
+        return await Pending.Task.WaitAsync(cancellationToken);
+    }
+    public Task<int?> AwaitGameProcessAsync(string gameDirectory, DateTime startedAfter, CancellationToken cancellationToken)
+        => Task.FromResult<int?>(1234);
 
     public int Start(GameProcessRequest request)
     {
+        if (FailStart) throw new System.ComponentModel.Win32Exception("fixture start failure");
         Requests.Add(request);
         return 1000 + Requests.Count;
     }

@@ -1,6 +1,11 @@
 add_executable(
     btd5loader_native_tests
     foundation_tests.cpp
+    lua_boundary_tests.cpp
+    exit_hook_tests.cpp
+    launch_ticket_tests.cpp
+    ../../src/native/runtime/launch_ticket.cpp
+    ../../src/native/runtime/exit_hook.cpp
     ../../src/native/runtime/bloon_action_hook.cpp
     ../../src/native/runtime/active_profile.cpp
     ../../src/native/runtime/compatibility.cpp
@@ -38,6 +43,8 @@ target_compile_definitions(
 btd5ml_set_project_options(btd5loader_native_tests)
 
 add_test(NAME btd5loader_native_tests COMMAND btd5loader_native_tests)
+add_test(NAME btd5loader_lua_boundaries COMMAND btd5loader_native_tests "[.boundaries]")
+set_tests_properties(btd5loader_lua_boundaries PROPERTIES TIMEOUT 30)
 
 add_executable(
     btd5loader_symbol_inspector
@@ -53,7 +60,7 @@ target_link_libraries(
 btd5ml_set_project_options(btd5loader_symbol_inspector)
 
 add_executable(btd5loader_wininet_fixture wininet_fixture.cpp)
-target_link_libraries(btd5loader_wininet_fixture PRIVATE wininet)
+target_link_libraries(btd5loader_wininet_fixture PRIVATE wininet nlohmann_json::nlohmann_json)
 btd5ml_set_project_options(btd5loader_wininet_fixture)
 
 add_test(

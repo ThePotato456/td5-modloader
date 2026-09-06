@@ -80,6 +80,16 @@ public:
     [[nodiscard]] std::size_t memory_used() const noexcept;
 
 private:
+    using ProtectedOperation = void (*)(void*);
+    [[nodiscard]] bool protect(std::string_view boundary, ProtectedOperation operation, void* context);
+    static int protected_operation(lua_State* state);
+    static int api_setmetatable(lua_State* state);
+    [[nodiscard]] bool load_script_impl(std::string_view script, std::string_view source_name);
+    [[nodiscard]] bool invoke_impl(std::string_view callback);
+    void advance_timers_impl(std::uint64_t ticks);
+    [[nodiscard]] LuaEventDispatchResult dispatch_event_impl(
+        std::string_view event_name, const LuaEventFields& fields, bool cancellable);
+
     struct MemoryState final {
         std::size_t used{};
         std::size_t limit{};
@@ -144,6 +154,7 @@ private:
     std::uint64_t next_event_token_{1};
     std::uint64_t instructions_remaining_{};
     std::chrono::steady_clock::time_point deadline_{};
+    const char* budget_failure_{};
     std::size_t callback_depth_{};
     std::size_t event_dispatch_depth_{};
     std::string last_error_;

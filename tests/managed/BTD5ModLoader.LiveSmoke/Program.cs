@@ -2,9 +2,15 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using BTD5ModLoader.Manager.Core;
 
+if (args.Length == 5 && args[4] == "--expect-vanilla-isolation")
+    return await VanillaAcceptance.RunAsync(args[0], args[1], args[2], args[3]);
+if (args.Length == 5 && args[4] == "--expect-vanilla-only")
+    return await VanillaAcceptance.RunAsync(args[0], args[1], args[2], args[3], true);
+
 if (args.Length is < 4 or > 5 ||
     (args.Length == 5 &&
         !string.Equals(args[4], "--expect-match", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-shutdown", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-match-exit", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-round", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-cash", StringComparison.Ordinal) &&
@@ -25,7 +31,7 @@ if (args.Length is < 4 or > 5 ||
         "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
         "--expect-cash-action|--expect-lives-loss|--expect-lives-cancel|--expect-lives-mutation|" +
         "--expect-tower-pop-count|--expect-tower-cancellation|--expect-tower-actions|" +
-        "--expect-bloon-actions|--expect-direct-properties|--expect-disabled]");
+        "--expect-bloon-actions|--expect-direct-properties|--expect-disabled|--expect-shutdown]");
     return 2;
 }
 
@@ -35,7 +41,10 @@ var packagePath = Path.GetFullPath(args[2]);
 var stateRoot = Path.GetFullPath(args[3]);
 var expectDisabled = args.Length == 5 &&
     string.Equals(args[4], "--expect-disabled", StringComparison.Ordinal);
-var expectMatch = args.Length == 5 && !expectDisabled;
+var expectShutdown = args.Length == 5 &&
+    string.Equals(args[4], "--expect-shutdown", StringComparison.Ordinal);
+var expectMatch = args.Length == 5 && !expectDisabled && !expectShutdown;
+var closeRequested = false;
 var expectMatchExit = args.Length == 5 &&
     string.Equals(args[4], "--expect-match-exit", StringComparison.Ordinal);
 var expectRound = args.Length == 5 &&
@@ -171,6 +180,10 @@ try
     {
         File.Delete(logPath);
     }
+    var sessionsPath = Path.Combine(stateRoot, "runtime", "sessions");
+    var previousSessions = Directory.Exists(sessionsPath)
+        ? Directory.EnumerateFileSystemEntries(sessionsPath).ToHashSet(StringComparer.OrdinalIgnoreCase)
+        : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     var launch = await new GameLaunchService(stateRoot)
         .LaunchModdedAsync(gameDirectory, profileName, true);
     if (!launch.Success || launch.ProcessId is null)
@@ -178,17 +191,19 @@ try
         return Fail("Modded launch failed: " + launch.Message + Format(launch.Errors));
     }
     gameProcess = Process.GetProcessById(launch.ProcessId.Value);
+    // Retain a handle while the process is alive so exit-code inspection works.
+    _ = gameProcess.SafeHandle;
     var deadline = DateTimeOffset.UtcNow.AddSeconds(
         expectMatchExit || expectRound || expectLivesLoss || expectLivesCancel || expectLivesMutation ||
             expectTowerPopCount || expectTowerActions || expectBloonActions
             || expectTowerCancellation || expectDirectProperties
             ? 240
-            : expectMatch || expectCash ? 180 : expectDisabled ? 30 : 20);
+            : expectMatch || expectCash ? 180 : expectShutdown ? 90 : expectDisabled ? 30 : 20);
     while (DateTimeOffset.UtcNow < deadline)
     {
         await Task.Delay(250);
         gameProcess.Refresh();
-        if (gameProcess.HasExited)
+        if (gameProcess.HasExited && !expectShutdown)
         {
             return Fail($"The game exited early with code {gameProcess.ExitCode}.");
         }
@@ -218,6 +233,34 @@ try
             log.Contains("game_ready_frame_hook", StringComparison.Ordinal) &&
             log.Contains("Lifecycle Sample is ready", StringComparison.Ordinal) &&
             log.Contains("deterministic timer fired", StringComparison.Ordinal);
+        if (expectShutdown)
+        {
+            if (gameProcess.HasExited)
+            {
+                var remainingSessions = Directory.Exists(sessionsPath)
+                    ? Directory.EnumerateFileSystemEntries(sessionsPath)
+                    : [];
+                if (!closeRequested || gameProcess.ExitCode != 0 ||
+                    CountOccurrences(log, "Lifecycle Sample shut down cleanly") != 1 ||
+                    CountOccurrences(log, "shutdown_requested") != 1 ||
+                    CountOccurrences(log, "shutdown_complete") != 1 ||
+                    !previousSessions.SetEquals(remainingSessions))
+                {
+                    return Fail("Normal exit did not produce exactly-once shutdown and session cleanup.");
+                }
+                Console.WriteLine("LIVE_SMOKE_PASS: normal exit, exactly-once shutdown, session cleanup.");
+                return 0;
+            }
+            if (lifecycleReady && !closeRequested)
+            {
+                closeRequested = gameProcess.CloseMainWindow();
+                if (closeRequested)
+                {
+                    Console.WriteLine("Normal window close requested; waiting for the game to exit.");
+                }
+            }
+            continue;
+        }
         var disabledRuntimeReady =
             log.Contains("hooks_ready=", StringComparison.Ordinal) &&
             log.Contains("mods_loaded_waiting_for_game_ready_hook", StringComparison.Ordinal);

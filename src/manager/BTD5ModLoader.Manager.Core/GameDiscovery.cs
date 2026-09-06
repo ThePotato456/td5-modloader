@@ -28,6 +28,30 @@ public static partial class GameDiscovery
     ];
 
     public static IEnumerable<string> DiscoverGameDirectories(string steamDirectory)
+        => DiscoverSteamLibraries(steamDirectory)
+            .Select(path => Path.Combine(path, "steamapps", "common", "BloonsTD5"))
+            .Where(Directory.Exists)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase);
+
+    public static IEnumerable<string> DiscoverRegisteredGameDirectories(string steamDirectory)
+    {
+        foreach (var library in DiscoverSteamLibraries(steamDirectory))
+        {
+            var manifest = Path.Combine(library, "steamapps", "appmanifest_306020.acf");
+            if (!File.Exists(manifest)) continue;
+            var content = File.ReadAllText(manifest);
+            if (!AppIdPattern().IsMatch(content)) continue;
+            var match = InstallDirectoryPattern().Match(content);
+            if (!match.Success) continue;
+            var name = match.Groups[1].Value;
+            if (name is "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) continue;
+            var directory = Path.Combine(library, "steamapps", "common", name);
+            if (Directory.Exists(directory)) yield return directory;
+        }
+    }
+
+    private static IEnumerable<string> DiscoverSteamLibraries(string steamDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(steamDirectory);
         var libraries = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -47,11 +71,7 @@ public static partial class GameDiscovery
             }
         }
 
-        return libraries
-            .Select(path => Path.Combine(path, "steamapps", "common", "BloonsTD5"))
-            .Where(Directory.Exists)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Order(StringComparer.OrdinalIgnoreCase);
+        return libraries.Order(StringComparer.OrdinalIgnoreCase);
     }
 
     public static async Task<GameInstallation> ValidateAsync(
@@ -106,6 +126,12 @@ public static partial class GameDiscovery
 
     [GeneratedRegex("\\\"path\\\"\\s*\\\"([^\\\"]+)\\\"", RegexOptions.CultureInvariant)]
     private static partial Regex LibraryPathPattern();
+
+    [GeneratedRegex("\\\"installdir\\\"\\s*\\\"([^\\\"]+)\\\"", RegexOptions.CultureInvariant)]
+    private static partial Regex InstallDirectoryPattern();
+
+    [GeneratedRegex("\\\"appid\\\"\\s*\\\"306020\\\"", RegexOptions.CultureInvariant)]
+    private static partial Regex AppIdPattern();
 
     private static async Task<bool> IsWin32PeAsync(
         string path,

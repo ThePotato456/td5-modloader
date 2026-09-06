@@ -62,6 +62,13 @@ function(btd5ml_enable_runtime_dependencies)
             ${lua_SOURCE_DIR}/src/lzio.c
     )
     target_include_directories(btd5ml_lua PUBLIC ${lua_SOURCE_DIR}/src)
+    # Lua's built-in C++ error handling unwinds host RAII objects on Lua errors.
+    # Lua is private to this C++ host; no C/native mod ABI is exposed.
+    get_target_property(lua_sources btd5ml_lua SOURCES)
+    set_source_files_properties(${lua_sources} PROPERTIES LANGUAGE CXX)
+    if(MSVC)
+        target_compile_options(btd5ml_lua PRIVATE /EHsc)
+    endif()
     target_compile_definitions(btd5ml_lua PRIVATE LUAI_MAXCCALLS=100)
     set_target_properties(btd5ml_lua PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
