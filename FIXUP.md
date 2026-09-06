@@ -8,7 +8,7 @@ tracking, tests, and documentation into agreement with the implementation.
 It supplements [ACTIONPLAN.md](ACTIONPLAN.md); it does not replace the remaining
 gameplay, custom tower, asset, offline protection, or v1 release work.
 
-## Current status — 2026-09-05
+## Current status — 2026-09-06
 
 | Phase | Status | Evidence / next work |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ gameplay, custom tower, asset, offline protection, or v1 release work.
 | 3 — Nested limits | Complete | [Budget policy and regression results](docs/validation-fixup-phase3.md) |
 | 4 — Orderly shutdown | Complete | [Boundary review, regression results, and two normal-exit runs](docs/validation-fixup-phase4.md) |
 | 5 — Vanilla isolation | Complete | [Process-bound protocol, regressions, and registered-Steam acceptance](docs/validation-fixup-phase5.md) |
-| 6 — Bounded logs | Not started | Bound scanned bytes and individual line size. |
+| 6 — Bounded logs | Implementation complete; manager acceptance pending | [Limits and automated evidence](docs/validation-fixup-phase6.md) |
 | 7 — Gameplay coverage | Not started | Test production coordination and align capability documentation. |
 | 8 — Release contents and closure | Not started | Package required notices, verify artifacts, and close the audit. |
 
@@ -238,24 +238,24 @@ Primary implementation: `GameLaunchService`, active-profile handoff, bootstrap/r
 Original scope: ACTIONPLAN Phase 5R; audit finding 5.
 Primary implementation: `GameLaunchService.ReadRuntimeLogAsync` and log UI.
 
-- [ ] Set documented limits for bytes scanned, returned line count, and individual
+- [x] Set documented limits for bytes scanned, returned line count, and individual
   returned line size. Keep allocation bounded independently of total file size.
-- [ ] Read oversized or unterminated lines without allocating their entire content.
-- [ ] Represent truncation clearly while retaining useful recent log content.
-- [ ] Handle UTF-8 boundaries, partial trailing records, concurrent appends,
+- [x] Read oversized or unterminated lines without allocating their entire content.
+- [x] Represent truncation clearly while retaining useful recent log content.
+- [x] Handle UTF-8 boundaries, partial trailing records, concurrent appends,
   truncation/clearing, file replacement, and cancellation.
-- [ ] Preserve optional live refresh and prevent overlapping refreshes from
+- [x] Preserve optional live refresh and prevent overlapping refreshes from
   accumulating work while the log is visible.
-- [ ] Add realistic fixtures with a large newline-free record, oversized JSON
+- [x] Add realistic fixtures with a large newline-free record, oversized JSON
   lines, many small lines, and a file changing during a read.
 
 ### Fixup Phase 6 implementation gate
 
-- [ ] Tests demonstrate the specified byte/line bounds rather than asserting
+- [x] Tests demonstrate the specified byte/line bounds rather than asserting
   only the number of returned strings.
 - [ ] A recorded manager check shows responsive opening, refreshing, hiding, and
   clearing with oversized logs and visible truncation feedback.
-- [ ] Managed tests, analyzers, and formatting pass.
+- [x] Managed tests, analyzers, and formatting pass.
 
 ---
 

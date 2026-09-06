@@ -367,63 +367,11 @@ public sealed class GameLaunchService
         }
     }
 
-    public async Task<IReadOnlyList<string>> ReadRuntimeLogAsync(
+    public Task<IReadOnlyList<string>> ReadRuntimeLogAsync(
         int maximumLines = 500,
-        CancellationToken cancellationToken = default)
-    {
-        if (maximumLines is < 1 or > 10_000)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maximumLines));
-        }
-        var path = Path.Combine(managerStateRoot, "logs", "runtime.jsonl");
-        if (!File.Exists(path))
-        {
-            return [];
-        }
-
-        const int blockSize = 64 * 1024;
-        var stream = new FileStream(
-            path,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete,
-            blockSize,
-            FileOptions.Asynchronous);
-        await using (stream.ConfigureAwait(false))
-        {
-            var buffer = new byte[blockSize];
-            var start = stream.Length;
-            var lineBreaks = 0;
-            while (start > 0 && lineBreaks <= maximumLines)
-            {
-                var count = (int)Math.Min(blockSize, start);
-                start -= count;
-                stream.Seek(start, SeekOrigin.Begin);
-                var read = await stream.ReadAsync(
-                    buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
-                lineBreaks += buffer.AsSpan(0, read).Count((byte)'\n');
-            }
-
-            stream.Seek(start, SeekOrigin.Begin);
-            using var reader = new StreamReader(stream, leaveOpen: true);
-            if (start > 0)
-            {
-                _ = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            var lines = new Queue<string>(maximumLines);
-            while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
-            {
-                if (lines.Count == maximumLines)
-                {
-                    _ = lines.Dequeue();
-                }
-                lines.Enqueue(line);
-            }
-            return lines.ToArray();
-        }
-    }
-
+        CancellationToken cancellationToken = default) =>
+        RuntimeLogReader.ReadAsync(Path.Combine(managerStateRoot, "logs", "runtime.jsonl"),
+            maximumLines, cancellationToken);
     public async Task ClearRuntimeLogAsync(CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(managerStateRoot, "logs", "runtime.jsonl");

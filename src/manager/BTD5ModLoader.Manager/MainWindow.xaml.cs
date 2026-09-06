@@ -29,7 +29,9 @@ internal sealed partial class MainWindow : Window
     private bool windowLoaded;
     private bool refreshingActivation;
     private bool refreshingLogs;
+    private bool clearingLogs;
     private bool runtimeLogVisible;
+    private int runtimeLogGeneration;
     private string readinessSummary = "Preparing manager state";
     private readonly DispatcherTimer runtimeLogTimer;
     private static readonly JsonSerializerOptions ProfileJsonOptions = new()
@@ -881,6 +883,7 @@ internal sealed partial class MainWindow : Window
 
     private async void ToggleRuntimeLog_Click(object sender, RoutedEventArgs e)
     {
+        runtimeLogGeneration++;
         runtimeLogVisible = !runtimeLogVisible;
         RuntimeLogText.Visibility = runtimeLogVisible ? Visibility.Visible : Visibility.Collapsed;
         RuntimeLogStatePanel.Visibility = runtimeLogVisible ? Visibility.Visible : Visibility.Collapsed;
@@ -909,6 +912,8 @@ internal sealed partial class MainWindow : Window
 
         try
         {
+            clearingLogs = true;
+            runtimeLogGeneration++;
             await new GameLaunchService(managerStateRoot).ClearRuntimeLogAsync().ConfigureAwait(true);
             RuntimeLogText.Text = "Waiting for runtime output…";
             StatusText.Text = "Runtime log cleared.";
@@ -917,19 +922,25 @@ internal sealed partial class MainWindow : Window
         {
             StatusText.Text = "The runtime log could not be cleared: " + exception.Message;
         }
+        finally
+        {
+            clearingLogs = false;
+        }
     }
 
     private async Task RefreshLogsAsync()
     {
-        if (refreshingLogs)
+        if (refreshingLogs || clearingLogs || !runtimeLogVisible)
         {
             return;
         }
         refreshingLogs = true;
+        var generation = runtimeLogGeneration;
         try
         {
             var lines = await new GameLaunchService(managerStateRoot).ReadRuntimeLogAsync()
                 .ConfigureAwait(true);
+            if (generation != runtimeLogGeneration || !runtimeLogVisible) return;
             var updatedText = lines.Count == 0
                 ? "Waiting for runtime output…"
                 : string.Join(Environment.NewLine, lines.Select(FormatRuntimeLogLine));
@@ -950,6 +961,7 @@ internal sealed partial class MainWindow : Window
         }
         catch (IOException)
         {
+            if (generation != runtimeLogGeneration || !runtimeLogVisible) return;
             RuntimeLogLiveIndicator.Fill = Brushes.Goldenrod;
             RuntimeLogLiveText.Foreground = Brushes.Goldenrod;
             RuntimeLogLiveText.Text = "WAITING";

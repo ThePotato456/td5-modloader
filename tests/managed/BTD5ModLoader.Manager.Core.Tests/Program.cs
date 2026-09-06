@@ -709,6 +709,62 @@ try
     Assert((await launches.ReadRuntimeLogAsync(5)).SequenceEqual(
         new[] { "line-596", "line-597", "line-598", "line-599", "line-600" }),
         "Runtime log tailing did not return only the requested newest records.");
+    await File.WriteAllTextAsync(runtimeLogPath, new string('x', RuntimeLogReader.MaximumBytes * 3));
+    var oversizedTail = await launches.ReadRuntimeLogAsync();
+    Assert(oversizedTail.Count == 1 && oversizedTail[0].StartsWith(RuntimeLogReader.TruncatedPrefix,
+        StringComparison.Ordinal) && oversizedTail[0].EndsWith(RuntimeLogReader.PartialSuffix,
+        StringComparison.Ordinal) && oversizedTail[0].Length <= RuntimeLogReader.MaximumLineBytes + 40,
+        "Newline-free logs must cap returned bytes and identify truncation/partial records.");
+    await File.WriteAllTextAsync(runtimeLogPath,
+        "{\"message\":\"" + new string('x', 20000) + "\"}\nrecent\n");
+    var jsonTail = await launches.ReadRuntimeLogAsync();
+    Assert(jsonTail.Count == 2 && jsonTail[0].Length <= RuntimeLogReader.MaximumLineBytes + 40 &&
+        jsonTail[1] == "recent", "Oversized JSON must retain recent complete records with bounded lines.");
+    await File.WriteAllTextAsync(runtimeLogPath, string.Concat(Enumerable.Repeat("😀", 400000)) + "\nlast\n");
+    var unicodeTail = await launches.ReadRuntimeLogAsync();
+    Assert(unicodeTail.Count == 2 && !unicodeTail[0].Contains('\ufffd') && unicodeTail[1] == "last",
+        "A UTF-8 window split must not introduce replacement characters.");
+    await File.WriteAllBytesAsync(runtimeLogPath, [(byte)'o', (byte)'k', 0xf0, 0x9f]);
+    Assert((await launches.ReadRuntimeLogAsync()).Single() == "ok" + RuntimeLogReader.PartialSuffix,
+        "An incomplete trailing UTF-8 sequence must wait for the next snapshot.");
+    using (var canceledRead = new CancellationTokenSource())
+    {
+        canceledRead.Cancel();
+        try
+        {
+            await launches.ReadRuntimeLogAsync(cancellationToken: canceledRead.Token);
+            throw new InvalidOperationException("Canceled log read completed successfully.");
+        }
+        catch (OperationCanceledException) { }
+    }
+    File.Move(runtimeLogPath, runtimeLogPath + ".old");
+    await File.WriteAllTextAsync(runtimeLogPath, "replacement\n");
+    Assert((await launches.ReadRuntimeLogAsync()).Single() == "replacement",
+        "Refresh must reopen a replaced log file.");
+    using (var changingLog = new ChangingLogStream())
+    {
+        var boundedTail = await RuntimeLogReader.ReadSnapshotAsync(changingLog, 7);
+        Assert(changingLog.BytesRead == RuntimeLogReader.MaximumBytes && boundedTail.Count == 7 &&
+            boundedTail.All(line => line.Length <= RuntimeLogReader.MaximumLineBytes + 40),
+            "Growing logs must cap actual I/O bytes, line count, and individual output size.");
+    }
+    using (var clearedLog = new ChangingLogStream(clearDuringRead: true))
+    {
+        var clearedTail = await RuntimeLogReader.ReadSnapshotAsync(clearedLog);
+        Assert(clearedLog.BytesRead <= 8192 && clearedTail.Count <= 500,
+            "Concurrent truncation must stop at EOF without rescanning.");
+    }
+    using (var cancellation = new CancellationTokenSource())
+    using (var canceledLog = new ChangingLogStream(onRead: cancellation.Cancel))
+    {
+        try
+        {
+            await RuntimeLogReader.ReadSnapshotAsync(canceledLog, cancellationToken: cancellation.Token);
+            throw new InvalidOperationException("Mid-read cancellation was ignored.");
+        }
+        catch (OperationCanceledException) { }
+        Assert(canceledLog.BytesRead == 8192, "Cancellation must prevent subsequent reads.");
+    }
     await launches.ClearRuntimeLogAsync();
     Assert((await launches.ReadRuntimeLogAsync()).Count == 0,
         "Clearing the runtime log left old records behind.");
@@ -878,4 +934,39 @@ sealed class RecordingGameProcessLauncher : IGameProcessLauncher
         Requests.Add(request);
         return 1000 + Requests.Count;
     }
+}
+
+// A huge virtual file that appends on each short read, or clears after the first read.
+sealed class ChangingLogStream(bool clearDuringRead = false, Action? onRead = null) : Stream
+{
+    private long length = 8L * 1024 * 1024 * 1024;
+    public int BytesRead { get; private set; }
+    public override bool CanRead => true;
+    public override bool CanSeek => true;
+    public override bool CanWrite => false;
+    public override long Length => length;
+    public override long Position { get; set; }
+    public override long Seek(long offset, SeekOrigin origin) => Position = origin switch
+    {
+        SeekOrigin.Begin => offset,
+        SeekOrigin.Current => Position + offset,
+        _ => length + offset
+    };
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Position >= length) return ValueTask.FromResult(0);
+        var count = (int)Math.Min(Math.Min(buffer.Length, 8192), length - Position);
+        buffer.Span[..count].Fill((byte)'x');
+        for (var index = 79; index < count; index += 80) buffer.Span[index] = (byte)'\n';
+        BytesRead += count;
+        Position += count;
+        length = clearDuringRead ? 0 : length + count;
+        onRead?.Invoke();
+        return ValueTask.FromResult(count);
+    }
+    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override void Flush() => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }
