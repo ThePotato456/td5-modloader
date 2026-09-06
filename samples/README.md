@@ -16,4 +16,4 @@ after the tower-content API exists.
 
 The samples demonstrate implemented APIs, not complete gameplay acceptance.
 See the [capability coverage matrix](../docs/validation-fixup-phase7.md): native life
-gains and interactive bloon leak cancellation still require live acceptance.
+gains still require live acceptance; bloon leak cancellation passed on 2026-09-06.

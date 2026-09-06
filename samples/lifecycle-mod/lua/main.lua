@@ -1,3 +1,5 @@
+local retained_match_tower
+local retained_match_bloon
 local function log(message)
     btd5.log("info", message)
 end
@@ -16,6 +18,13 @@ end)
 
 btd5.events.on("match.ended", function()
     log("Lifecycle Sample observed match.ended")
+    if btd5.config.get("test_complete_match") == "true" then
+        assert(retained_match_tower and not retained_match_tower:is_valid())
+        assert(retained_match_bloon and not retained_match_bloon:is_valid())
+        local ok = pcall(function() retained_match_tower:pop_count() end)
+        assert(not ok)
+        log("Complete match test retained objects stale after teardown")
+    end
 end)
 
 btd5.events.on("round.starting", function()
@@ -43,11 +52,28 @@ btd5.events.on("cash.changed", function()
 end)
 
 local pending_lives_change
+local native_gain_step = 0
 
 btd5.events.on("lives.changing", function(event)
     assert(event.old_lives ~= event.new_lives)
     local transition = tostring(event.old_lives) .. "->" .. tostring(event.new_lives)
     log("Lifecycle Sample observed lives.changing " .. transition)
+    if btd5.config.get("test_native_gains") == "true" and event.new_lives > event.old_lives then
+        native_gain_step = native_gain_step + 1
+        if native_gain_step == 1 then
+            log("Native gain test normal " .. transition)
+        elseif native_gain_step == 2 then
+            event.cancelled = true
+            pending_lives_change = nil
+            log("Native gain test cancelled " .. transition)
+            return
+        elseif native_gain_step == 3 then
+            event.new_lives = event.old_lives + 2
+            pending_lives_change = tostring(event.old_lives) .. "->" .. tostring(event.new_lives)
+            log("Native gain test replaced " .. transition .. " with " .. pending_lives_change)
+            return
+        end
+    end
     if btd5.config.get("cancel_lives_loss") == "true" and
         event.new_lives < event.old_lives then
         event.cancelled = true
@@ -74,6 +100,7 @@ btd5.events.on("lives.changed", function(event)
 end)
 
 local pending_tower_placement
+local gain_test_cash_granted = false
 
 btd5.events.on("tower.placing", function(event)
     assert(event.tower:is_valid())
@@ -84,7 +111,14 @@ end)
 btd5.events.on("tower.placed", function(event)
     assert(event.tower:is_valid())
     assert(event.tower:id() == pending_tower_placement)
+    retained_match_tower = event.tower
     log("Lifecycle Sample observed tower.placed id=" .. event.tower:id())
+    if btd5.config.get("test_native_gains") == "true" and not gain_test_cash_granted then
+        assert(event.tower:set_sell_price(100000))
+        assert(event.tower:sell_price() == 100000)
+        gain_test_cash_granted = true
+        log("Native gain test funding ready: sell this first tower for bonus cash")
+    end
     if btd5.config.get("mutate_tower_pop_count") == "true" then
         local before = event.tower:pop_count()
         assert(event.tower:set_pop_count(123))
@@ -161,6 +195,7 @@ btd5.events.on("bloon.spawned", function(event)
     local id = event.bloon:id()
     assert(pending_bloon_spawns[id])
     pending_bloon_spawns[id] = nil
+    retained_match_bloon = event.bloon
     log("Lifecycle Sample observed bloon.spawned id=" .. id)
     if btd5.config.get("mutate_direct_properties") == "true" then
         local before = event.bloon:health()
@@ -193,9 +228,23 @@ btd5.events.on("bloon.popped", function(event)
 end)
 
 local pending_bloon_leak
+local checked_cancelled_bloons = {}
 
 btd5.events.on("bloon.leaking", function(event)
     assert(event.bloon:is_valid())
+    if btd5.config.get("cancel_bloon_leaks") == "true" then
+        local bloon = event.bloon
+        event.cancelled = true
+        if not checked_cancelled_bloons[bloon:id()] then
+            checked_cancelled_bloons[bloon:id()] = true
+            log("Lifecycle Sample cancelled bloon.leaking id=" .. bloon:id())
+            btd5.timer.after(2, function()
+                assert(bloon:is_valid())
+                log("Lifecycle Sample confirmed cancelled bloon remains valid id=" .. bloon:id())
+            end)
+        end
+        return
+    end
     pending_bloon_leak = event.bloon:id()
     log("Lifecycle Sample observed bloon.leaking id=" .. pending_bloon_leak)
 end)

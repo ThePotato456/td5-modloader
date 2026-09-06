@@ -34,3 +34,8 @@ The tower remains placed and valid after both rejected actions.
 The `mutate_direct_properties` setting defaults to `false`. Its dedicated smoke
 test changes a placed tower's sell price to `777` and adds one health to a
 spawned bloon, then reads both values back through their wrappers.
+
+The opt-in `cancel_bloon_leaks` setting is used by the live smoke harness's
+`--expect-bloon-cancellation` scenario. Start a fresh Easy match without towers
+and let bloons reach the exit. The harness checks cancellation, continued handle
+validity, and absence of leak/lives transitions, then closes the game normally.

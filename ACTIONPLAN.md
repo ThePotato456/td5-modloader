@@ -264,8 +264,8 @@ Initial supported build fingerprints:
       `--expect-tower-cancellation` smoke scenario.
   - [x] Route a cancelled `bloon.leaking` attempt through the verified native non-leak
     continuation without invalidating the live bloon.
-    - [ ] Record interactive acceptance of bloon leak cancellation; current
-      cancellation evidence is from native fixtures.
+    - [x] Record interactive acceptance of bloon leak cancellation: two copied-game
+      runs passed on 2026-09-06, with user-observed confirmation.
   - [ ] Add cancellation for the remaining pre-events only after each action's ownership,
     cleanup, and return path is independently verified.
   - [~] Add validated mutable payload fields at their exact native commit boundaries.
@@ -297,11 +297,14 @@ Initial supported build fingerprints:
   typed payload readback, implemented setter validation, registry invalidation,
   and recursive dispatch depth. Native fixtures cover lives writes and the
   implemented tower upgrade/sale and bloon leak cancellation hooks.
-- [ ] Test production cross-mod mutation propagation, invalid-value retention,
+- [x] Test production cross-mod mutation propagation, invalid-value retention,
   cancellation precedence, and lifecycle coordination (FIXUP Phase 7).
 - [ ] Complete automated coverage as remaining live wrappers, mutable fields,
   and cancellation paths are implemented; catalog registration alone is insufficient.
-- [ ] In-game smoke tests confirm event order and mutations across a complete match without hooks firing twice or surviving scene teardown.
+- [~] In-game smoke tests confirm event order and mutations across a complete match without hooks firing twice or surviving scene teardown.
+  - [x] 50-round victory, ordered lifecycle, stale handles after teardown, and second-match entry
+    accepted on 2026-09-06; see [live record](docs/validation-phase6-complete-match.md).
+  - [ ] Exercise enabled gameplay mutations across a complete match.
 - [x] Disabling the sample event mod restores unmodified gameplay on the next launch.
 
 ---

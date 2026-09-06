@@ -42,7 +42,7 @@ by Ninja Kiwi. Bloons TD 5 and its assets belong to their respective owners.
 | Lua runtime | Working | Isolated Lua states, lifecycle callbacks, timers, configuration, localization, storage, and resource reads |
 | Gameplay events | Working | Live match, round, cash, lives, tower, and bloon notifications |
 | Object wrappers | Partial | Stable, lifetime-checked tower and bloon handles are exposed to Lua |
-| Event cancellation | Partial | Lives changes, tower upgrades/sales, and bloon leak attempts; interactive leak cancellation and native life gains still need acceptance |
+| Event cancellation | Partial | Lives changes, tower upgrades/sales, and bloon leak attempts; leak cancellation accepted live; native life gains still need acceptance |
 | Mutable gameplay | Partial | Lives replacement; tower pop-count/sell-price and bloon-health setters with validation |
 | Custom towers | Planned | Lua-defined towers, upgrades, attacks, and assets begin after the Phase 6 gate |
 | Offline protection | Planned | Network guards, save backups, and crash recovery are Phase 9 work |

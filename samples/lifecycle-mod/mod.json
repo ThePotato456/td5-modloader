@@ -16,6 +16,9 @@
     "mutate_lives_loss": false,
     "mutate_tower_pop_count": false,
     "cancel_tower_actions": false,
+    "cancel_bloon_leaks": false,
+    "test_native_gains": false,
+    "test_complete_match": false,
     "mutate_direct_properties": false
   },
   "localization": ["localization/en-US.json"],

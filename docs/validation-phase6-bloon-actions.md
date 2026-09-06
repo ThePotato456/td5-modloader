@@ -66,8 +66,7 @@ loss, or cleanup. This cancels the current attempt without invalidating the live
 bloon; it may reach the boundary again on a later update. A non-cancelled event
 executes the displaced allocation call and resumes at RVA `0x203BA1`. Automated
 coverage verifies cancellation propagation, exact instruction restoration, and
-exception-safe fallthrough. Interactive cancellation acceptance remains part of
-the Phase 6 gate.
+exception-safe fallthrough. Interactive cancellation acceptance passed on 2026-09-06; see the additional record below.
 
 ## Interactive copied-game acceptance
 
@@ -113,3 +112,25 @@ unavailable. `bloon.leaking` is cancellable but its event table is not mutable.
 `bloon.spawning` and `bloon.popping` are not yet cancellable or mutable. This
 result does not claim custom content, an on-screen overlay, or online safety
 enforcement.
+
+## Live leak cancellation acceptance — 2026-09-06
+
+Two copied-game runs of `--expect-bloon-cancellation` reported `LIVE_SMOKE_PASS`.
+The second run was also confirmed by the user: “observation is a pass”. The
+lifecycle sample's opt-in `cancel_bloon_leaks` setting cancels every leak attempt;
+the scenario requests a fresh Easy match with no towers to exclude damage.
+
+Both runs cancelled bloon ID 1, confirmed its handle remained valid two timer
+ticks later, and observed no `bloon.leaked`, `lives.changing`, or `lives.changed`
+sample records during the three-second settling window. The runtime also logged
+its native `bloon.leaking:cancelled` path. Repeated attempts at the exit are
+expected while cancellation remains enabled; this does not permanently remove
+the bloon or complete the round.
+
+Normal shutdown completed at 13:33:02.431 UTC and 13:34:42.608 UTC. The second
+run's user observation agrees with the automated evidence. Local raw logs are
+retained under the ignored `.local/leak-acceptance` directory and are not shipped.
+The game executable and asset archive retain the SHA-256 values recorded above.
+
+This closes interactive leak-cancellation acceptance. It does not close native
+life-gain acceptance, complete-match teardown, or other unimplemented APIs.

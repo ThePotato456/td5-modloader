@@ -22,6 +22,9 @@ if (args.Length is < 4 or > 5 ||
         !string.Equals(args[4], "--expect-tower-cancellation", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-direct-properties", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-complete-match", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-native-gains", StringComparison.Ordinal) &&
+        !string.Equals(args[4], "--expect-bloon-cancellation", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal) &&
         !string.Equals(args[4], "--expect-disabled", StringComparison.Ordinal)))
 {
@@ -31,7 +34,7 @@ if (args.Length is < 4 or > 5 ||
         "[--expect-match|--expect-match-exit|--expect-round|--expect-cash|" +
         "--expect-cash-action|--expect-lives-loss|--expect-lives-cancel|--expect-lives-mutation|" +
         "--expect-tower-pop-count|--expect-tower-cancellation|--expect-tower-actions|" +
-        "--expect-bloon-actions|--expect-direct-properties|--expect-disabled|--expect-shutdown]");
+        "--expect-bloon-actions|--expect-complete-match|--expect-native-gains|--expect-bloon-cancellation|--expect-direct-properties|--expect-disabled|--expect-shutdown]");
     return 2;
 }
 
@@ -68,6 +71,9 @@ var expectDirectProperties = args.Length == 5 &&
     string.Equals(args[4], "--expect-direct-properties", StringComparison.Ordinal);
 var expectTowerActions = args.Length == 5 &&
     string.Equals(args[4], "--expect-tower-actions", StringComparison.Ordinal);
+var expectCompleteMatch = args.Length == 5 && args[4] == "--expect-complete-match";
+var expectNativeGains = args.Length == 5 && args[4] == "--expect-native-gains";
+var expectBloonCancellation = args.Length == 5 && args[4] == "--expect-bloon-cancellation";
 var expectBloonActions = args.Length == 5 &&
     string.Equals(args[4], "--expect-bloon-actions", StringComparison.Ordinal);
 const string profileName = "Live Smoke";
@@ -150,7 +156,7 @@ try
                 Format(disabled.Validation.Errors));
         }
     }
-    if (expectLivesCancel || expectLivesMutation || expectTowerPopCount || expectTowerCancellation ||
+    if (expectCompleteMatch || expectNativeGains || expectBloonCancellation || expectLivesCancel || expectLivesMutation || expectTowerPopCount || expectTowerCancellation ||
         expectDirectProperties)
     {
         var profile = profileChange.Profile!;
@@ -160,7 +166,7 @@ try
             {
                 Configuration = new Dictionary<string, System.Text.Json.JsonElement>(mod.Configuration)
                 {
-                    [expectLivesCancel
+                    [expectCompleteMatch ? "test_complete_match" : expectNativeGains ? "test_native_gains" : expectBloonCancellation ? "cancel_bloon_leaks" : expectLivesCancel
                         ? "cancel_lives_loss"
                         : expectLivesMutation
                             ? "mutate_lives_loss"
@@ -193,7 +199,7 @@ try
     gameProcess = Process.GetProcessById(launch.ProcessId.Value);
     // Retain a handle while the process is alive so exit-code inspection works.
     _ = gameProcess.SafeHandle;
-    var deadline = DateTimeOffset.UtcNow.AddSeconds(
+    var deadline = DateTimeOffset.UtcNow.AddSeconds(expectCompleteMatch ? 7200 : expectNativeGains ? 3600 : expectBloonCancellation ? 900 :
         expectMatchExit || expectRound || expectLivesLoss || expectLivesCancel || expectLivesMutation ||
             expectTowerPopCount || expectTowerActions || expectBloonActions
             || expectTowerCancellation || expectDirectProperties
@@ -258,6 +264,74 @@ try
                 {
                     Console.WriteLine("Normal window close requested; waiting for the game to exit.");
                 }
+            }
+            continue;
+        }
+        if (expectCompleteMatch)
+        {
+            if (CountOccurrences(log, "Lifecycle Sample observed match.started") >= 2)
+            {
+                if (CountOccurrences(log, "Lifecycle Sample observed match.starting") != 2 ||
+                    CountOccurrences(log, "Lifecycle Sample observed match.started") != 2 ||
+                    CountOccurrences(log, "Lifecycle Sample observed match.ending") != 1 ||
+                    CountOccurrences(log, "Lifecycle Sample observed match.ended") != 1 ||
+                    CountOccurrences(log, "Complete match test retained objects stale after teardown") != 1)
+                    return Fail("Match re-entry did not preserve exactly-once lifecycle and stale-object checks.");
+                Console.WriteLine("LIVE_SMOKE_PASS: first match teardown and second match entry; " +
+                    "user confirmation of full match completion and event-log review still required.");
+                gameProcess.CloseMainWindow();
+                await gameProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+                return 0;
+            }
+            continue;
+        }
+        if (expectNativeGains)
+        {
+            var normal = Regex.Match(log, @"Native gain test normal (\d+)->(\d+)");
+            var canceled = Regex.Match(log, @"Native gain test cancelled (\d+)->(\d+)");
+            var replaced = Regex.Match(log, @"Native gain test replaced (\d+)->(\d+) with (\d+)->(\d+)");
+            if (normal.Success && canceled.Success && replaced.Success)
+            {
+                var normalTransition = normal.Groups[1].Value + "->" + normal.Groups[2].Value;
+                var replacement = replaced.Groups[3].Value + "->" + replaced.Groups[4].Value;
+                if (!log.Contains("Lifecycle Sample observed lives.changed " + replacement, StringComparison.Ordinal))
+                    continue;
+                var cancelWindow = log[canceled.Index..replaced.Index];
+                if (!lifecycleReady || normal.Index >= canceled.Index ||
+                    !log.Contains("Lifecycle Sample observed lives.changed " + normalTransition, StringComparison.Ordinal) ||
+                    !cancelWindow.Contains("lives.changing:cancelled", StringComparison.Ordinal) ||
+                    cancelWindow.Contains("Lifecycle Sample observed lives.changed", StringComparison.Ordinal) ||
+                    canceled.Groups[1].Value != replaced.Groups[1].Value)
+                    return Fail("Native gain sequence failed normal/cancel/replacement checks; avoid losses between gains.");
+                Console.WriteLine("LIVE_SMOKE_PASS: native gains normal " + normalTransition +
+                    ", cancelled " + canceled.Groups[1].Value + "->" + canceled.Groups[2].Value +
+                    ", replacement " + replacement + ".");
+                gameProcess.CloseMainWindow();
+                await gameProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+                return 0;
+            }
+            continue;
+        }
+        if (expectBloonCancellation)
+        {
+            var canceled = Regex.Match(log, "Lifecycle Sample cancelled bloon\\.leaking id=(\\d+)");
+            if (canceled.Success && livesCancellationObservedAt is null)
+                livesCancellationObservedAt = DateTimeOffset.UtcNow;
+            if (canceled.Success && livesCancellationObservedAt is not null &&
+                DateTimeOffset.UtcNow - livesCancellationObservedAt >= TimeSpan.FromSeconds(3))
+            {
+                var id = canceled.Groups[1].Value;
+                if (!lifecycleReady || !log.Contains("bloon.leaking:cancelled", StringComparison.Ordinal) ||
+                    !log.Contains("confirmed cancelled bloon remains valid id=" + id, StringComparison.Ordinal) ||
+                    log.Contains("Lifecycle Sample observed bloon.leaked", StringComparison.Ordinal) ||
+                    log.Contains("Lifecycle Sample observed lives.changing", StringComparison.Ordinal) ||
+                    log.Contains("Lifecycle Sample observed lives.changed", StringComparison.Ordinal))
+                    return Fail("Leak cancellation did not preserve the bloon and exclude leak/lives events.");
+                Console.WriteLine("LIVE_SMOKE_PASS: cancelled bloon " + id +
+                    "; handle remained valid; no leak or lives transition during settling window.");
+                gameProcess.CloseMainWindow();
+                await gameProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+                return 0;
             }
             continue;
         }
