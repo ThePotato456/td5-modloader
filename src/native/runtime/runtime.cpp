@@ -1,3 +1,4 @@
+#include "mod_dispatch.hpp"
 #include <Windows.h>
 
 #include <filesystem>
@@ -113,34 +114,16 @@ btd5loader::runtime::LivesChangeDecision dispatch_lives_changing(
     if (g_state.current() != State::GameReady) {
         return {false, after};
     }
-    std::int64_t new_lives = after;
-    bool cancelled = false;
     auto dispatch = g_dispatch_gate.enter();
     if (!dispatch) return {false, after};
     g_logger.info("events", "lives.changing");
-    for (const auto& mod : g_mods) {
-        const btd5loader::runtime::LuaEventFields fields{
-            {"old_lives", static_cast<std::int64_t>(before)}, {"new_lives", new_lives}};
-        const auto result = mod->dispatch_event("lives.changing", fields, true);
-        cancelled = result.cancelled || cancelled;
-        const auto mutation = std::find_if(
-            result.fields.begin(), result.fields.end(), [](const auto& field) {
-                return field.first == "new_lives";
-            });
-        if (mutation != result.fields.end() &&
-            std::holds_alternative<std::int64_t>(mutation->second)) {
-            const auto proposed = std::get<std::int64_t>(mutation->second);
-            if (proposed >= 0 && proposed <= (std::numeric_limits<std::int32_t>::max)()) {
-                new_lives = proposed;
-            } else {
-                g_logger.error("events", "lives.changing:new_lives_out_of_range");
-            }
-        }
-    }
-    if (cancelled) {
+    const auto decision = btd5loader::runtime::dispatch_profile_lives(g_mods, before, after, [] {
+        g_logger.error("events", "lives.changing:new_lives_out_of_range");
+    });
+    if (decision.cancelled) {
         g_logger.info("events", "lives.changing:cancelled");
     }
-    return {cancelled, static_cast<std::int32_t>(new_lives)};
+    return decision;
 }
 
 void* capture_game_object_event(void* const event) noexcept {
@@ -169,9 +152,7 @@ bool dispatch_tower_event(
     try {
         const btd5loader::runtime::LuaEventFields fields{{"tower", handle}};
         g_logger.info("events", std::string(name));
-        for (const auto& mod : g_mods) {
-            cancelled = mod->dispatch_event(name, fields, cancellable).cancelled || cancelled;
-        }
+        cancelled = btd5loader::runtime::dispatch_profile_event(g_mods, name, fields, cancellable);
         if (cancelled) {
             g_logger.info("events", std::string(name) + ":cancelled");
         }
@@ -209,9 +190,7 @@ bool dispatch_bloon_event(
     try {
         const btd5loader::runtime::LuaEventFields fields{{"bloon", handle}};
         g_logger.info("events", std::string(name));
-        for (const auto& mod : g_mods) {
-            cancelled = mod->dispatch_event(name, fields, cancellable).cancelled || cancelled;
-        }
+        cancelled = btd5loader::runtime::dispatch_profile_event(g_mods, name, fields, cancellable);
         if (cancelled) {
             g_logger.info("events", std::string(name) + ":cancelled");
         }

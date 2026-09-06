@@ -42,8 +42,8 @@ by Ninja Kiwi. Bloons TD 5 and its assets belong to their respective owners.
 | Lua runtime | Working | Isolated Lua states, lifecycle callbacks, timers, configuration, localization, storage, and resource reads |
 | Gameplay events | Working | Live match, round, cash, lives, tower, and bloon notifications |
 | Object wrappers | Partial | Stable, lifetime-checked tower and bloon handles are exposed to Lua |
-| Event cancellation | Partial | `lives.changing` can cancel a verified life gain or loss before the native write |
-| Mutable gameplay | Planned | Validated property setters and mutable event fields are not implemented |
+| Event cancellation | Partial | Lives changes, tower upgrades/sales, and bloon leak attempts; interactive leak cancellation and native life gains still need acceptance |
+| Mutable gameplay | Partial | Lives replacement; tower pop-count/sell-price and bloon-health setters with validation |
 | Custom towers | Planned | Lua-defined towers, upgrades, attacks, and assets begin after the Phase 6 gate |
 | Offline protection | Planned | Network guards, save backups, and crash recovery are Phase 9 work |
 
@@ -284,3 +284,6 @@ commit provenance. BTD5-Decomp is used only as research material; no source is
 copied from it. See [upstream provenance](docs/upstream-code-provenance.md),
 [research policy](docs/upstream-research.md), and
 [third-party notices](THIRD_PARTY_NOTICES.md).
+
+Gameplay contracts, fixture coverage, and the limits of historical live evidence are
+listed in the [capability matrix](docs/validation-fixup-phase7.md).

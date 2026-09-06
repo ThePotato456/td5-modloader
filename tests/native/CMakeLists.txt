@@ -1,6 +1,7 @@
 add_executable(
     btd5loader_native_tests
     foundation_tests.cpp
+    mod_dispatch_tests.cpp
     lua_boundary_tests.cpp
     exit_hook_tests.cpp
     launch_ticket_tests.cpp

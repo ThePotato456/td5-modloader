@@ -1,8 +1,7 @@
 # FIXUP Phase 6 — Bounded runtime log reads
 
 Date: 2026-09-06. Base revision: `c0d9517`, plus the Phase 6 changes delivered
-with this record. Implementation and automated checks are complete; the recorded
-interactive manager acceptance gate remains open.
+with this record. Implementation, automated checks, and isolated manager acceptance are complete.
 
 ## Limits and presentation
 
@@ -48,10 +47,30 @@ The existing optional visible-console timer and manual refresh remain available.
 - The same fixture clears after its first read or cancels from that read, proving
   early EOF and mid-read cancellation stop further I/O.
 
-## Remaining acceptance
+## Recorded manager acceptance — 2026-09-06
 
-Run the built manager against isolated oversized log fixtures and record opening,
-manual/live refreshing, hiding/reopening, and confirmed clearing. Verify visible
-truncation feedback and responsiveness. No interactive manager walkthrough is
-claimed by the core tests or successful WPF build; Phase 6 remains in progress
-until this gate is recorded.
+Ran the Debug WPF manager built from `56f675a`, with a dedicated ignored
+`.local/fixup6/state` root and automatic game discovery disabled. No game launch,
+installed loader modification, or real user-log clearing was involved.
+Windows UI Automation operated the actual Options, Show/Hide console, and Refresh
+controls and read the rendered TextBox value. The native Clear confirmation's
+Yes button was identified through UI Automation and activated using its HWND
+with `BM_CLICK` because that native button exposed no Invoke pattern.
+
+- Opened a 3 MiB newline-free log. The console displayed exactly 4,125 characters,
+  including `[truncated]` and `[partial record]`. Opening and manual refresh each
+  completed in approximately 2.1 seconds including UI Automation Invoke overhead;
+  these are observed automation latencies, not isolated renderer benchmarks.
+- Hid the console and verified it disappeared from the visible automation tree.
+- Replaced the fixture with a 20,000-character record and a recent short record.
+  Reopening showed the updated recent record within 50 ms after Invoke returned.
+- Appended another record; live refresh displayed it within 1,020 ms.
+- Invoked Clear and confirmed Yes. The file length became zero and the console
+  showed its waiting message within 52 ms of posting confirmation.
+- Wrote a new record after clearing. Live refresh displayed it within 267 ms,
+  verifying the clear guard was released. Hide/reopen still showed that record.
+- Closed the isolated manager normally after the checks.
+
+All Phase 6 gates are now satisfied. These checks establish operational console
+responsiveness and visible annotation text through the accessibility tree; they
+are not a pixel-level visual design review or an atomic-file-snapshot guarantee.

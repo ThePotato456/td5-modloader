@@ -17,8 +17,8 @@ gameplay, custom tower, asset, offline protection, or v1 release work.
 | 3 — Nested limits | Complete | [Budget policy and regression results](docs/validation-fixup-phase3.md) |
 | 4 — Orderly shutdown | Complete | [Boundary review, regression results, and two normal-exit runs](docs/validation-fixup-phase4.md) |
 | 5 — Vanilla isolation | Complete | [Process-bound protocol, regressions, and registered-Steam acceptance](docs/validation-fixup-phase5.md) |
-| 6 — Bounded logs | Implementation complete; manager acceptance pending | [Limits and automated evidence](docs/validation-fixup-phase6.md) |
-| 7 — Gameplay coverage | Not started | Test production coordination and align capability documentation. |
+| 6 — Bounded logs | Complete | [Limits, automated evidence, and manager acceptance](docs/validation-fixup-phase6.md) |
+| 7 — Gameplay coverage | Complete | [Capability matrix and production coordination](docs/validation-fixup-phase7.md) |
 | 8 — Release contents and closure | Not started | Package required notices, verify artifacts, and close the audit. |
 
 Phases 2–3 passed Debug and Release suites, isolated Lua boundary regressions,
@@ -34,7 +34,7 @@ attachment. Lua errors unwind C++ host objects, lifecycle lookup uses raw global
 and nested callbacks share the enclosing instruction allowance and deadline.
 Time limits are cooperative and cannot interrupt a native API call mid-execution.
 
-Next: begin **Fixup Phase 6**. Log bounds,
+Next: begin **Fixup Phase 8**. Release notices,
 remaining gameplay integration, and release closure are still open. New ACTIONPLAN
 Phase 6 features remain paused until this fixup plan is complete.
 
@@ -253,7 +253,7 @@ Primary implementation: `GameLaunchService.ReadRuntimeLogAsync` and log UI.
 
 - [x] Tests demonstrate the specified byte/line bounds rather than asserting
   only the number of returned strings.
-- [ ] A recorded manager check shows responsive opening, refreshing, hiding, and
+- [x] A recorded manager check shows responsive opening, refreshing, hiding, and
   clearing with oversized logs and visible truncation feedback.
 - [x] Managed tests, analyzers, and formatting pass.
 
@@ -263,30 +263,30 @@ Primary implementation: `GameLaunchService.ReadRuntimeLogAsync` and log UI.
 
 Original scope: ACTIONPLAN Phase 6; audit finding 6 and documentation drift.
 
-- [ ] Build a coverage matrix for each existing event, cancellation, mutable
+- [x] Build a coverage matrix for each existing event, cancellation, mutable
   field, and setter: contract, native boundary, fixture, and live acceptance.
-- [ ] Exercise production dispatch coordination in tests, either through a
+- [x] Exercise production dispatch coordination in tests, either through a
   testable shared component or an integration harness using the real runtime.
-- [ ] Cover cross-mod lives replacement, invalid replacement retaining the last
+- [x] Cover cross-mod lives replacement, invalid replacement retaining the last
   accepted value, cancellation precedence, callback ordering, and shutdown wiring.
-- [ ] Keep future live match/round/player/attack/projectile wrappers explicitly
+- [x] Keep future live match/round/player/attack/projectile wrappers explicitly
   open in ACTIONPLAN; generic kind tags do not complete their integration.
-- [ ] Keep complete-match acceptance open, including duplicate-hook detection,
+- [x] Keep complete-match acceptance open, including duplicate-hook detection,
   teardown, stale objects, interactive bloon leak cancellation, and native life
   gains where current records cover only fixtures.
-- [ ] Update README and Lua documentation to list the implemented cancellation,
+- [x] Update README and Lua documentation to list the implemented cancellation,
   lives replacement, tower pop-count/sell-price, and bloon-health capabilities.
-- [ ] Distinguish supported live behavior, fixture-only evidence, and planned APIs
+- [x] Distinguish supported live behavior, fixture-only evidence, and planned APIs
   consistently across ACTIONPLAN, README, Lua reference, and sample documentation.
 
 ### Fixup Phase 7 implementation gate
 
-- [ ] Every currently claimed capability has matching code and identified test
+- [x] Every currently claimed capability has matching code and identified test
   evidence; missing live evidence remains visibly unfinished.
-- [ ] New production-coordination tests pass in Debug and Release.
-- [ ] A document review confirms no generic wrapper or event-name test is counted
+- [x] New production-coordination tests pass in Debug and Release.
+- [x] A document review confirms no generic wrapper or event-name test is counted
   as proof of an unimplemented live integration.
-- [ ] ACTIONPLAN Phase 6 remains open until its separate complete feature gate passes.
+- [x] ACTIONPLAN Phase 6 remains open until its separate complete feature gate passes.
 
 ---
 

@@ -267,3 +267,8 @@ The following are planned but are not valid v1 calls today:
 - cancellation for `tower.placing`, `bloon.spawning`, or `bloon.popping`;
 - cash balance payloads or mutation; and
 - `btd5.towers.register` and the custom tower content API.
+
+See the [capability coverage matrix](../docs/validation-fixup-phase7.md) for native
+boundaries, fixture coverage, and live acceptance limits. Cross-mod cancellation
+is sticky: a later mod cannot undo an earlier mod's cancellation. An invalid lives
+replacement retains the last accepted value for subsequent mods.

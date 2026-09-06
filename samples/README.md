@@ -13,3 +13,7 @@ These source examples use only the public, sandboxed Lua 5.4 API:
 Running `scripts/stage.ps1` packages all five examples into the staged
 `samples` directory. A complete custom-tower example will be added with Phase 7
 after the tower-content API exists.
+
+The samples demonstrate implemented APIs, not complete gameplay acceptance.
+See the [capability coverage matrix](../docs/validation-fixup-phase7.md): native life
+gains and interactive bloon leak cancellation still require live acceptance.

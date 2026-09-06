@@ -203,8 +203,8 @@ Initial supported build fingerprints:
   route failures to the exact corrective action instead of a generic status string.
 - [x] Make the runtime log console optional and live only while visible; support
   confirmed log clearing.
-- [~] Bound tail reads so large logs do not freeze the manager. FIXUP Phase 6 now caps
-  reads at 1 MiB and records at 4 KiB; oversized-log manager acceptance remains open.
+- [x] Bound tail reads so large logs do not freeze the manager. FIXUP Phase 6 caps
+  reads at 1 MiB and records at 4 KiB; oversized-log manager acceptance passed.
   - [x] Limit the returned line count and scan backwards for recent lines.
   - [ ] Bound scanned bytes and individual line size, including oversized or
     unterminated records (FIXUP Phase 6).
