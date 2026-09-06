@@ -1,87 +1,79 @@
 <#
 .SYNOPSIS
-    Manages the temporary BTD5 offline firewall guard.
+    Manages the BTD5 offline firewall guard.
 
 .DESCRIPTION
     Creates, removes, or inspects Windows Firewall rules that block
-    BTD5-Win.exe from directly sending or receiving network traffic.
+    BTD5-Win.exe from sending or receiving network traffic.
 
-    The guard creates persistent inbound and outbound block rules for all
-    Windows Firewall profiles.
+    The guard creates persistent inbound and outbound block rules for
+    all Windows Firewall profiles.
 
-    If -GameDirectory is not supplied, the script attempts to read
-    gameDirectory from config/local.json.
+    If -GameDirectory is omitted, the script reads gameDirectory from
+    config/local.json.
 
     Enable and Disable require Administrator privileges.
 
-    The script refuses to enable or disable the guard while BTD5-Win.exe
-    is running. This prevents enabling the rules after network connections
-    may already exist and prevents accidentally restoring network access to
-    a running modded game.
-
-    This is a temporary external safeguard. It does not replace the
-    loader's planned in-process network enforcement, and it does not make
-    other processes such as Steam offline.
+    The script will not modify the firewall while BTD5-Win.exe is running.
 
 .PARAMETER Action
     Operation to perform.
 
     Status
-        Inspects the firewall rules without changing them. This is the
-        default action.
+        Display the current guard state. This is the default.
 
     Enable
-        Creates or repairs the inbound and outbound firewall rules.
+        Create or repair the offline firewall rules.
 
     Disable
-        Removes firewall rules created by this script.
+        Remove the offline firewall rules.
 
 .PARAMETER GameDirectory
     Optional path to the Bloons TD 5 installation directory.
 
-    If omitted, config/local.json is checked for a gameDirectory property.
+    If omitted, config/local.json is used.
 
 .EXAMPLE
-    .\scripts\offline-game.ps1
+    .\offline-game.ps1
 
-    Shows the current firewall guard status using config/local.json when
-    available.
-
-.EXAMPLE
-    .\scripts\offline-game.ps1 -Action Status
-
-    Explicitly shows the current firewall guard status.
+    Display the current offline guard status.
 
 .EXAMPLE
-    .\scripts\offline-game.ps1 -Action Enable
+    .\offline-game.ps1 -Action Status
 
-    Enables the firewall guard using the game path from config/local.json.
-
-.EXAMPLE
-    .\scripts\offline-game.ps1 -Action Enable `
-        -GameDirectory 'C:\Program Files (x86)\Steam\steamapps\common\BloonsTD5'
-
-    Enables the firewall guard for an explicitly supplied game directory.
+    Display the current offline guard status.
 
 .EXAMPLE
-    .\scripts\offline-game.ps1 -Action Disable
+    .\offline-game.ps1 -Action Enable
 
-    Removes the firewall guard.
+    Enable the BTD5 offline firewall guard.
 
 .EXAMPLE
-    Get-Help .\scripts\offline-game.ps1 -Full
+    .\offline-game.ps1 -Action Disable
 
-    Displays complete help for the script.
+    Disable the BTD5 offline firewall guard.
+
+.EXAMPLE
+    .\offline-game.ps1 -Action Enable -GameDirectory 'C:\Games\BloonsTD5'
+
+    Enable the guard using an explicitly specified game directory.
+
+.EXAMPLE
+    .\offline-game.ps1 -Action Enable -WhatIf
+
+    Show what would be changed without modifying the firewall.
 
 .NOTES
     Enable and Disable require an elevated PowerShell session.
 
-    The firewall rules are persistent. They remain enabled after the game,
-    manager, PowerShell, or Windows is restarted until explicitly removed.
+    The firewall rules are persistent until explicitly removed.
 
-    The rules block direct network access by BTD5-Win.exe. Continue using
-    Steam Offline Mode as an additional safeguard because another process,
-    such as the Steam client, is outside these per-application rules.
+    Status validates persistent rule configuration, not effective network
+    isolation. Firewall service/profile settings and policy can affect enforcement.
+    Firewall queries may also require elevation under the machine's policy.
+
+    This is an external safeguard for BTD5-Win.exe. It does not make
+    Steam or other processes offline.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -95,19 +87,35 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ruleGroup = 'BTD5 Mod Loader Offline Guard'
-$inboundRuleName = 'BTD5 Mod Loader - Offline Guard - Inbound'
-$outboundRuleName = 'BTD5 Mod Loader - Offline Guard - Outbound'
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 
-$repositoryRoot = Split-Path -Parent $PSScriptRoot
-$localConfigurationPath = Join-Path $repositoryRoot 'config\local.json'
+$RuleGroup = 'BTD5 Mod Loader Offline Guard'
+
+$InboundRuleName =
+    'BTD5 Mod Loader - Offline Guard - Inbound'
+
+$OutboundRuleName =
+    'BTD5 Mod Loader - Offline Guard - Outbound'
+
+$RepositoryRoot = Split-Path -Parent $PSScriptRoot
+
+$LocalConfigurationPath =
+    Join-Path $RepositoryRoot 'config\local.json'
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
 
 function Test-IsAdministrator {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    $Identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 
-    return $principal.IsInRole(
-        [Security.Principal.WindowsBuiltInRole]::Administrator)
+    $Principal = [Security.Principal.WindowsPrincipal]::new($Identity)
+
+    return $Principal.IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator
+    )
 }
 
 function Resolve-GameDirectory {
@@ -119,37 +127,45 @@ function Resolve-GameDirectory {
         return [System.IO.Path]::GetFullPath($ExplicitDirectory)
     }
 
-    if (-not (Test-Path -LiteralPath $localConfigurationPath -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $LocalConfigurationPath -PathType Leaf)) {
         return $null
     }
 
     try {
-        $configuration = Get-Content -LiteralPath $localConfigurationPath -Raw |
+        $Configuration = Get-Content `
+            -LiteralPath $LocalConfigurationPath `
+            -Raw |
             ConvertFrom-Json
     }
     catch {
-        throw "Could not parse $localConfigurationPath`: $($_.Exception.Message)"
+        throw "Could not parse $LocalConfigurationPath`: $($_.Exception.Message)"
     }
 
-    if ($null -eq $configuration.gameDirectory -or
-        [string]::IsNullOrWhiteSpace([string]$configuration.gameDirectory)) {
+    if ($null -eq $Configuration -or $null -eq $Configuration.PSObject.Properties['gameDirectory']) {
         return $null
     }
 
-    return [System.IO.Path]::GetFullPath(
-        [string]$configuration.gameDirectory)
+    $ConfiguredDirectory = [string]$Configuration.gameDirectory
+
+    if ([string]::IsNullOrWhiteSpace($ConfiguredDirectory)) {
+        return $null
+    }
+
+    return [System.IO.Path]::GetFullPath($ConfiguredDirectory)
 }
 
-function Get-OfflineRule {
+function Get-OfflineRules {
     param(
         [Parameter(Mandatory)]
         [string]$DisplayName
     )
 
-    return @(
+    # Callers wrap results in @() to preserve zero/single-result handling.
+    @(
         Get-NetFirewallRule `
-            -DisplayName $DisplayName `
-            -ErrorAction SilentlyContinue
+            -PolicyStore PersistentStore `
+            -ErrorAction Stop |
+            Where-Object { $_.DisplayName -eq $DisplayName -and $_.Group -eq $RuleGroup }
     )
 }
 
@@ -159,64 +175,102 @@ function Get-RuleProgram {
         $Rule
     )
 
-    $applicationFilter = $Rule |
-        Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue |
+    $ApplicationFilter = $Rule |
+        Get-NetFirewallApplicationFilter `
+            -ErrorAction Stop |
         Select-Object -First 1
 
-    if ($null -eq $applicationFilter) {
+    if ($null -eq $ApplicationFilter) {
         return $null
     }
 
-    return $applicationFilter.Program
+    return $ApplicationFilter.Program
 }
 
-function Test-RuleValid {
+function Test-OfflineRule {
     param(
         [Parameter(Mandatory)]
-        $Rules,
+        [AllowEmptyCollection()]
+        [object[]]$Rules,
 
         [Parameter(Mandatory)]
         [ValidateSet('Inbound', 'Outbound')]
         [string]$Direction,
 
+        [Parameter(Mandatory)]
         [string]$ExpectedProgram
     )
 
-    # Exactly one rule should exist for each direction. Multiple copies are
-    # considered invalid so Enable can repair the firewall configuration.
+    # Exactly one rule is expected for each direction.
     if (@($Rules).Count -ne 1) {
         return $false
     }
 
-    $rule = $Rules[0]
+    $Rule = @($Rules)[0]
 
-    if ($rule.Enabled -ne 'True' -or
-        $rule.Action -ne 'Block' -or
-        $rule.Direction -ne $Direction) {
+    if ($Rule.Group -ne $RuleGroup -or [string]$Rule.Profile -ne 'Any') {
         return $false
     }
 
-    $program = Get-RuleProgram -Rule $rule
-
-    if ([string]::IsNullOrWhiteSpace($program)) {
+    if ($Rule.Enabled -ne 'True') {
         return $false
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($ExpectedProgram)) {
-        return [System.IO.Path]::GetFullPath($program).Equals(
-            [System.IO.Path]::GetFullPath($ExpectedProgram),
-            [System.StringComparison]::OrdinalIgnoreCase)
+    if ($Rule.Action -ne 'Block') {
+        return $false
     }
 
-    return [System.IO.Path]::GetFileName($program).Equals(
-        'BTD5-Win.exe',
-        [System.StringComparison]::OrdinalIgnoreCase)
+    if ($Rule.Direction -ne $Direction) {
+        return $false
+    }
+
+    $Program = Get-RuleProgram -Rule $Rule
+
+    if ([string]::IsNullOrWhiteSpace($Program)) {
+        return $false
+    }
+
+    try {
+        $ResolvedProgram = [System.IO.Path]::GetFullPath($Program)
+        $ResolvedExpected = [System.IO.Path]::GetFullPath($ExpectedProgram)
+    }
+    catch {
+        return $false
+    }
+
+    return $ResolvedProgram.Equals(
+        $ResolvedExpected,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
 }
 
 function Get-Btd5Processes {
-    return @(
-        Get-Process -Name 'BTD5-Win' -ErrorAction SilentlyContinue
+    # Explicit array construction is important under StrictMode.
+    @(
+        Get-Process `
+            -Name 'BTD5-Win' `
+            -ErrorAction SilentlyContinue
     )
+}
+
+function Assert-GameNotRunning {
+    $Processes = @(Get-Btd5Processes)
+
+    if ($Processes.Count -eq 0) {
+        return
+    }
+
+    $ProcessIds = @(
+        $Processes | Select-Object -ExpandProperty Id
+    ) -join ', '
+
+    throw @"
+BTD5-Win.exe is currently running.
+
+Process ID(s): $ProcessIds
+
+Close BTD5 before enabling or disabling the offline firewall guard.
+"@
 }
 
 function Show-Status {
@@ -224,203 +278,235 @@ function Show-Status {
         [string]$ResolvedGameDirectory
     )
 
-    $gameExecutable = $null
+    $InboundRules = @(Get-OfflineRules -DisplayName $InboundRuleName)
+    $OutboundRules = @(Get-OfflineRules -DisplayName $OutboundRuleName)
+
+    $GameExecutable = $null
 
     if (-not [string]::IsNullOrWhiteSpace($ResolvedGameDirectory)) {
-        $gameExecutable = Join-Path $ResolvedGameDirectory 'BTD5-Win.exe'
+        $GameExecutable =
+            Join-Path $ResolvedGameDirectory 'BTD5-Win.exe'
     }
 
-    $inboundRules = Get-OfflineRule -DisplayName $inboundRuleName
-    $outboundRules = Get-OfflineRule -DisplayName $outboundRuleName
+    $GameExists = $false
 
-    $inboundValid = Test-RuleValid `
-        -Rules $inboundRules `
-        -Direction 'Inbound' `
-        -ExpectedProgram $gameExecutable
+    if ($null -ne $GameExecutable) {
+        $GameExists =
+            Test-Path -LiteralPath $GameExecutable -PathType Leaf
+    }
 
-    $outboundValid = Test-RuleValid `
-        -Rules $outboundRules `
-        -Direction 'Outbound' `
-        -ExpectedProgram $gameExecutable
+    $InboundValid = $false
+    $OutboundValid = $false
 
-    $processes = Get-Btd5Processes
-    $gameRunning = $processes.Count -gt 0
+    if ($null -ne $GameExecutable) {
+        $InboundValid = Test-OfflineRule `
+            -Rules $InboundRules `
+            -Direction 'Inbound' `
+            -ExpectedProgram $GameExecutable
+
+        $OutboundValid = Test-OfflineRule `
+            -Rules $OutboundRules `
+            -Direction 'Outbound' `
+            -ExpectedProgram $GameExecutable
+    }
+
+    $Processes = @(Get-Btd5Processes)
+    $GameRunning = $Processes.Count -gt 0
 
     Write-Host ''
     Write-Host 'BTD5 Offline Firewall Guard'
-    Write-Host '---------------------------'
+    Write-Host '==========================='
 
     if ($null -ne $ResolvedGameDirectory) {
         Write-Host "Game directory : $ResolvedGameDirectory"
-
-        if (Test-Path -LiteralPath $gameExecutable -PathType Leaf) {
-            Write-Host 'Game executable: FOUND'
-        }
-        else {
-            Write-Host 'Game executable: NOT FOUND'
-        }
     }
     else {
         Write-Host 'Game directory : NOT CONFIGURED'
     }
 
-    Write-Host "Game running   : $(if ($gameRunning) { 'YES' } else { 'NO' })"
+    if ($null -eq $GameExecutable) {
+        Write-Host 'Executable     : UNKNOWN'
+    }
+    elseif ($GameExists) {
+        Write-Host 'Executable     : FOUND'
+    }
+    else {
+        Write-Host 'Executable     : NOT FOUND'
+    }
+
+    Write-Host "Game running   : $(if ($GameRunning) { 'YES' } else { 'NO' })"
     Write-Host ''
 
-    if ($inboundValid) {
-        Write-Host 'Inbound rule   : ACTIVE'
+    if ($InboundValid) {
+        Write-Host 'Inbound rule   : CONFIGURED'
     }
-    elseif ($inboundRules.Count -eq 0) {
+    elseif ($InboundRules.Count -eq 0) {
         Write-Host 'Inbound rule   : MISSING'
     }
     else {
         Write-Host 'Inbound rule   : INVALID'
     }
 
-    if ($outboundValid) {
-        Write-Host 'Outbound rule  : ACTIVE'
+    if ($OutboundValid) {
+        Write-Host 'Outbound rule  : CONFIGURED'
     }
-    elseif ($outboundRules.Count -eq 0) {
+    elseif ($OutboundRules.Count -eq 0) {
         Write-Host 'Outbound rule  : MISSING'
     }
     else {
         Write-Host 'Outbound rule  : INVALID'
     }
 
-    if ($inboundRules.Count -gt 0) {
-        $program = Get-RuleProgram -Rule $inboundRules[0]
-        if (-not [string]::IsNullOrWhiteSpace($program)) {
-            Write-Host "Inbound program : $program"
-        }
+    Write-Host ''
+
+    if ($InboundValid -and $OutboundValid) {
+        Write-Host 'Guard status   : CONFIGURED'
+        Write-Host 'Rule scope     : Direct traffic from this executable only'
+        Write-Host 'Enforcement    : Depends on active Windows Firewall policy and service'
+    }
+    elseif (
+        $InboundRules.Count -eq 0 -and
+        $OutboundRules.Count -eq 0
+    ) {
+        Write-Host 'Guard status   : UNLOCKED'
+        Write-Host 'Network access : NOT BLOCKED BY THIS GUARD'
+    }
+    else {
+        Write-Host 'Guard status   : INVALID'
+        Write-Host 'Network access : NOT VERIFIED'
     }
 
-    if ($outboundRules.Count -gt 0) {
-        $program = Get-RuleProgram -Rule $outboundRules[0]
-        if (-not [string]::IsNullOrWhiteSpace($program)) {
-            Write-Host "Outbound program: $program"
-        }
+    if ($GameRunning) {
+        Write-Host ''
+        Write-Warning 'BTD5-Win.exe is currently running.'
     }
 
     Write-Host ''
+}
 
-    if ($inboundValid -and $outboundValid) {
-        Write-Host 'Guard status   : LOCKED'
-        Write-Host 'Direct BTD5-Win.exe network traffic is blocked.'
-        return
-    }
-
-    if ($inboundRules.Count -eq 0 -and $outboundRules.Count -eq 0) {
-        Write-Host 'Guard status   : UNLOCKED'
-
-        if ($gameRunning) {
-            Write-Warning 'BTD5 is currently running without the firewall guard.'
-        }
-
-        return
-    }
-
-    Write-Host 'Guard status   : PARTIAL / INVALID'
-    Write-Host 'Run with -Action Enable to repair the firewall rules.'
-
-    if ($gameRunning) {
-        Write-Warning 'BTD5 is currently running without a verified firewall guard.'
+function Remove-OfflineRules {
+    # Internal operation; the action entry point owns the single confirmation.
+    foreach ($Rule in @((Get-OfflineRules -DisplayName $InboundRuleName)) +
+                       @((Get-OfflineRules -DisplayName $OutboundRuleName))) {
+        $Rule | Remove-NetFirewallRule -Confirm:$false -ErrorAction Stop
     }
 }
 
-function Assert-GameNotRunning {
-    $processes = Get-Btd5Processes
+function Enable-OfflineRules {
+    param(
+        [Parameter(Mandatory)]
+        [string]$GameExecutable
+    )
 
-    if ($processes.Count -eq 0) {
-        return
+    if ($PSCmdlet.ShouldProcess(
+        $GameExecutable,
+        'Enable BTD5 offline firewall guard'
+    )) {
+        # Remove existing copies first. This makes Enable idempotent and
+        # repairs duplicated, disabled, or incorrectly targeted rules.
+        Remove-OfflineRules
+
+        New-NetFirewallRule `
+            -PolicyStore PersistentStore `
+            -DisplayName $InboundRuleName `
+            -Group $RuleGroup `
+            -Description 'Blocks inbound network traffic to BTD5-Win.exe.' `
+            -Direction Inbound `
+            -Program $GameExecutable `
+            -Action Block `
+            -Profile Any `
+            -Enabled True |
+            Out-Null
+
+        New-NetFirewallRule `
+            -PolicyStore PersistentStore `
+            -DisplayName $OutboundRuleName `
+            -Group $RuleGroup `
+            -Description 'Blocks outbound network traffic from BTD5-Win.exe.' `
+            -Direction Outbound `
+            -Program $GameExecutable `
+            -Action Block `
+            -Profile Any `
+            -Enabled True |
+            Out-Null
     }
-
-    $processIds = ($processes.Id -join ', ')
-
-    throw "BTD5-Win.exe is running (PID: $processIds). Close the game before changing the offline guard."
 }
 
-$resolvedGameDirectory = Resolve-GameDirectory `
-    -ExplicitDirectory $GameDirectory
+# ---------------------------------------------------------------------------
+# Resolve game path
+# ---------------------------------------------------------------------------
+
+# Disabling owned rules must remain possible even if local configuration is broken.
+$ResolvedGameDirectory = if ($Action -eq 'Disable') {
+    $null
+} else {
+    Resolve-GameDirectory -ExplicitDirectory $GameDirectory
+}
+
+# ---------------------------------------------------------------------------
+# Status
+# ---------------------------------------------------------------------------
 
 if ($Action -eq 'Status') {
-    Show-Status -ResolvedGameDirectory $resolvedGameDirectory
+    Show-Status -ResolvedGameDirectory $ResolvedGameDirectory
     return
 }
 
-if (-not (Test-IsAdministrator)) {
+# ---------------------------------------------------------------------------
+# Modification operations require elevation
+# ---------------------------------------------------------------------------
+
+if (-not $WhatIfPreference -and -not (Test-IsAdministrator)) {
     throw "Action '$Action' requires an elevated PowerShell session."
 }
 
 Assert-GameNotRunning
 
+# ---------------------------------------------------------------------------
+# Disable
+# ---------------------------------------------------------------------------
+
 if ($Action -eq 'Disable') {
-    if ($PSCmdlet.ShouldProcess(
-        'BTD5 Windows Firewall rules',
-        'Remove offline guard')) {
-
-        Get-OfflineRule -DisplayName $inboundRuleName |
-            Remove-NetFirewallRule -ErrorAction SilentlyContinue
-
-        Get-OfflineRule -DisplayName $outboundRuleName |
-            Remove-NetFirewallRule -ErrorAction SilentlyContinue
+    if ($PSCmdlet.ShouldProcess('BTD5 Windows Firewall rules', 'Remove offline guard')) {
+        Remove-OfflineRules
+        Write-Host 'BTD5 offline firewall guard disabled.'
     }
 
-    Write-Host 'BTD5 offline firewall guard disabled.'
-    Show-Status -ResolvedGameDirectory $resolvedGameDirectory
+    Show-Status -ResolvedGameDirectory $ResolvedGameDirectory
     return
 }
 
-if ($null -eq $resolvedGameDirectory) {
-    throw @"
-No BTD5 game directory was configured.
+# ---------------------------------------------------------------------------
+# Enable
+# ---------------------------------------------------------------------------
 
-Supply -GameDirectory or create config/local.json based on
-config/local.example.json.
+if ($null -eq $ResolvedGameDirectory) {
+    throw @"
+No BTD5 game directory is configured.
+
+Either:
+
+  1. Create config/local.json using config/local.example.json
+
+or:
+
+  2. Supply -GameDirectory explicitly.
 "@
 }
 
-$gameExecutable = Join-Path $resolvedGameDirectory 'BTD5-Win.exe'
+$GameExecutable =
+    Join-Path $ResolvedGameDirectory 'BTD5-Win.exe'
 
-if (-not (Test-Path -LiteralPath $gameExecutable -PathType Leaf)) {
-    throw "BTD5-Win.exe was not found: $gameExecutable"
+if (-not (Test-Path -LiteralPath $GameExecutable -PathType Leaf)) {
+    throw "BTD5-Win.exe was not found: $GameExecutable"
 }
 
-$gameExecutable = (Resolve-Path -LiteralPath $gameExecutable).Path
+$GameExecutable =
+    (Resolve-Path -LiteralPath $GameExecutable).Path
 
-if ($PSCmdlet.ShouldProcess(
-    $gameExecutable,
-    'Enable offline firewall guard')) {
+Enable-OfflineRules -GameExecutable $GameExecutable
 
-    # Remove existing copies first. This makes Enable idempotent and also
-    # repairs stale, duplicated, disabled, or incorrectly configured rules.
-    Get-OfflineRule -DisplayName $inboundRuleName |
-        Remove-NetFirewallRule -ErrorAction SilentlyContinue
+Write-Host ''
+# Report the observed state, including after WhatIf or declined confirmation.
 
-    Get-OfflineRule -DisplayName $outboundRuleName |
-        Remove-NetFirewallRule -ErrorAction SilentlyContinue
-
-    New-NetFirewallRule `
-        -DisplayName $inboundRuleName `
-        -Group $ruleGroup `
-        -Description 'Blocks inbound network traffic to modded Bloons TD 5.' `
-        -Direction Inbound `
-        -Program $gameExecutable `
-        -Action Block `
-        -Profile Any `
-        -Enabled True |
-        Out-Null
-
-    New-NetFirewallRule `
-        -DisplayName $outboundRuleName `
-        -Group $ruleGroup `
-        -Description 'Blocks outbound network traffic from modded Bloons TD 5.' `
-        -Direction Outbound `
-        -Program $gameExecutable `
-        -Action Block `
-        -Profile Any `
-        -Enabled True |
-        Out-Null
-}
-
-Write-Host 'BTD5 offline firewall guard enabled.'
-Show-Status -ResolvedGameDirectory $resolvedGameDirectory
+Show-Status -ResolvedGameDirectory $ResolvedGameDirectory
