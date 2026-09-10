@@ -40,7 +40,7 @@ All gameplay-changing switches default to `false`.
 | `operation_limit` | `1` | Maximum uses of each enabled mutation or cancellation; clamped to `0..20`. |
 | `mutate_tower_pop_count` | `false` | Replace a newly placed tower's pop count. |
 | `tower_pop_count` | `123` | Replacement used by the pop-count switch. |
-| `mutate_tower_sell_price` | `false` | Replace a newly placed tower's base sell price. |
+| `mutate_tower_sell_price` | `false` | Replace every newly placed tower's base sell price. This setting is not capped by `operation_limit`. |
 | `tower_sell_price` | `777` | Replacement used by the sell-price switch. |
 | `mutate_bloon_health` | `false` | Add the configured bonus to a bounded number of newly spawned bloons. |
 | `bloon_health_bonus` | `1.0` | Health added by the bloon-health switch. |

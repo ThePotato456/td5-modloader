@@ -179,7 +179,7 @@ subscribe("tower.placed", function(event)
         event.tower:set_pop_count(settings.tower_pop_count)
         log("tower pop_count " .. before .. "->" .. event.tower:pop_count())
     end
-    if take_action("mutate_tower_sell_price", settings.mutate_tower_sell_price) then
+    if settings.mutate_tower_sell_price then
         local before = event.tower:sell_price()
         event.tower:set_sell_price(settings.tower_sell_price)
         log("tower sell_price " .. before .. "->" .. event.tower:sell_price())

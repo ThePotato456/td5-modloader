@@ -1634,7 +1634,7 @@ TEST_CASE("API Debug sample exercises opt-in mutations and cancellations", "[sam
     tower.sell_price = 200;
     REQUIRE(mod.dispatch_event("tower.placed", {{"tower", tower_handle}}).succeeded);
     REQUIRE(tower.pop_count == 7);
-    REQUIRE(tower.sell_price == 200);
+    REQUIRE(tower.sell_price == 654);
     bloon.health = 3.0F;
     for (int attempt = 0; attempt < 4; ++attempt) {
         REQUIRE(mod.dispatch_event("bloon.spawned", {{"bloon", bloon_handle}}).succeeded);
