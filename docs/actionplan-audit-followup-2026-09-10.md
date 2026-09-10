@@ -26,9 +26,10 @@ A detached checkout of committed revision `7cf2b91` was configured from empty
 build directories with the documented MSVC toolchain and repository-provided
 .NET 10.0.400 SDK. Debug and Release builds and all tests passed. The first
 attempt exposed that the ignored local SDK is not present inside a checkout;
-adding that documented SDK directory to `PATH` completed the run. Because the
-Phase 8 changes are not committed yet, a final clean-checkout run of the repaired
-revision remains required after commit before FIXUP itself can close.
+adding that documented SDK directory to `PATH` completed the run. After Phase 8
+was committed, detached commit `5cac75f` was rebuilt from empty Debug and Release
+build directories. Both configurations and every native and managed test passed;
+formatting also passed. This exact-revision run closes the final FIXUP gate.
 
 ## Remaining ACTIONPLAN scope
 

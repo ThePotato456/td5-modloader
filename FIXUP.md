@@ -19,7 +19,7 @@ gameplay, custom tower, asset, offline protection, or v1 release work.
 | 5 — Vanilla isolation | Complete | [Process-bound protocol, regressions, and registered-Steam acceptance](docs/validation-fixup-phase5.md) |
 | 6 — Bounded logs | Complete | [Limits, automated evidence, and manager acceptance](docs/validation-fixup-phase6.md) |
 | 7 — Gameplay coverage | Complete | [Capability matrix and production coordination](docs/validation-fixup-phase7.md) |
-| 8 — Release contents and closure | Implementation complete; repaired-revision clean checkout pending | [Audit follow-up and release evidence](docs/actionplan-audit-followup-2026-09-10.md) |
+| 8 — Release contents and closure | Complete | [Audit follow-up and release evidence](docs/actionplan-audit-followup-2026-09-10.md) |
 
 Phases 2–3 passed Debug and Release suites, isolated Lua boundary regressions,
 native/managed static analysis, formatting, and whitespace checks. Their source
@@ -34,9 +34,9 @@ attachment. Lua errors unwind C++ host objects, lifecycle lookup uses raw global
 and nested callbacks share the enclosing instruction allowance and deadline.
 Time limits are cooperative and cannot interrupt a native API call mid-execution.
 
-Next: commit **Fixup Phase 8**, then repeat the clean-checkout build at that exact
-revision and close this plan if it passes. Remaining gameplay integration stays
-open in ACTIONPLAN; new Phase 6 features remain paused until this plan closes.
+FIXUP is complete. Resume at the earliest open ACTIONPLAN Phase 6 work. Native
+life-gain acceptance and full-match mutation coverage remain open alongside the
+unimplemented wrapper scope; later phase gates remain unchanged.
 
 ## Tracker rules
 
@@ -304,11 +304,11 @@ Original scope: existing packaging groundwork and ACTIONPLAN Phase 10.
 - [✓] Record existing ZIP/checksum tooling and event samples as partial Phase 10
   groundwork without marking the complete v1 release gate passed.
 - [✓] Re-run Debug/Release suites, static analysis, and formatting after the repairs.
-- [~] Record a clean-checkout build using the documented toolchain to refresh the
+- [✓] Record a clean-checkout build using the documented toolchain to refresh the
   foundation evidence without relying on this workspace's generated output.
   - [✓] Detached revision `7cf2b91` passed Debug and Release from empty build trees.
-  - [ ] Repeat after the Phase 8 repair commit so the tested revision includes the
-    final archive checker and licenses.
+  - [✓] Commit `5cac75f` passed from empty Debug and Release build directories,
+    including all native and managed tests and formatting.
 - [✓] Add a dated audit follow-up linking each closed finding to its implementation,
   regression coverage, and required manual acceptance.
 - [✓] Restore only the ACTIONPLAN checkboxes whose guarantees now have evidence;
@@ -317,8 +317,7 @@ Original scope: existing packaging groundwork and ACTIONPLAN Phase 10.
 ### Fixup Phase 8 implementation gate
 
 - [✓] The generated archive contains required notices and passes artifact checks.
-- [ ] All fixup gates have recorded evidence and the complete automated checks pass.
-  Pending only the exact repaired-revision clean-checkout run above.
+- [✓] All fixup gates have recorded evidence and the complete automated checks pass.
 - [✓] ACTIONPLAN, FIXUP, README, and API documentation agree on delivered behavior.
 - [✓] Remaining work resumes at ACTIONPLAN Phase 6; this audit closure does not
   authorize passing Phase 7–10 gates or tagging v1.

@@ -40,6 +40,9 @@ Initial supported build fingerprints:
 > Affected guarantees below are reopened or narrowed. Historical acceptance
 > records remain evidence of their recorded scenarios only; they have not been
 > rerun or expanded by this correction. [FIXUP.md](FIXUP.md) tracks the repairs.
+> The [2026-09-10 follow-up](docs/actionplan-audit-followup-2026-09-10.md) closes
+> all six findings and every FIXUP gate. Forward work resumes at the remaining
+> open Phase 6 items; later phase gates remain open.
 
 ---
 
@@ -206,7 +209,7 @@ Initial supported build fingerprints:
 - [✓] Bound tail reads so large logs do not freeze the manager. FIXUP Phase 6 caps
   reads at 1 MiB and records at 4 KiB; oversized-log manager acceptance passed.
   - [✓] Limit the returned line count and scan backwards for recent lines.
-  - [ ] Bound scanned bytes and individual line size, including oversized or
+  - [✓] Bound scanned bytes and individual line size, including oversized or
     unterminated records (FIXUP Phase 6).
 - [✓] Migrate existing profile and installation state without losing configuration or launch history.
 - [✓] Update manager documentation and screenshots after the workflow stabilizes.
@@ -223,7 +226,7 @@ Initial supported build fingerprints:
   with a clear manual recovery path; uninstall removes only verified loader-owned files.
 - [✓] A profile cannot launch with broken dependencies or invalid configuration, and the manager
   identifies the affected mod and corrective action.
-- [ ] Oversized log records respect byte/allocation limits and the manager remains
+- [✓] Oversized log records respect byte/allocation limits and the manager remains
   responsive during viewing, refresh, and clearing (FIXUP Phase 6).
 
 ---
