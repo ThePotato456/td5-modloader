@@ -245,7 +245,8 @@ Initial supported build fingerprints:
   - [✓] Expose the verified lives-state object as `event.player` on `lives.changing` and
     `lives.changed`, reusing its wrapper within the current scene epoch.
   - [ ] Identify a durable native round identity. The current round event object may be destroyed
-    during native dispatch and cannot safely back both pre- and post-event wrappers.
+    during native dispatch and cannot safely back both pre- and post-event wrappers; see the
+    [round-wrapper research](docs/validation-phase6-round-wrapper-research.md).
 - [ ] Integrate live attack and projectile wrappers with verified lifetime boundaries.
 - [✓] Reject invalidated generations and scene epochs in the wrapper registry;
   invalidate live tower/bloon handles at the implemented sale, pop, leak, and scene boundaries.
