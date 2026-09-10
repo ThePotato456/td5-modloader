@@ -206,8 +206,9 @@ From a clean `main` branch, prepare a versioned Release bundle with:
 ```
 
 The script updates the managed and native version constants, runs all release
-gates, and writes a ZIP, SHA-256 checksum, and release-notes template under
-`out/release/v0.1.0`. It does not commit, tag, push, or publish automatically.
+gates, includes complete pinned dependency licenses, and validates the finished
+ZIP and SHA-256 checksum before writing release notes under `out/release/v0.1.0`.
+It does not commit, tag, push, or publish automatically.
 See the [release guide](docs/releasing.md) for the review, tagging, push, and
 GitHub Release commands.
 

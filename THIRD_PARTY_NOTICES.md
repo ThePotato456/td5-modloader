@@ -12,8 +12,9 @@ this repository.
 | miniz | 3.1.2 | MIT or Unlicense | `.btd5mod` ZIP reading and validation |
 | Catch2 | 3.15.3 | BSL-1.0 | Native automated tests |
 
-Release packaging must reproduce each dependency's required copyright and
-license text. This summary does not replace the upstream license files.
+Release packaging includes the complete pinned upstream texts under
+`THIRD_PARTY_LICENSES`. Source copies are kept in `third_party/licenses`; this
+summary does not replace those files.
 
 ## Adapted upstream code
 

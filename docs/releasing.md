@@ -29,9 +29,13 @@ The script performs these gates in order:
 3. Verify formatting.
 4. build and test the complete Release configuration.
 5. Run native and managed static analysis.
-6. Stage the manager, native loader, symbols, and sample mods.
-7. Verify required files and create a versioned ZIP, checksum, and release-notes
-   template under `out/release/v<version>`.
+6. Stage the manager, native loader, symbols, sample mods, and full pinned
+   dependency license texts; omit debug-symbol files.
+7. Create a versioned ZIP and checksum under `out/release/v<version>`, then
+   inspect the finished ZIP for required content, path safety, local machine
+   paths, game/private/generated files, checksum integrity, and exact nested
+   sample contents.
+8. Write the release-notes template only after those archive checks pass.
 
 If a validation step fails, no Git commit or tag is created. The script restores
 both version files to their exact pre-run contents, reads them back to verify
@@ -70,3 +74,6 @@ GitHub Releases web interface.
 
 Do not include game files, local profiles, installed mods, logs, saves, or Steam
 account data in a release.
+
+The complete third-party texts in `THIRD_PARTY_LICENSES` are required release
+content. `THIRD_PARTY_NOTICES.md` is an index and does not replace them.

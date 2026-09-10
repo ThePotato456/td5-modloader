@@ -181,6 +181,9 @@ try {
         -Path (Join-Path $PSScriptRoot 'stage.ps1') `
         -Parameters @{ Configuration = 'Release' }
 
+    Get-ChildItem -LiteralPath $stageRoot -Filter '*.pdb' -File -Recurse |
+        Remove-Item -Force
+
     $requiredArtifacts = @(
         'BTD5ModLoader.Manager.exe',
         'wininet.dll',
@@ -202,6 +205,8 @@ try {
         Copy-Item -LiteralPath (Join-Path $repositoryRoot $document) `
             -Destination (Join-Path $bundleRoot $document) -Force
     }
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'third_party\licenses') `
+        -Destination (Join-Path $bundleRoot 'THIRD_PARTY_LICENSES') -Recurse -Force
 
     Compress-Archive -LiteralPath $bundleRoot -DestinationPath $archivePath `
         -CompressionLevel Optimal
@@ -210,6 +215,15 @@ try {
         $checksumPath,
         "$hash  $([System.IO.Path]::GetFileName($archivePath))`n",
         $utf8NoBom)
+    Invoke-CheckedScript `
+        -Name 'Final archive content and checksum checks' `
+        -Path (Join-Path $PSScriptRoot 'check-release-archive.ps1') `
+        -Parameters @{
+            ArchivePath = $archivePath
+            ExpectedRoot = $bundleName
+            RepositoryRoot = $repositoryRoot
+            ChecksumPath = $checksumPath
+        }
 
     $prereleaseNotice = if ($Version.Contains('-')) {
         "This is a prerelease build."

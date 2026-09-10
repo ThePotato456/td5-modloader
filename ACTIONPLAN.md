@@ -2,7 +2,7 @@
 
 ## Tracker rules
 
-- `[ ]` means not started, `[~]` means in progress, and `[x]` means complete.
+- `[ ]` means not started, `[~]` means in progress, and `[✓]` means complete and `[x]` means blocked or cancelled with a reason.
 - Complete phases in order. Do not begin the next phase until the current phase's implementation gate is checked.
 - Shared build, packaging, documentation, and API groundwork may support later
   phases; its presence does not complete a later feature or pass its gate.
@@ -16,16 +16,16 @@
 These checked decisions record agreed v1 scope, not delivered functionality.
 Implementation and acceptance status are tracked in the phase checklists below.
 
-- [x] Target the 32-bit Windows Steam build of Bloons TD 5.
-- [x] Implement the bootstrap, hooks, game integration, networking guard, and Lua host in C++20.
-- [x] Make Lua 5.4 the only public mod programming language; do not expose a native DLL plugin ABI in v1.
-- [x] Build the player-facing manager with C# and WPF.
-- [x] Support local `.btd5mod` packages containing Lua, configuration, localization, and assets.
-- [x] Include new towers as a first-release feature, alongside gameplay events and balance changes.
-- [x] Support named profiles, shared vanilla saves with pre-launch backups, offline-only modded play, and automatic recovery from startup crashes.
-- [x] Support only explicitly fingerprinted game builds and fail closed on unknown builds.
-- [x] License the loader under GPL-3.0-only so GPL-covered NKHook5 code can be adapted with attribution and corresponding source.
-- [x] Treat BTD5-Decomp as research-only; do not copy or adapt its unlicensed source.
+- Target the 32-bit Windows Steam build of Bloons TD 5.
+- Implement the bootstrap, hooks, game integration, networking guard, and Lua host in C++20.
+- Make Lua 5.4 the only public mod programming language; do not expose a native DLL plugin ABI in v1.
+- Build the player-facing manager with C# and WPF.
+- Support local `.btd5mod` packages containing Lua, configuration, localization, and assets.
+- Include new towers as a first-release feature, alongside gameplay events and balance changes.
+- Support named profiles, shared vanilla saves with pre-launch backups, offline-only modded play, and automatic recovery from startup crashes.
+- Support only explicitly fingerprinted game builds and fail closed on unknown builds.
+- License the loader under GPL-3.0-only so GPL-covered NKHook5 code can be adapted with attribution and corresponding source.
+- Treat BTD5-Decomp as research-only; do not copy or adapt its unlicensed source.
 
 Initial supported build fingerprints:
 
@@ -45,124 +45,124 @@ Initial supported build fingerprints:
 
 ## Phase 1 — Repository and reproducible build foundation
 
-- [x] Create a CMake-based C++20 solution for x86 bootstrap/runtime code.
-- [x] Create the .NET WPF manager solution and shared test projects.
-- [x] Establish directories for runtime code, manager code, Lua API definitions, build-specific symbol maps, package schemas, samples, tests, and documentation.
-- [x] Pin third-party source dependencies and record their licenses. Include Lua 5.4, a hooking library, JSON parsing, ZIP handling, and the C++ test framework.
-- [x] Add build presets for Debug and Release x86 runtime artifacts.
-- [x] Add formatting, static-analysis, and test commands that do not require BTD5 to be installed.
-- [x] Add ignore rules for build output, local game paths, extracted mods, logs, backups, and test artifacts.
-- [x] Add a local, untracked configuration template for locating an installed Steam copy during integration testing.
+- [✓] Create a CMake-based C++20 solution for x86 bootstrap/runtime code.
+- [✓] Create the .NET WPF manager solution and shared test projects.
+- [✓] Establish directories for runtime code, manager code, Lua API definitions, build-specific symbol maps, package schemas, samples, tests, and documentation.
+- [✓] Pin third-party source dependencies and record their licenses. Include Lua 5.4, a hooking library, JSON parsing, ZIP handling, and the C++ test framework.
+- [✓] Add build presets for Debug and Release x86 runtime artifacts.
+- [✓] Add formatting, static-analysis, and test commands that do not require BTD5 to be installed.
+- [✓] Add ignore rules for build output, local game paths, extracted mods, logs, backups, and test artifacts.
+- [✓] Add a local, untracked configuration template for locating an installed Steam copy during integration testing.
 
 ### Phase 1 implementation gate
 
-- [x] A clean checkout builds the C++ x86 targets and WPF manager using documented commands.
-- [x] All empty-project tests run successfully without game files.
-- [x] No generated artifact or machine-specific path appears in version control.
+- [✓] A clean checkout builds the C++ x86 targets and WPF manager using documented commands.
+- [✓] All empty-project tests run successfully without game files.
+- [✓] No generated artifact or machine-specific path appears in version control.
 
 ---
 
 ## Phase 2 — Reversible bootstrap and runtime lifecycle
 
-- [x] Implement a 32-bit `wininet.dll` proxy that loads the genuine DLL from `SysWOW64` and correctly forwards the WinINet API imported by BTD5.
-- [x] Keep the proxy minimal; load a separate loader runtime DLL for all substantial behavior.
-- [x] Locate the game directory from the current process rather than hard-coding a Steam path.
-- [x] Initialize structured file logging before installing hooks or loading mods.
-- [x] Add runtime states for bootstrap, compatibility check, hooks ready, mods loading, game ready, shutting down, and failed.
-- [x] Connect normal game exit to orderly runtime shutdown with exactly-once Lua
+- [✓] Implement a 32-bit `wininet.dll` proxy that loads the genuine DLL from `SysWOW64` and correctly forwards the WinINet API imported by BTD5.
+- [✓] Keep the proxy minimal; load a separate loader runtime DLL for all substantial behavior.
+- [✓] Locate the game directory from the current process rather than hard-coding a Steam path.
+- [✓] Initialize structured file logging before installing hooks or loading mods.
+- [✓] Add runtime states for bootstrap, compatibility check, hooks ready, mods loading, game ready, shutting down, and failed.
+- [✓] Connect normal game exit to orderly runtime shutdown with exactly-once Lua
   callbacks and session cleanup (FIXUP Phase 4).
-- [x] Make loader installation reversible without modifying `BTD5-Win.exe` or `BTD5.jet`.
-- [x] Create a fixture executable that imports `wininet.dll` and exercises every forwarded function used by the game.
+- [✓] Make loader installation reversible without modifying `BTD5-Win.exe` or `BTD5.jet`.
+- [✓] Create a fixture executable that imports `wininet.dll` and exercises every forwarded function used by the game.
 
 ### Phase 2 implementation gate
 
-- [x] The fixture runs identically with and without the proxy present.
-- [x] Installing and removing the proxy leaves fixture and game binaries byte-for-byte unchanged.
-- [x] Runtime initialization failures produce a readable log and return control without recursive loading or an unexplained crash.
-- [x] A normal copied-game exit reaches orderly shutdown through the production
+- [✓] The fixture runs identically with and without the proxy present.
+- [✓] Installing and removing the proxy leaves fixture and game binaries byte-for-byte unchanged.
+- [✓] Runtime initialization failures produce a readable log and return control without recursive loading or an unexplained crash.
+- [✓] A normal copied-game exit reaches orderly shutdown through the production
   exit path, cleans up its session, and permits a subsequent launch (FIXUP Phase 4).
 
 ---
 
 ## Phase 3 — Build detection, symbols, and hook safety
 
-- [x] Hash the executable and `BTD5.jet` before any game hook is installed.
-- [x] Define a versioned symbol-map format containing build hashes, named functions/data, signatures or offsets, validation bytes, and hook prerequisites.
-- [x] Add the initial map for the confirmed 4.8 build.
-- [x] Resolve game locations by stable names internally so Lua APIs never expose raw addresses.
-- [x] Validate every resolved location against expected module ranges and instruction/data patterns.
-- [x] Install hooks transactionally: if a required hook fails, remove hooks already installed and abort mod loading.
-- [x] Add a developer-only diagnostics report for resolved and unresolved symbols without dumping proprietary game code.
+- [✓] Hash the executable and `BTD5.jet` before any game hook is installed.
+- [✓] Define a versioned symbol-map format containing build hashes, named functions/data, signatures or offsets, validation bytes, and hook prerequisites.
+- [✓] Add the initial map for the confirmed 4.8 build.
+- [✓] Resolve game locations by stable names internally so Lua APIs never expose raw addresses.
+- [✓] Validate every resolved location against expected module ranges and instruction/data patterns.
+- [✓] Install hooks transactionally: if a required hook fails, remove hooks already installed and abort mod loading.
+- [✓] Add a developer-only diagnostics report for resolved and unresolved symbols without dumping proprietary game code.
 
 ### Phase 3 implementation gate
 
-- [x] The supported build resolves every mandatory bootstrap symbol and reaches a stable no-mod launch.
-- [x] Altered or unknown hashes prevent all game hooks and Lua mods from loading.
-- [x] Injected resolver and hook failures roll back cleanly and explain the failed symbol in the log.
+- [✓] The supported build resolves every mandatory bootstrap symbol and reaches a stable no-mod launch.
+- [✓] Altered or unknown hashes prevent all game hooks and Lua mods from loading.
+- [✓] Injected resolver and hook failures roll back cleanly and explain the failed symbol in the log.
 
 ---
 
 ## Phase 4 — Lua host, sandbox, and mod package contract
 
-- [x] Embed Lua 5.4 in the runtime and create one isolated Lua state per enabled mod.
-- [x] Expose lifecycle callbacks for `on_load`, `on_ready`, and `on_shutdown`.
-- [x] Deliver `on_shutdown` on normal game exit (FIXUP Phase 4;
+- [✓] Embed Lua 5.4 in the runtime and create one isolated Lua state per enabled mod.
+- [✓] Expose lifecycle callbacks for `on_load`, `on_ready`, and `on_shutdown`.
+- [✓] Deliver `on_shutdown` on normal game exit (FIXUP Phase 4;
   [production acceptance](docs/validation-fixup-phase4.md)).
-- [x] Remove unrestricted `io`, `os`, `package`, `debug`, `loadfile`, `dofile`, native-library loading, process launch, and networking from mod environments.
-- [x] Provide sandboxed APIs for logging, configuration, deterministic timers, mod-owned storage, localization, and packaged-resource lookup.
-- [x] Enforce CPU instruction budgets, cooperative callback time limits, memory limits, and recursion limits per mod.
-  - [x] Implement limits and fixture coverage for ordinary protected callbacks.
-  - [x] Protect host execution/allocation boundaries (FIXUP Phase 2).
-  - [x] Preserve limits across nested callbacks (FIXUP Phase 3).
-- [x] Catch Lua errors at protected host boundaries, annotate them with mod ID and callback, and disable only the failing callback when continuing is safe.
-  - [x] Contain failures inside existing protected callback calls and annotate errors.
-  - [x] Contain lifecycle lookup and audit host boundaries, including setup,
+- [✓] Remove unrestricted `io`, `os`, `package`, `debug`, `loadfile`, `dofile`, native-library loading, process launch, and networking from mod environments.
+- [✓] Provide sandboxed APIs for logging, configuration, deterministic timers, mod-owned storage, localization, and packaged-resource lookup.
+- [✓] Enforce CPU instruction budgets, cooperative callback time limits, memory limits, and recursion limits per mod.
+  - [✓] Implement limits and fixture coverage for ordinary protected callbacks.
+  - [✓] Protect host execution/allocation boundaries (FIXUP Phase 2).
+  - [✓] Preserve limits across nested callbacks (FIXUP Phase 3).
+- [✓] Catch Lua errors at protected host boundaries, annotate them with mod ID and callback, and disable only the failing callback when continuing is safe.
+  - [✓] Contain failures inside existing protected callback calls and annotate errors.
+  - [✓] Contain lifecycle lookup and audit host boundaries, including setup,
     payload construction, and destruction (FIXUP Phase 2; see its boundary review).
-- [x] Define `.btd5mod` as a ZIP package with `mod.json`, Lua entry points, assets, localization, configuration defaults, and optional documentation.
-- [x] Require manifests to declare stable ID, name, author, semantic version, entry point, loader API version, supported game builds, dependencies, load-order constraints, and capabilities.
-- [x] Reject path traversal, duplicate IDs, malformed archives, unsupported API versions, dependency cycles, and files outside package limits.
-- [x] Dispatch mods deterministically by dependency order, explicit ordering rules, profile order, and finally mod ID.
+- [✓] Define `.btd5mod` as a ZIP package with `mod.json`, Lua entry points, assets, localization, configuration defaults, and optional documentation.
+- [✓] Require manifests to declare stable ID, name, author, semantic version, entry point, loader API version, supported game builds, dependencies, load-order constraints, and capabilities.
+- [✓] Reject path traversal, duplicate IDs, malformed archives, unsupported API versions, dependency cycles, and files outside package limits.
+- [✓] Dispatch mods deterministically by dependency order, explicit ordering rules, profile order, and finally mod ID.
 
 ### Phase 4 implementation gate
 
-- [x] A sample Lua mod loads, logs, stores configuration, and receives lifecycle
+- [✓] A sample Lua mod loads, logs, stores configuration, and receives lifecycle
   callbacks when explicitly invoked by the host fixture.
-- [x] A live sample receives exactly-once `on_shutdown` and cleans up on normal
+- [✓] A live sample receives exactly-once `on_shutdown` and cleans up on normal
   game exit through production integration (FIXUP Phase 4).
-- [x] Sandbox tests prove that a Lua mod cannot access arbitrary files, processes, networking, Windows APIs, native DLLs, or another mod's storage.
-- [x] Malformed packages and dependency cycles are rejected without starting the game runtime.
-- [x] A deliberately failing or runaway Lua callback is contained in the documented
+- [✓] Sandbox tests prove that a Lua mod cannot access arbitrary files, processes, networking, Windows APIs, native DLLs, or another mod's storage.
+- [✓] Malformed packages and dependency cycles are rejected without starting the game runtime.
+- [✓] A deliberately failing or runaway Lua callback is contained in the documented
   protected execution model without corrupting another Lua state.
-  - [x] Ordinary protected callback fixtures demonstrate failure isolation.
-  - [x] Lifecycle lookup and low-memory boundary regressions prove containment
+  - [✓] Ordinary protected callback fixtures demonstrate failure isolation.
+  - [✓] Lifecycle lookup and low-memory boundary regressions prove containment
     (FIXUP Phase 2).
-  - [x] Nested execution regressions prove budget restoration (FIXUP Phase 3).
+  - [✓] Nested execution regressions prove budget restoration (FIXUP Phase 3).
 
 ---
 
 ## Phase 5 — Manager, installation, profiles, and package workflow
 
-- [x] Discover Steam libraries and validate candidate BTD5 installations by executable metadata and hashes.
-- [x] Implement loader install, verify, repair, and uninstall using a manager-owned installation manifest.
-- [x] Never overwrite a pre-existing proxy DLL silently; identify conflicts and provide a non-destructive recovery path.
-- [x] Implement drag-and-drop and file-picker installation for local `.btd5mod` packages.
-- [x] Show package identity, version, dependencies, capabilities, supported game builds, and validation errors.
-- [x] Implement named profiles with enabled mods, deterministic load order, configuration, and launch history.
-- [x] Add enable, disable, reorder, upgrade, downgrade, and uninstall operations with dependency checks.
-- [x] Add modded launch with profile validation and runtime handoff.
-- [x] Add verified vanilla launch that cannot load an enabled mod profile.
-  - [x] Provide a vanilla button that launches the registered game through Steam.
-  - [x] Prevent reuse of recent modded handoffs and verify the actual Steam
+- [✓] Discover Steam libraries and validate candidate BTD5 installations by executable metadata and hashes.
+- [✓] Implement loader install, verify, repair, and uninstall using a manager-owned installation manifest.
+- [✓] Never overwrite a pre-existing proxy DLL silently; identify conflicts and provide a non-destructive recovery path.
+- [✓] Implement drag-and-drop and file-picker installation for local `.btd5mod` packages.
+- [✓] Show package identity, version, dependencies, capabilities, supported game builds, and validation errors.
+- [✓] Implement named profiles with enabled mods, deterministic load order, configuration, and launch history.
+- [✓] Add enable, disable, reorder, upgrade, downgrade, and uninstall operations with dependency checks.
+- [✓] Add modded launch with profile validation and runtime handoff.
+- [✓] Add verified vanilla launch that cannot load an enabled mod profile.
+  - [✓] Provide a vanilla button that launches the registered game through Steam.
+  - [✓] Prevent reuse of recent modded handoffs and verify the actual Steam
     launch path excludes Lua mods (FIXUP Phase 5).
-- [x] Add log viewing, diagnostics export, and loader status views.
-- [x] Keep installed packages and manager state under `%LocalAppData%\BTD5ModLoader`, not in the repository.
+- [✓] Add log viewing, diagnostics export, and loader status views.
+- [✓] Keep installed packages and manager state under `%LocalAppData%\BTD5ModLoader`, not in the repository.
 
 ### Phase 5 implementation gate
 
-- [x] A new user can locate BTD5, install the loader, install a sample package, create a profile, and launch it without manual file editing.
-- [x] Repair restores missing loader-owned files, and uninstall removes only files recorded as loader-owned.
-- [x] Conflicting, incompatible, or dependency-broken profiles cannot launch and display an actionable explanation.
-- [x] A vanilla launch immediately after a modded launch excludes mods even with
+- [✓] A new user can locate BTD5, install the loader, install a sample package, create a profile, and launch it without manual file editing.
+- [✓] Repair restores missing loader-owned files, and uninstall removes only files recorded as loader-owned.
+- [✓] Conflicting, incompatible, or dependency-broken profiles cannot launch and display an actionable explanation.
+- [✓] A vanilla launch immediately after a modded launch excludes mods even with
   the loader installed in the Steam-launched copy (FIXUP Phase 5).
 
 ---
@@ -174,54 +174,54 @@ Initial supported build fingerprints:
 
 ## Phase 5R — Manager workflow and reliability revamp
 
-- [x] Audit the existing setup, package, profile, configuration, launch, and recovery flows.
-- [x] Define the user-facing state model: an installed package is separate from profile
+- [✓] Audit the existing setup, package, profile, configuration, launch, and recovery flows.
+- [✓] Define the user-facing state model: an installed package is separate from profile
   membership, enabled state, selected version, and per-profile configuration.
-- [x] Persist the selected game copy and current profile with atomic, validated manager settings.
-- [x] Replace the artifact-folder picker with automatic discovery of release files shipped beside
+- [✓] Persist the selected game copy and current profile with atomic, validated manager settings.
+- [✓] Replace the artifact-folder picker with automatic discovery of release files shipped beside
   the manager; keep an explicit developer override outside the normal workflow.
-- [x] Replace separate install/verify/repair buttons with one loader health inspection and one
+- [✓] Replace separate install/verify/repair buttons with one loader health inspection and one
   context-aware primary action. Keep uninstall in an advanced recovery area.
-- [x] Report loader files individually as healthy, missing, modified, unavailable, or foreign;
+- [✓] Report loader files individually as healthy, missing, modified, unavailable, or foreign;
   distinguish a missing record, invalid record, unsupported game, and partial installation.
-- [x] Compare the installed loader version with the manager bundle, block mismatched launches,
+- [✓] Compare the installed loader version with the manager bundle, block mismatched launches,
   and offer a safe reinstall of the bundled version.
-- [x] Make install and repair transactional, automatically verify their result, preserve foreign or
+- [✓] Make install and repair transactional, automatically verify their result, preserve foreign or
   modified files, and leave an actionable recovery result after interruption or partial failure.
-  - [x] Preflight every repair before writing so conflicts and unavailable release files leave the
+  - [✓] Preflight every repair before writing so conflicts and unavailable release files leave the
     existing installation unchanged.
-  - [x] Verify each copied file and the completed operation; roll back loader-owned copies after
+  - [✓] Verify each copied file and the completed operation; roll back loader-owned copies after
     cancellation, I/O failure, or failed post-operation verification.
-  - [x] Persist and reconcile an operation journal when the manager process terminates mid-operation.
-- [x] Replace the dual-list profile editor with a current-profile mod list containing an enable
+  - [✓] Persist and reconcile an operation journal when the manager process terminates mid-operation.
+- [✓] Replace the dual-list profile editor with a current-profile mod list containing an enable
   toggle, selected version, dependency status, load order, Configure action, and Remove action.
-- [x] Add profile create, select, rename, duplicate, and delete workflows with a visible current
+- [✓] Add profile create, select, rename, duplicate, and delete workflows with a visible current
   profile and safe fallback when the current profile is removed.
-- [x] Add a practical per-profile configuration editor inferred from package defaults for booleans,
+- [✓] Add a practical per-profile configuration editor inferred from package defaults for booleans,
   numbers, and strings, with validation plus per-setting and whole-mod reset controls.
-- [x] Automatically inspect loader, game, and current-profile readiness at startup and before launch;
+- [✓] Automatically inspect loader, game, and current-profile readiness at startup and before launch;
   route failures to the exact corrective action instead of a generic status string.
-- [x] Make the runtime log console optional and live only while visible; support
+- [✓] Make the runtime log console optional and live only while visible; support
   confirmed log clearing.
-- [x] Bound tail reads so large logs do not freeze the manager. FIXUP Phase 6 caps
+- [✓] Bound tail reads so large logs do not freeze the manager. FIXUP Phase 6 caps
   reads at 1 MiB and records at 4 KiB; oversized-log manager acceptance passed.
-  - [x] Limit the returned line count and scan backwards for recent lines.
+  - [✓] Limit the returned line count and scan backwards for recent lines.
   - [ ] Bound scanned bytes and individual line size, including oversized or
     unterminated records (FIXUP Phase 6).
-- [x] Migrate existing profile and installation state without losing configuration or launch history.
-- [x] Update manager documentation and screenshots after the workflow stabilizes.
+- [✓] Migrate existing profile and installation state without losing configuration or launch history.
+- [✓] Update manager documentation and screenshots after the workflow stabilizes.
 
 ### Phase 5R implementation gate
 
-- [x] Automated tests cover settings persistence/recovery, profile lifecycle, configuration edits,
+- [✓] Automated tests cover settings persistence/recovery, profile lifecycle, configuration edits,
   every loader health state, interrupted operations, post-operation verification, and migrations.
-- [x] From a fresh state, a player can choose BTD5 once, install the loader with one primary action,
+- [✓] From a fresh state, a player can choose BTD5 once, install the loader with one primary action,
   install a mod, enable and configure it in the current profile, and launch without editing files.
-- [x] Restarting the manager preserves the game and current profile; invalid saved selections recover
+- [✓] Restarting the manager preserves the game and current profile; invalid saved selections recover
   to an explicit safe state without silently selecting an unrelated profile.
-- [x] Missing loader files can be repaired, while modified or foreign files are preserved and shown
+- [✓] Missing loader files can be repaired, while modified or foreign files are preserved and shown
   with a clear manual recovery path; uninstall removes only verified loader-owned files.
-- [x] A profile cannot launch with broken dependencies or invalid configuration, and the manager
+- [✓] A profile cannot launch with broken dependencies or invalid configuration, and the manager
   identifies the affected mod and corrective action.
 - [ ] Oversized log records respect byte/allocation limits and the manager remains
   responsive during viewing, refresh, and clearing (FIXUP Phase 6).
@@ -230,82 +230,82 @@ Initial supported build fingerprints:
 
 ## Phase 6 — Core gameplay object model and mutable events
 
-- [x] Install a transactional render-frame hook without patching the game executable on disk.
-- [x] Dispatch Lua `on_ready()` once from the live game render thread and advance deterministic timers once per rendered frame.
-- [x] Prove the lifecycle bridge in the copied Steam build with a rerunnable `on_load`/`on_ready`/timer smoke test.
-- [x] Dispatch live match start/end events around verified game-screen initialization and teardown boundaries.
-- [x] Define a versioned generic Lua wrapper and lifetime registry with kind tags
+- [✓] Install a transactional render-frame hook without patching the game executable on disk.
+- [✓] Dispatch Lua `on_ready()` once from the live game render thread and advance deterministic timers once per rendered frame.
+- [✓] Prove the lifecycle bridge in the copied Steam build with a rerunnable `on_load`/`on_ready`/timer smoke test.
+- [✓] Dispatch live match start/end events around verified game-screen initialization and teardown boundaries.
+- [✓] Define a versioned generic Lua wrapper and lifetime registry with kind tags
   for matches, rounds, players, towers, attacks, projectiles, and bloons.
 - [ ] Integrate live match, round, and player wrappers with verified lifetime boundaries.
 - [ ] Integrate live attack and projectile wrappers with verified lifetime boundaries.
-- [x] Reject invalidated generations and scene epochs in the wrapper registry;
+- [✓] Reject invalidated generations and scene epochs in the wrapper registry;
   invalidate live tower/bloon handles at the implemented sale, pop, leak, and scene boundaries.
 - [ ] Verify remaining native destruction paths and lifetime integration across
   a complete match; generic registry tests do not prove all live object lifetimes.
-- [x] Implement event subscription/unsubscription and deterministic handler ordering.
-- [x] Add match start/end events.
-- [x] Add round start/end events.
-- [x] Add cash change events.
-- [x] Add a post-change lives notification for verified gains and losses.
-- [x] Add a verified lives pre-change event at the exact native write boundary.
-- [x] Make `lives.changing` cancellable so Lua can skip a verified gain or loss write.
-- [x] Add post-action tower placed, upgraded, and sold notifications.
-- [x] Attach stable, lifetime-checked tower wrappers to live tower notifications.
-- [x] Add a verified tower placing pre-event immediately before manager ownership.
-- [x] Add a verified tower upgrading pre-event after eligibility and before mutation.
-- [x] Add a verified tower selling pre-event before sale side effects begin.
-- [x] Add post-action bloon spawned, popped, and leaked notifications.
-- [x] Attach stable, lifetime-checked bloon wrappers to live bloon notifications.
-- [x] Add verified bloon spawning, popping, and leaking pre-events.
+- [✓] Implement event subscription/unsubscription and deterministic handler ordering.
+- [✓] Add match start/end events.
+- [✓] Add round start/end events.
+- [✓] Add cash change events.
+- [✓] Add a post-change lives notification for verified gains and losses.
+- [✓] Add a verified lives pre-change event at the exact native write boundary.
+- [✓] Make `lives.changing` cancellable so Lua can skip a verified gain or loss write.
+- [✓] Add post-action tower placed, upgraded, and sold notifications.
+- [✓] Attach stable, lifetime-checked tower wrappers to live tower notifications.
+- [✓] Add a verified tower placing pre-event immediately before manager ownership.
+- [✓] Add a verified tower upgrading pre-event after eligibility and before mutation.
+- [✓] Add a verified tower selling pre-event before sale side effects begin.
+- [✓] Add post-action bloon spawned, popped, and leaked notifications.
+- [✓] Attach stable, lifetime-checked bloon wrappers to live bloon notifications.
+- [✓] Add verified bloon spawning, popping, and leaking pre-events.
 - [~] Make verified pre-events cancellable and mutable.
-  - [x] Route cancelled `tower.upgrading` and `tower.selling` events through the game's
+  - [✓] Route cancelled `tower.upgrading` and `tower.selling` events through the game's
     verified native rejection paths before the first side effect.
-    - [x] Prove both rejection paths in the copied game with the dedicated
+    - [✓] Prove both rejection paths in the copied game with the dedicated
       `--expect-tower-cancellation` smoke scenario.
-  - [x] Route a cancelled `bloon.leaking` attempt through the verified native non-leak
+  - [✓] Route a cancelled `bloon.leaking` attempt through the verified native non-leak
     continuation without invalidating the live bloon.
-    - [x] Record interactive acceptance of bloon leak cancellation: two copied-game
+    - [✓] Record interactive acceptance of bloon leak cancellation: two copied-game
       runs passed on 2026-09-06, with user-observed confirmation.
   - [ ] Add cancellation for the remaining pre-events only after each action's ownership,
     cleanup, and return path is independently verified.
   - [~] Add validated mutable payload fields at their exact native commit boundaries.
-    - [x] Harden payload readback against Lua metatable execution outside protected
+    - [✓] Harden payload readback against Lua metatable execution outside protected
       callbacks; reject coerced and non-finite numeric fields with regression coverage.
-    - [x] Allow `lives.changing.new_lives` replacement at the verified gain/loss write,
+    - [✓] Allow `lives.changing.new_lives` replacement at the verified gain/loss write,
       with deterministic propagation and strict integer/range validation.
-      - [x] Prove loss-path replacement in the copied game with the dedicated
+      - [✓] Prove loss-path replacement in the copied game with the dedicated
         `--expect-lives-mutation` smoke scenario.
       - [ ] Record interactive native gain-path acceptance; current gain-path
         evidence is from fixtures.
 - [~] Make supported live-object properties mutable through validated setters; reject invalid types, ranges, phases, and stale objects.
-  - [x] Add fingerprinted tower `pop_count()` and `set_pop_count(value)` access,
+  - [✓] Add fingerprinted tower `pop_count()` and `set_pop_count(value)` access,
     including strict integer/range/kind/lifetime validation.
-  - [x] Prove the tower pop-count setter in the copied game with the dedicated
+  - [✓] Prove the tower pop-count setter in the copied game with the dedicated
     `--expect-tower-pop-count` smoke scenario.
-  - [x] Add fingerprinted tower sell-price and bloon-health getters/setters with
+  - [✓] Add fingerprinted tower sell-price and bloon-health getters/setters with
     strict kind, lifetime, type, finiteness, and range validation.
-  - [x] Prove sell-price and health replacement in the copied game with the
+  - [✓] Prove sell-price and health replacement in the copied game with the
     dedicated `--expect-direct-properties` smoke scenario.
-- [x] Guard against recursive event loops with depth limits and shared nested budgets.
-  - [x] Enforce callback/event recursion depth with mock-host recursive dispatch coverage.
-  - [x] Preserve enclosing budgets and hooks after nested dispatch (FIXUP Phase 3).
-- [x] Document which fields are mutable, when changes take effect, and which mutations may be rejected.
+- [✓] Guard against recursive event loops with depth limits and shared nested budgets.
+  - [✓] Enforce callback/event recursion depth with mock-host recursive dispatch coverage.
+  - [✓] Preserve enclosing budgets and hooks after nested dispatch (FIXUP Phase 3).
+- [✓] Document which fields are mutable, when changes take effect, and which mutations may be rejected.
 
 ### Phase 6 implementation gate
 
-- [x] Mock-host tests cover event-name registration, handler order/unsubscription,
+- [✓] Mock-host tests cover event-name registration, handler order/unsubscription,
   typed payload readback, implemented setter validation, registry invalidation,
   and recursive dispatch depth. Native fixtures cover lives writes and the
   implemented tower upgrade/sale and bloon leak cancellation hooks.
-- [x] Test production cross-mod mutation propagation, invalid-value retention,
+- [✓] Test production cross-mod mutation propagation, invalid-value retention,
   cancellation precedence, and lifecycle coordination (FIXUP Phase 7).
 - [ ] Complete automated coverage as remaining live wrappers, mutable fields,
   and cancellation paths are implemented; catalog registration alone is insufficient.
 - [~] In-game smoke tests confirm event order and mutations across a complete match without hooks firing twice or surviving scene teardown.
-  - [x] 50-round victory, ordered lifecycle, stale handles after teardown, and second-match entry
+  - [✓] 50-round victory, ordered lifecycle, stale handles after teardown, and second-match entry
     accepted on 2026-09-06; see [live record](docs/validation-phase6-complete-match.md).
   - [ ] Exercise enabled gameplay mutations across a complete match.
-- [x] Disabling the sample event mod restores unmodified gameplay on the next launch.
+- [✓] Disabling the sample event mod restores unmodified gameplay on the next launch.
 
 ---
 
@@ -379,7 +379,12 @@ Initial supported build fingerprints:
 - [ ] Test unsupported builds, missing Steam data, read-only folders, antivirus quarantine, partial installs, corrupted packages, and interrupted backups.
 - [ ] Publish the Lua API reference, tower schema, package specification, tutorials, troubleshooting guide, recovery guide, and compatibility policy.
 - [ ] Include at least one minimal event mod and one complete custom-tower mod as source examples.
-- [ ] Produce checksummed release artifacts without any Ninja Kiwi or user-owned files.
+- [~] Produce checksummed release artifacts without any Ninja Kiwi or user-owned files.
+  - [✓] Existing release tooling creates a versioned ZIP and SHA-256 checksum.
+  - [✓] FIXUP Phase 8 includes complete pinned licenses and validates the finished
+    archive, checksum, local paths, forbidden content, and nested sample packages.
+  - [ ] Keep the item partial until the complete v1 release candidate passes all
+    earlier phase gates and the remaining Phase 10 checks.
 
 ### Phase 10 implementation gate
 
