@@ -191,18 +191,18 @@ Every handler receives one shared event table. It always contains `name` and
 
 | Event | Payload | Timing | Cancellable |
 | --- | --- | --- | --- |
-| `match.starting` | none | Before game-screen initialization | No |
-| `match.started` | none | After game-screen initialization | No |
-| `match.ending` | none | Before game-screen teardown | No |
-| `match.ended` | none | After game-screen teardown | No |
+| `match.starting` | `match` | Before game-screen initialization | No |
+| `match.started` | `match` | After game-screen initialization | No |
+| `match.ending` | `match` | Before game-screen teardown | No |
+| `match.ended` | `match` (stale) | After game-screen teardown | No |
 | `round.starting` | none | Before native round-start observer dispatch | No |
 | `round.started` | none | After native round-start observer dispatch | No |
 | `round.ending` | none | Before native round-end observer dispatch | No |
 | `round.ended` | none | After native round-end observer dispatch | No |
 | `cash.changing` | none | Before native money-update observer dispatch | No |
 | `cash.changed` | none | After native money-update observer dispatch | No |
-| `lives.changing` | `old_lives`, `new_lives` | At the accepted native lives write | **Yes** |
-| `lives.changed` | `old_lives`, `new_lives` | After a verified lives change | No |
+| `lives.changing` | `old_lives`, `new_lives`, `player` | At the accepted native lives write | **Yes** |
+| `lives.changed` | `old_lives`, `new_lives`, `player` | After a verified lives change | No |
 | `tower.placing` | `tower` | Before tower-manager ownership | No |
 | `tower.placed` | `tower` | After placement observer dispatch | No |
 | `tower.upgrading` | `tower` | After eligibility and before upgrade mutation | **Yes** |

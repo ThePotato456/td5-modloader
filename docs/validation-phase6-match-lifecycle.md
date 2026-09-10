@@ -35,6 +35,10 @@ The x86 fixture verifies this order:
 Removing the hook restores direct calls to both original functions with no Lua
 callbacks.
 
+Each callback also receives the same fingerprinted `CGameScreen` instance.
+Lua exposes it as `event.match`; the wrapper is valid through `match.ending`
+and is invalidated before `match.ended` runs after native teardown.
+
 ## Interactive copied-game acceptance
 
 The Release smoke workflow launched the ignored copied game through Steam with

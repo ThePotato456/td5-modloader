@@ -171,9 +171,11 @@ Assigning it on another event currently has no gameplay effect.
 
 ### Lifecycle and economy notifications
 
+Match lifecycle events add `event.match`. It is valid through `match.ending`
+and stale in `match.ended`, after native teardown returns.
+
 These events add no payload fields:
 
-- `match.starting`, `match.started`, `match.ending`, `match.ended`;
 - `round.starting`, `round.started`, `round.ending`, `round.ended`; and
 - `cash.changing`, `cash.changed`.
 
@@ -182,6 +184,7 @@ These events add no payload fields:
 ```lua
 event.old_lives: integer
 event.new_lives: integer
+event.player: GameObject
 ```
 
 | Event | Cancellable |

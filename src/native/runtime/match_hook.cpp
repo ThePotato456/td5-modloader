@@ -117,7 +117,7 @@ void __fastcall MatchHook::hooked_init(
     const InitFunction original = original_init_;
     if (active != nullptr && active->starting_) {
         try {
-            active->starting_();
+            active->starting_(instance);
         } catch (...) {
             // Keep the game initialization boundary exception-safe.
         }
@@ -127,7 +127,7 @@ void __fastcall MatchHook::hooked_init(
     }
     if (active != nullptr && active->started_) {
         try {
-            active->started_();
+            active->started_(instance);
         } catch (...) {
             // Keep the game initialization boundary exception-safe.
         }
@@ -139,7 +139,7 @@ void __fastcall MatchHook::hooked_uninit(void* const instance, void*) noexcept {
     const UninitFunction original = original_uninit_;
     if (active != nullptr && active->ending_) {
         try {
-            active->ending_();
+            active->ending_(instance);
         } catch (...) {
             // Keep the game teardown boundary exception-safe.
         }
@@ -149,7 +149,7 @@ void __fastcall MatchHook::hooked_uninit(void* const instance, void*) noexcept {
     }
     if (active != nullptr && active->ended_) {
         try {
-            active->ended_();
+            active->ended_(instance);
         } catch (...) {
             // Keep the game teardown boundary exception-safe.
         }

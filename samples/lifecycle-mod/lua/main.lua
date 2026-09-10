@@ -1,22 +1,29 @@
 local retained_match_tower
 local retained_match_bloon
+local retained_match
 local function log(message)
     btd5.log("info", message)
 end
 
-btd5.events.on("match.starting", function()
+btd5.events.on("match.starting", function(event)
+    assert(event.match:is_valid() and event.match:kind() == "match")
+    retained_match = event.match
     log("Lifecycle Sample observed match.starting")
 end)
 
-btd5.events.on("match.started", function()
+btd5.events.on("match.started", function(event)
+    assert(event.match:is_valid() and event.match:id() == retained_match:id())
     log("Lifecycle Sample observed match.started")
 end)
 
-btd5.events.on("match.ending", function()
+btd5.events.on("match.ending", function(event)
+    assert(event.match:is_valid() and event.match:id() == retained_match:id())
     log("Lifecycle Sample observed match.ending")
 end)
 
-btd5.events.on("match.ended", function()
+btd5.events.on("match.ended", function(event)
+    assert(event.match:id() == retained_match:id() and not event.match:is_valid())
+    assert(not retained_match:is_valid())
     log("Lifecycle Sample observed match.ended")
     if btd5.config.get("test_complete_match") == "true" then
         assert(retained_match_tower and not retained_match_tower:is_valid())
@@ -52,9 +59,12 @@ btd5.events.on("cash.changed", function()
 end)
 
 local pending_lives_change
+local pending_player_id
 local native_gain_step = 0
 
 btd5.events.on("lives.changing", function(event)
+    assert(event.player:is_valid() and event.player:kind() == "player")
+    pending_player_id = event.player:id()
     assert(event.old_lives ~= event.new_lives)
     local transition = tostring(event.old_lives) .. "->" .. tostring(event.new_lives)
     log("Lifecycle Sample observed lives.changing " .. transition)
@@ -93,9 +103,11 @@ btd5.events.on("lives.changing", function(event)
 end)
 
 btd5.events.on("lives.changed", function(event)
+    assert(event.player:is_valid() and event.player:id() == pending_player_id)
     local completed = tostring(event.old_lives) .. "->" .. tostring(event.new_lives)
     assert(completed == pending_lives_change)
     pending_lives_change = nil
+    pending_player_id = nil
     log("Lifecycle Sample observed lives.changed " .. completed)
 end)
 

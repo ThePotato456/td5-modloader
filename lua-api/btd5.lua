@@ -4,7 +4,7 @@
 ---Do not include this file in a .btd5mod package or execute it at runtime.
 
 ---@alias BTD5LogLevel "info"|"error"|string
----@alias BTD5ObjectKind "tower"|"bloon"
+---@alias BTD5ObjectKind "match"|"round"|"player"|"tower"|"attack"|"projectile"|"bloon"
 ---@alias BTD5EventName
 ---| "match.starting"
 ---| "match.started"
@@ -75,10 +75,14 @@ function Bloon:set_health(value) end
 ---@field cancelled boolean
 
 ---@class BTD5LivesEvent: BTD5Event
+---@field player BTD5GameObject
 ---Read-only value captured immediately before the pending native write.
 ---@field old_lives integer
 ---Mutable on lives.changing only; accepted range is 0..2147483647.
 ---@field new_lives integer
+
+---@class BTD5MatchEvent: BTD5Event
+---@field match BTD5GameObject
 
 ---@class BTD5TowerEvent: BTD5Event
 ---@field tower BTD5Tower

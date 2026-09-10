@@ -913,10 +913,10 @@ TEST_CASE("match hook preserves x86 lifecycle ordering and removes cleanly", "[h
     REQUIRE(hook.install(
         reinterpret_cast<void*>(&fake_game_screen_init),
         reinterpret_cast<void*>(&fake_game_screen_uninit),
-        [&calls]() { calls.emplace_back("starting"); },
-        [&calls]() { calls.emplace_back("started"); },
-        [&calls]() { calls.emplace_back("ending"); },
-        [&calls]() { calls.emplace_back("ended"); },
+        [&calls, &screen](void* instance) { REQUIRE(instance == &screen); calls.emplace_back("starting"); },
+        [&calls, &screen](void* instance) { REQUIRE(instance == &screen); calls.emplace_back("started"); },
+        [&calls, &screen](void* instance) { REQUIRE(instance == &screen); calls.emplace_back("ending"); },
+        [&calls, &screen](void* instance) { REQUIRE(instance == &screen); calls.emplace_back("ended"); },
         error));
     REQUIRE(error.empty());
     REQUIRE(hook.installed());
@@ -1185,7 +1185,8 @@ TEST_CASE("lives hook reports only verified gain and loss mutations", "[hooks]")
     REQUIRE(hook.install(
         reinterpret_cast<void*>(&fake_gain_lives_handler),
         reinterpret_cast<void*>(&fake_loss_lives_handler),
-        [&changes](const std::int32_t before, const std::int32_t after) {
+        [&changes, &state](void* player, const std::int32_t before, const std::int32_t after) {
+            REQUIRE(player == &state);
             changes.emplace_back(before, after);
         },
         error));
@@ -1231,7 +1232,8 @@ TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]
     const bool installed = hook.install(
         gain_target,
         loss_target,
-        [&state, &changes](const std::int32_t before, const std::int32_t after) {
+        [&state, &changes](void* player, const std::int32_t before, const std::int32_t after) {
+            REQUIRE(player == &state);
             REQUIRE(state.lives == before);
             changes.emplace_back(before, after);
             return btd5loader::runtime::LivesChangeDecision{false, after};
@@ -1260,7 +1262,8 @@ TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]
     REQUIRE(hook.install(
         gain_target,
         loss_target,
-        [&cancel_next, &changes](const std::int32_t before, const std::int32_t after) {
+        [&cancel_next, &changes, &state](void* player, const std::int32_t before, const std::int32_t after) {
+            REQUIRE(player == &state);
             changes.emplace_back(before, after);
             const bool cancelled = std::exchange(cancel_next, false);
             return btd5loader::runtime::LivesChangeDecision{
@@ -1282,7 +1285,8 @@ TEST_CASE("lives write hook fires immediately before committed writes", "[hooks]
     REQUIRE(hook.install(
         gain_target,
         loss_target,
-        [](const std::int32_t, const std::int32_t after) {
+        [&state](void* player, const std::int32_t, const std::int32_t after) {
+            REQUIRE(player == &state);
             return btd5loader::runtime::LivesChangeDecision{false, after + 10};
         },
         error));

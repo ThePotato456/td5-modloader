@@ -14,7 +14,7 @@ struct LivesChangeDecision final {
 
 class LivesWriteHook final {
 public:
-    using Callback = std::function<LivesChangeDecision(std::int32_t, std::int32_t)>;
+    using Callback = std::function<LivesChangeDecision(void*, std::int32_t, std::int32_t)>;
 
     LivesWriteHook() = default;
     ~LivesWriteHook();

@@ -105,12 +105,13 @@ void __fastcall LivesHook::hooked_gain(
     void*,
     void* const event,
     const bool queued) noexcept {
-    const auto before = read_lives(observer, gain_state_pointer_offset);
+    void* const state = read_state(observer, gain_state_pointer_offset);
+    const auto before = read_lives(state);
     const HandlerFunction original = original_gain_;
     if (original != nullptr) {
         original(observer, event, queued);
     }
-    dispatch_if_changed(before, read_lives(observer, gain_state_pointer_offset));
+    dispatch_if_changed(state, before, read_lives(state));
 }
 
 void __fastcall LivesHook::hooked_loss(
@@ -118,19 +119,20 @@ void __fastcall LivesHook::hooked_loss(
     void*,
     void* const event,
     const bool queued) noexcept {
-    const auto before = read_lives(observer, loss_state_pointer_offset);
+    void* const state = read_state(observer, loss_state_pointer_offset);
+    const auto before = read_lives(state);
     const HandlerFunction original = original_loss_;
     if (original != nullptr) {
         original(observer, event, queued);
     }
-    dispatch_if_changed(before, read_lives(observer, loss_state_pointer_offset));
+    dispatch_if_changed(state, before, read_lives(state));
 }
 
-std::optional<std::int32_t> LivesHook::read_lives(
+void* LivesHook::read_state(
     void* const observer,
     const std::size_t state_pointer_offset) noexcept {
     if (observer == nullptr) {
-        return std::nullopt;
+        return nullptr;
     }
     void* state = nullptr;
     SIZE_T bytes_read = 0;
@@ -138,8 +140,14 @@ std::optional<std::int32_t> LivesHook::read_lives(
     if (ReadProcessMemory(
             GetCurrentProcess(), state_location, &state, sizeof(state), &bytes_read) == FALSE ||
         bytes_read != sizeof(state) || state == nullptr) {
-        return std::nullopt;
+        return nullptr;
     }
+    return state;
+}
+
+std::optional<std::int32_t> LivesHook::read_lives(void* const state) noexcept {
+    if (state == nullptr) return std::nullopt;
+    SIZE_T bytes_read = 0;
     std::int32_t lives = 0;
     const auto* const lives_location = static_cast<const std::byte*>(state) + lives_offset;
     if (ReadProcessMemory(
@@ -151,6 +159,7 @@ std::optional<std::int32_t> LivesHook::read_lives(
 }
 
 void LivesHook::dispatch_if_changed(
+    void* const state,
     const std::optional<std::int32_t>& before,
     const std::optional<std::int32_t>& after) noexcept {
     LivesHook* const active = active_;
@@ -159,7 +168,7 @@ void LivesHook::dispatch_if_changed(
         return;
     }
     try {
-        active->changed_(*before, *after);
+        active->changed_(state, *before, *after);
     } catch (...) {
         // Keep both native lives mutation boundaries exception-safe.
     }

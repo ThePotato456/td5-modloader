@@ -172,7 +172,7 @@ int __stdcall LivesWriteHook::dispatch_gain(
     const auto proposed = static_cast<std::int32_t>(
         static_cast<std::uint32_t>(before) + static_cast<std::uint32_t>(amount));
     try {
-        const auto decision = active->changing_(before, proposed);
+        const auto decision = active->changing_(state, before, proposed);
         if (decision.cancelled) return 1;
         if (replacement != nullptr && decision.new_lives != proposed) {
             *replacement = decision.new_lives;
@@ -201,7 +201,7 @@ int __stdcall LivesWriteHook::dispatch_loss(
         0,
         (std::numeric_limits<std::int32_t>::max)()));
     try {
-        const auto decision = active->changing_(before, proposed);
+        const auto decision = active->changing_(state, before, proposed);
         if (decision.cancelled) return 1;
         if (replacement != nullptr && decision.new_lives != proposed) {
             *replacement = decision.new_lives;

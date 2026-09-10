@@ -11,7 +11,7 @@ namespace btd5loader::runtime {
 
 class LivesHook final {
 public:
-    using Callback = std::function<void(std::int32_t, std::int32_t)>;
+    using Callback = std::function<void(void*, std::int32_t, std::int32_t)>;
 
     LivesHook() = default;
     ~LivesHook();
@@ -40,10 +40,10 @@ private:
         void* register_padding,
         void* event,
         bool queued) noexcept;
-    [[nodiscard]] static std::optional<std::int32_t> read_lives(
-        void* observer,
-        std::size_t state_pointer_offset) noexcept;
+    [[nodiscard]] static void* read_state(void* observer, std::size_t state_pointer_offset) noexcept;
+    [[nodiscard]] static std::optional<std::int32_t> read_lives(void* state) noexcept;
     static void dispatch_if_changed(
+        void* state,
         const std::optional<std::int32_t>& before,
         const std::optional<std::int32_t>& after) noexcept;
 

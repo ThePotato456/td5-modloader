@@ -42,7 +42,9 @@ For a loss, `new_lives` reflects the game's subsequent zero clamp.
 The existing handler hooks snapshot the value before the complete native
 handler, invoke it, and read the value afterward. They dispatch `lives.changed`
 only when both reads succeed and the value differs. Both event tables contain
-integer `old_lives` and `new_lives` fields.
+integer `old_lives` and `new_lives` fields plus a `player` wrapper backed by the
+same native lives-state pointer used for the read or write. The registry reuses
+that identity within a match and invalidates it at the scene boundary.
 
 The x86 fixtures verify pre-write ordering, proposed gain and clamped-loss
 values, replacement gain and loss writes, cancelled gain and loss writes,

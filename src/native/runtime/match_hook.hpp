@@ -8,7 +8,7 @@ namespace btd5loader::runtime {
 
 class MatchHook final {
 public:
-    using Callback = std::function<void()>;
+    using Callback = std::function<void(void*)>;
 
     MatchHook() = default;
     ~MatchHook();

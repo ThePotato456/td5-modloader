@@ -21,12 +21,14 @@ bool dispatch_profile_event(const Mods& mods, const std::string_view name,
 
 template<class Mods, class ReportInvalid>
 LivesChangeDecision dispatch_profile_lives(const Mods& mods, const std::int32_t before,
-                                         const std::int32_t after, ReportInvalid report_invalid) {
+                                         const std::int32_t after, ReportInvalid report_invalid,
+                                         const GameObjectHandle player = {}) {
     std::int64_t new_lives = after;
     bool cancelled = false;
     for (const auto& mod : mods) {
-        const LuaEventFields fields{{"old_lives", static_cast<std::int64_t>(before)},
-                                    {"new_lives", new_lives}};
+        LuaEventFields fields{{"old_lives", static_cast<std::int64_t>(before)},
+                              {"new_lives", new_lives}};
+        if (player.id != 0) fields.emplace_back("player", player);
         const auto result = mod->dispatch_event("lives.changing", fields, true);
         cancelled = result.cancelled || cancelled;
         const auto mutation = std::find_if(result.fields.begin(), result.fields.end(),

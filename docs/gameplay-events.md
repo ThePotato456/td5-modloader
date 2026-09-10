@@ -37,7 +37,17 @@ Currently live in the supported Steam Win32 4.8 build:
   effects;
 - `bloon.leaked`, after native `CBloonEscapedEvent` observer dispatch.
 
-Lives events carry `old_lives` and `new_lives`; cash events currently carry no
+Match events carry `match`. It remains valid from `match.starting` through
+`match.ending`; the same wrapper is stale in `match.ended` because native
+teardown has returned. Lives events carry `player`, backed by the native state
+object used by the verified lives read and write boundaries. It remains valid
+only within the current match scene epoch.
+
+Round events do not yet carry `round`. The classified event object may be
+destroyed during native observer dispatch, so it cannot safely back both sides
+of the round lifecycle.
+
+Lives events also carry `old_lives` and `new_lives`; cash events currently carry no
 value fields. Each
 live tower notification carries `event.tower`, and each live bloon notification
 carries `event.bloon`. `lives.changing.new_lives` is mutable;

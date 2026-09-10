@@ -8,9 +8,13 @@ using namespace btd5loader::runtime;
 TEST_CASE("production profile coordination retains mutations and sticky cancellation", "[lua][coordination]") {
     std::vector<std::unique_ptr<LuaMod>> mods;
     std::vector<std::string> calls;
+    GameObjectRegistry registry;
+    int player_state{};
+    const auto player = registry.add(GameObjectKind::Player, &player_state);
     const auto add = [&](const std::string& script) {
         LuaModOptions options;
         options.mod_id = "coordination" + std::to_string(mods.size());
+        options.object_registry = &registry;
         options.log = [&](auto, auto message) { calls.emplace_back(message); };
         auto mod = std::make_unique<LuaMod>(options);
         REQUIRE(mod->load_script(script, "coordination.lua"));
@@ -18,6 +22,7 @@ TEST_CASE("production profile coordination retains mutations and sticky cancella
     };
     add(R"(btd5.events.on('lives.changing', function(e)
         assert(e.old_lives == 100 and e.new_lives == 90)
+        assert(e.player:kind() == 'player' and e.player:is_valid())
         e.new_lives = 80; e.cancelled = true
         btd5.log('info', 'first')
     end))");
@@ -30,7 +35,7 @@ TEST_CASE("production profile coordination retains mutations and sticky cancella
         btd5.log('info', 'last')
     end))");
     int rejected = 0;
-    const auto decision = dispatch_profile_lives(mods, 100, 90, [&] { ++rejected; });
+    const auto decision = dispatch_profile_lives(mods, 100, 90, [&] { ++rejected; }, player);
     REQUIRE(decision.cancelled);
     REQUIRE(decision.new_lives == 70);
     REQUIRE(rejected == 1);

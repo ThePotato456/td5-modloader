@@ -56,6 +56,7 @@ std::mutex g_lifecycle_mutex;
 bool g_shutdown_started{}; // Protected by g_lifecycle_mutex.
 
 btd5loader::runtime::GameObjectRegistry g_game_objects;
+std::optional<btd5loader::runtime::GameObjectHandle> g_match_handle;
 btd5loader::runtime::BloonActionHook g_bloon_action_hook;
 btd5loader::runtime::FrameHook g_frame_hook;
 btd5loader::runtime::ExitHook g_exit_hook;
@@ -94,19 +95,43 @@ void dispatch_game_event(
     }
 }
 
+void dispatch_match_event(const std::string_view name, void* const match, const bool ended = false) {
+    using btd5loader::runtime::GameObjectKind;
+    if (!g_match_handle.has_value() && match != nullptr) {
+        const auto handle = g_game_objects.find_or_add(GameObjectKind::Match, match);
+        if (handle.id != 0) g_match_handle = handle;
+    }
+    if (!g_match_handle.has_value()) {
+        dispatch_game_event(name);
+        return;
+    }
+    const auto handle = *g_match_handle;
+    if (ended) g_game_objects.begin_scene();
+    dispatch_game_event(name, {{"match", handle}});
+    if (ended) g_match_handle.reset();
+}
+
+btd5loader::runtime::GameObjectHandle player_handle(void* const state) {
+    return g_game_objects.find_or_add(btd5loader::runtime::GameObjectKind::Player, state);
+}
+
 void dispatch_lives_event(
     const std::string_view name,
+    void* const state,
     const std::int32_t before,
     const std::int32_t after) {
+    const auto player = player_handle(state);
     dispatch_game_event(
         name,
         {
             {"old_lives", static_cast<std::int64_t>(before)},
             {"new_lives", static_cast<std::int64_t>(after)},
+            {"player", player},
         });
 }
 
 btd5loader::runtime::LivesChangeDecision dispatch_lives_changing(
+    void* const state,
     const std::int32_t before,
     const std::int32_t after) {
     using btd5loader::runtime::State;
@@ -117,9 +142,12 @@ btd5loader::runtime::LivesChangeDecision dispatch_lives_changing(
     auto dispatch = g_dispatch_gate.enter();
     if (!dispatch) return {false, after};
     g_logger.info("events", "lives.changing");
-    const auto decision = btd5loader::runtime::dispatch_profile_lives(g_mods, before, after, [] {
-        g_logger.error("events", "lives.changing:new_lives_out_of_range");
-    });
+    const auto decision = btd5loader::runtime::dispatch_profile_lives(
+        g_mods,
+        before,
+        after,
+        [] { g_logger.error("events", "lives.changing:new_lives_out_of_range"); },
+        player_handle(state));
     if (decision.cancelled) {
         g_logger.info("events", "lives.changing:cancelled");
     }
@@ -877,15 +905,15 @@ DWORD WINAPI initialize_worker(LPVOID) {
             const bool installed = g_match_hook.install(
                 game_screen_init_target,
                 game_screen_uninit_target,
-                []() {
+                [](void* match) {
                     g_game_objects.begin_scene();
-                    dispatch_game_event("match.starting");
+                    g_match_handle.reset();
+                    dispatch_match_event("match.starting", match);
                 },
-                []() { dispatch_game_event("match.started"); },
-                []() { dispatch_game_event("match.ending"); },
-                []() {
-                    g_game_objects.begin_scene();
-                    dispatch_game_event("match.ended");
+                [](void* match) { dispatch_match_event("match.started", match); },
+                [](void* match) { dispatch_match_event("match.ending", match); },
+                [](void* match) {
+                    dispatch_match_event("match.ended", match, true);
                 },
                 error);
             if (!installed) {
@@ -1055,8 +1083,8 @@ DWORD WINAPI initialize_worker(LPVOID) {
             const bool installed = g_lives_write_hook.install(
                 lives_gain_write_target,
                 lives_loss_write_target,
-                [](const std::int32_t before, const std::int32_t after) {
-                    return dispatch_lives_changing(before, after);
+                [](void* state, const std::int32_t before, const std::int32_t after) {
+                    return dispatch_lives_changing(state, before, after);
                 },
                 error);
             if (!installed) {
@@ -1073,8 +1101,8 @@ DWORD WINAPI initialize_worker(LPVOID) {
             const bool installed = g_lives_hook.install(
                 lives_gain_handler_target,
                 lives_loss_handler_target,
-                [](const std::int32_t before, const std::int32_t after) {
-                    dispatch_lives_event("lives.changed", before, after);
+                [](void* state, const std::int32_t before, const std::int32_t after) {
+                    dispatch_lives_event("lives.changed", state, before, after);
                 },
                 error);
             if (!installed) {
@@ -1165,6 +1193,7 @@ static void shutdown_runtime(const bool normal_exit) {
         g_tower_sell_price_verified = false;
         g_bloon_health_verified = false;
         g_game_objects.begin_scene();
+        g_match_handle.reset();
         btd5loader::runtime::shutdown_mods(g_mods);
     }
     // An explicit request can race a native detour outside its Lua dispatch.
