@@ -39,6 +39,12 @@ Each callback also receives the same fingerprinted `CGameScreen` instance.
 Lua exposes it as `event.match`; the wrapper is valid through `match.ending`
 and is invalidated before `match.ended` runs after native teardown.
 
+On 2026-09-11, the updated Release lifecycle sample asserted a valid `match`
+wrapper with kind `match` at `match.starting`, retained it, and confirmed the
+same wrapper ID remained valid at `match.started`. The bounded lives-loss smoke
+scenario reported `LIVE_SMOKE_PASS`. This run validates match entry; the new
+`match.ending` and stale `match.ended` assertions still require a live exit run.
+
 ## Interactive copied-game acceptance
 
 The Release smoke workflow launched the ignored copied game through Steam with

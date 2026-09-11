@@ -46,6 +46,12 @@ integer `old_lives` and `new_lives` fields plus a `player` wrapper backed by the
 same native lives-state pointer used for the read or write. The registry reuses
 that identity within a match and invalidates it at the scene boundary.
 
+On 2026-09-11, the updated Release lifecycle sample asserted that `event.player`
+was valid with kind `player` at `lives.changing`, retained its ID, and observed
+the same valid ID at `lives.changed`. The live transition was `200->199` at
+`20:48:58.589Z`/`20:48:58.590Z`, and the bounded harness reported
+`LIVE_SMOKE_PASS` with no Lua or runtime error records.
+
 The x86 fixtures verify pre-write ordering, proposed gain and clamped-loss
 values, replacement gain and loss writes, cancelled gain and loss writes,
 original instruction behavior, exact byte restoration, post-change detection,
