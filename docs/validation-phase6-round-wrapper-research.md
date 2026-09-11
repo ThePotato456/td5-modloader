@@ -1,9 +1,8 @@
 # Phase 6 round-wrapper research
 
-Date: 2026-09-10
+Date: 2026-09-11
 
-This record explains why the live round lifecycle currently has notifications
-but does not expose `event.round`.
+This record establishes the native identity used by `event.round`.
 
 ## Verified event construction
 
@@ -22,16 +21,40 @@ The event manager may destroy the allocation during that call. This is why the
 existing hook captures supported payload data before dispatch and never reads
 the event afterward.
 
-## Lifetime decision
+## Owner correlation
 
-The two scalar payload fields do not establish a durable native round-object
-identity. The producer receivers also come from different code paths and have
-not been proven to refer to the same owning object. Registering either event
-allocation would therefore make the wrapper unsafe after the pre-event, while
-registering a producer receiver would claim an identity that the binary evidence
-does not support.
+Further call-site tracing correlated both producers. The round-end update loads
+the state object from `[[game + 0xB8] + 0x7C]`, copies its `+0x14` and `+0x1C`
+fields into `CRoundEndedEvent`, then calls the round-start producer at RVA
+`0x228A00` with that exact state pointer as its receiver. The producer updates
+the same fields and emits `CRoundStartedEvent`. Its three direct call sites use
+the same receiver contract.
 
-`event.round` remains open until a stable owner can be correlated across both
-the start and end producers, including its destruction or reuse boundary. The
-runtime continues to expose the four verified round notifications without an
-object payload.
+The symbol map resolves the producer uniquely as `round.lifecycle.start`. A
+transactional detour captures the receiver before the producer emits
+`round.starting`. The registry exposes that handle through all four events,
+invalidates it after `round.ended`, and creates a new generation at the next
+start. This preserves logical round lifetimes even though BTD5 reuses the native
+allocation. Scene teardown remains the fallback invalidation boundary when a
+match exits during an active round.
+
+The native hook fixture verifies receiver capture before the original call and
+clean removal. The supported-build inspector resolves RVA `0x228A00` uniquely.
+
+## Interactive copied-game acceptance
+
+The Release smoke workflow launched the ignored copied game through Steam with
+the lifecycle sample and round-wrapper assertions enabled. During one ordinary
+offline round, the runtime and Lua sample observed the four boundaries in order:
+
+- `round.starting` at `2026-09-11T21:58:17.821Z`;
+- `round.started` at `2026-09-11T21:58:17.834Z`;
+- `round.ending` at `2026-09-11T21:58:24.573Z`; and
+- `round.ended` at `2026-09-11T21:58:24.573Z`.
+
+Each Lua observation is emitted after checking that `event.round` is valid, has
+kind `round`, and retains the same wrapper identity through the matching end
+notification. The run contained no Lua or runtime error. Registry and dispatch
+fixtures separately verify that the wrapper becomes stale after `round.ended`;
+the bounded live harness exits as soon as the final callback succeeds, before a
+later timer can record the post-callback stale check.

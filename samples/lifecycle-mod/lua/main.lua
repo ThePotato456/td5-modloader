@@ -34,20 +34,36 @@ btd5.events.on("match.ended", function(event)
     end
 end)
 
-btd5.events.on("round.starting", function()
+local active_round
+local previous_round
+
+btd5.events.on("round.starting", function(event)
+    if previous_round then assert(not previous_round:is_valid()) end
+    assert(event.round:is_valid() and event.round:kind() == "round")
+    active_round = event.round
     log("Lifecycle Sample observed round.starting")
 end)
 
-btd5.events.on("round.started", function()
+btd5.events.on("round.started", function(event)
+    assert(event.round:is_valid() and event.round:id() == active_round:id())
     log("Lifecycle Sample observed round.started")
 end)
 
-btd5.events.on("round.ending", function()
+btd5.events.on("round.ending", function(event)
+    assert(event.round:is_valid() and event.round:id() == active_round:id())
     log("Lifecycle Sample observed round.ending")
 end)
 
-btd5.events.on("round.ended", function()
+btd5.events.on("round.ended", function(event)
+    assert(event.round:is_valid() and event.round:id() == active_round:id())
+    previous_round = active_round
+    active_round = nil
     log("Lifecycle Sample observed round.ended")
+    local ended = event.round
+    btd5.timer.after(1, function()
+        assert(not ended:is_valid())
+        log("Lifecycle Sample confirmed ended round became stale")
+    end)
 end)
 
 btd5.events.on("cash.changing", function()

@@ -16,6 +16,7 @@ add_executable(
     ../../src/native/runtime/lives_hook.cpp
     ../../src/native/runtime/lives_write_hook.cpp
     ../../src/native/runtime/match_hook.cpp
+    ../../src/native/runtime/round_hook.cpp
     ../../src/native/runtime/native_event_hook.cpp
     ../../src/native/runtime/mod_manifest.cpp
     ../../src/native/runtime/mod_package.cpp

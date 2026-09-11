@@ -84,6 +84,9 @@ function Bloon:set_health(value) end
 ---@class BTD5MatchEvent: BTD5Event
 ---@field match BTD5GameObject
 
+---@class BTD5RoundEvent: BTD5Event
+---@field round BTD5GameObject
+
 ---@class BTD5TowerEvent: BTD5Event
 ---@field tower BTD5Tower
 

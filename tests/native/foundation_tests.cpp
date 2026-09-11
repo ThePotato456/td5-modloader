@@ -26,6 +26,7 @@
 #include "../../src/native/runtime/lives_write_hook.hpp"
 #include "../../src/native/runtime/lua_mod.hpp"
 #include "../../src/native/runtime/match_hook.hpp"
+#include "../../src/native/runtime/round_hook.hpp"
 #include "../../src/native/runtime/mod_manifest.hpp"
 #include "../../src/native/runtime/mod_package.hpp"
 #include "../../src/native/runtime/pattern.hpp"
@@ -89,6 +90,18 @@ __declspec(noinline) void __fastcall fake_game_screen_uninit(void* const instanc
     if (screen != nullptr && screen->calls != nullptr) {
         screen->calls->emplace_back("original_uninit");
     }
+}
+
+struct FakeRoundState final {
+    int started{};
+};
+
+__declspec(noinline) void __fastcall fake_round_start(
+    void* const instance,
+    void*,
+    void* const number) {
+    auto* const round = static_cast<FakeRoundState*>(instance);
+    if (round != nullptr && number != nullptr) ++round->started;
 }
 
 struct FakeTowerManager final {
@@ -959,6 +972,30 @@ TEST_CASE("match hook preserves x86 lifecycle ordering and removes cleanly", "[h
     fake_game_screen_init(&screen, nullptr, &screen_data);
     fake_game_screen_uninit(&screen, nullptr);
     REQUIRE(calls == std::vector<std::string>{"original", "original_uninit"});
+}
+
+TEST_CASE("round hook captures the native receiver before start dispatch", "[hooks]") {
+    FakeRoundState round;
+    int number = 1;
+    void* observed = nullptr;
+    btd5loader::runtime::RoundHook hook;
+    std::string error;
+    REQUIRE(hook.install(
+        reinterpret_cast<void*>(&fake_round_start),
+        [&round, &observed](void* candidate) {
+            REQUIRE(round.started == 0);
+            observed = candidate;
+        },
+        error));
+    fake_round_start(&round, nullptr, &number);
+    REQUIRE(observed == &round);
+    REQUIRE(round.started == 1);
+
+    hook.remove();
+    observed = nullptr;
+    fake_round_start(&round, nullptr, &number);
+    REQUIRE(observed == nullptr);
+    REQUIRE(round.started == 2);
 }
 
 TEST_CASE("tower placement hook fires before manager ownership", "[hooks]") {

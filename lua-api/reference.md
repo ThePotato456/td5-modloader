@@ -174,9 +174,11 @@ Assigning it on another event currently has no gameplay effect.
 Match lifecycle events add `event.match`. It is valid through `match.ending`
 and stale in `match.ended`, after native teardown returns.
 
+Round lifecycle events add `event.round`. It remains valid through
+`round.ended` and becomes stale after that callback returns.
+
 These events add no payload fields:
 
-- `round.starting`, `round.started`, `round.ending`, `round.ended`; and
 - `cash.changing`, `cash.changed`.
 
 ### Lives events

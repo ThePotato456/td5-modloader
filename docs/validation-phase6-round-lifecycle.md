@@ -2,8 +2,8 @@
 
 Date: 2026-08-29
 
-This validation covers the first complete live round-event cycle. It does not
-add mutable event fields or a live round object payload.
+This validation covers the first complete live round-event cycle. A later
+2026-09-11 integration adds a live `round` object payload.
 
 ## Binary research and symbol validation
 
@@ -56,7 +56,13 @@ no BTD5 process running. The copied game retained its supported hashes:
 
 ## Scope
 
-These boundaries wrap the game’s native round-event observer dispatch. They
-carry only the event name and are not cancellable or mutable. This validation
-does not claim round-number fields, a live round object, economy mutation,
-on-screen rendering, or an entire match played to victory/defeat.
+These boundaries wrap the game’s native round-event observer dispatch and are
+not cancellable or mutable. The later wrapper integration captures the
+fingerprinted round-start producer receiver, keeps it valid through
+`round.ended`, and invalidates its generation afterward. See
+[round-wrapper research](validation-phase6-round-wrapper-research.md).
+
+This historical run does not itself validate the new wrapper payload. The
+separate 2026-09-11 payload acceptance is recorded in
+[round-wrapper research](validation-phase6-round-wrapper-research.md). Neither
+record claims round-number fields, economy mutation, or on-screen rendering.

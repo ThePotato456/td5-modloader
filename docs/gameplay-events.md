@@ -43,9 +43,11 @@ teardown has returned. Lives events carry `player`, backed by the native state
 object used by the verified lives read and write boundaries. It remains valid
 only within the current match scene epoch.
 
-Round events do not yet carry `round`. The classified event object may be
-destroyed during native observer dispatch, so it cannot safely back both sides
-of the round lifecycle.
+Round events carry `round`, backed by the native state receiver captured before
+the round-start producer emits its event. The wrapper remains valid through
+`round.ended` and becomes stale immediately after that callback. BTD5 reuses
+the native allocation, but the registry assigns the next logical round a new
+generation.
 
 Lives events also carry `old_lives` and `new_lives`; cash events currently carry no
 value fields. Each

@@ -239,16 +239,17 @@ Initial supported build fingerprints:
 - [✓] Dispatch live match start/end events around verified game-screen initialization and teardown boundaries.
 - [✓] Define a versioned generic Lua wrapper and lifetime registry with kind tags
   for matches, rounds, players, towers, attacks, projectiles, and bloons.
-- [~] Integrate live match, round, and player wrappers with verified lifetime boundaries.
+- [✓] Integrate live match, round, and player wrappers with verified lifetime boundaries.
   - [✓] Expose the fingerprinted `CGameScreen` instance as `event.match` across match start and
     teardown, invalidating it before `match.ended` is delivered. Match entry and teardown wrapper
     assertions passed live on 2026-09-11.
   - [✓] Expose the verified lives-state object as `event.player` on `lives.changing` and
     `lives.changed`, reusing its wrapper within the current scene epoch. A live loss verified the
     same valid player identity across both boundaries on 2026-09-11.
-  - [ ] Identify a durable native round identity. The current round event object may be destroyed
-    during native dispatch and cannot safely back both pre- and post-event wrappers; see the
-    [round-wrapper research](docs/validation-phase6-round-wrapper-research.md).
+  - [✓] Capture the durable round-state receiver before its start producer dispatch, reuse it
+    through the matching end notifications, and invalidate its generation after `round.ended`;
+    see the [round-wrapper research](docs/validation-phase6-round-wrapper-research.md). All four
+    payload assertions passed in a copied-game live round on 2026-09-11.
 - [ ] Integrate live attack and projectile wrappers with verified lifetime boundaries.
 - [✓] Reject invalidated generations and scene epochs in the wrapper registry;
   invalidate live tower/bloon handles at the implemented sale, pop, leak, and scene boundaries.

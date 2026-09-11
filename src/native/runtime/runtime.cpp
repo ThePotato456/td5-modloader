@@ -31,6 +31,7 @@
 #include "logger.hpp"
 #include "lua_mod.hpp"
 #include "match_hook.hpp"
+#include "round_hook.hpp"
 #include "mod_package.hpp"
 #include "mod_lifecycle.hpp"
 #include "native_event_hook.hpp"
@@ -57,12 +58,14 @@ bool g_shutdown_started{}; // Protected by g_lifecycle_mutex.
 
 btd5loader::runtime::GameObjectRegistry g_game_objects;
 std::optional<btd5loader::runtime::GameObjectHandle> g_match_handle;
+std::optional<btd5loader::runtime::GameObjectHandle> g_round_handle;
 btd5loader::runtime::BloonActionHook g_bloon_action_hook;
 btd5loader::runtime::FrameHook g_frame_hook;
 btd5loader::runtime::ExitHook g_exit_hook;
 btd5loader::runtime::LivesHook g_lives_hook;
 btd5loader::runtime::LivesWriteHook g_lives_write_hook;
 btd5loader::runtime::MatchHook g_match_hook;
+btd5loader::runtime::RoundHook g_round_hook;
 btd5loader::runtime::NativeEventHook g_native_event_hook;
 btd5loader::runtime::TowerPlacementHook g_tower_placement_hook;
 btd5loader::runtime::TowerSaleHook g_tower_sale_hook;
@@ -109,6 +112,27 @@ void dispatch_match_event(const std::string_view name, void* const match, const 
     if (ended) g_game_objects.begin_scene();
     dispatch_game_event(name, {{"match", handle}});
     if (ended) g_match_handle.reset();
+}
+
+void begin_round(void* const round) {
+    if (g_round_handle.has_value()) (void)g_game_objects.invalidate(*g_round_handle);
+    const auto handle = g_game_objects.add(btd5loader::runtime::GameObjectKind::Round, round);
+    g_round_handle = handle.id != 0
+                         ? std::optional<btd5loader::runtime::GameObjectHandle>{handle}
+                         : std::nullopt;
+}
+
+void dispatch_round_event(const std::string_view name, const bool ended = false) {
+    if (!g_round_handle.has_value()) {
+        dispatch_game_event(name);
+        return;
+    }
+    const auto handle = *g_round_handle;
+    dispatch_game_event(name, {{"round", handle}});
+    if (ended) {
+        (void)g_game_objects.invalidate(handle);
+        g_round_handle.reset();
+    }
 }
 
 btd5loader::runtime::GameObjectHandle player_handle(void* const state) {
@@ -663,6 +687,12 @@ DWORD WINAPI initialize_worker(LPVOID) {
         [](const btd5loader::runtime::ResolvedSymbol& symbol) {
             return symbol.name == "event.round.started.vtable";
         });
+    const auto round_lifecycle_start = std::find_if(
+        resolution.resolved.begin(),
+        resolution.resolved.end(),
+        [](const btd5loader::runtime::ResolvedSymbol& symbol) {
+            return symbol.name == "round.lifecycle.start";
+        });
     const auto round_ended_vtable = std::find_if(
         resolution.resolved.begin(),
         resolution.resolved.end(),
@@ -806,6 +836,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
         game_screen_uninit == resolution.resolved.end() ||
         event_dispatch == resolution.resolved.end() ||
         round_started_vtable == resolution.resolved.end() ||
+        round_lifecycle_start == resolution.resolved.end() ||
         round_ended_vtable == resolution.resolved.end() ||
         money_updated_vtable == resolution.resolved.end() ||
         tower_spawned_vtable == resolution.resolved.end() ||
@@ -837,6 +868,8 @@ DWORD WINAPI initialize_worker(LPVOID) {
         reinterpret_cast<std::uintptr_t>(executable) + game_screen_init->relative_virtual_address);
     void* const game_screen_uninit_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + game_screen_uninit->relative_virtual_address);
+    void* const round_lifecycle_start_target = reinterpret_cast<void*>(
+        reinterpret_cast<std::uintptr_t>(executable) + round_lifecycle_start->relative_virtual_address);
     void* const event_dispatch_target = reinterpret_cast<void*>(
         reinterpret_cast<std::uintptr_t>(executable) + event_dispatch->relative_virtual_address);
     void* const round_started_vtable_target = reinterpret_cast<void*>(
@@ -908,12 +941,14 @@ DWORD WINAPI initialize_worker(LPVOID) {
                 [](void* match) {
                     g_game_objects.begin_scene();
                     g_match_handle.reset();
+                    g_round_handle.reset();
                     dispatch_match_event("match.starting", match);
                 },
                 [](void* match) { dispatch_match_event("match.started", match); },
                 [](void* match) { dispatch_match_event("match.ending", match); },
                 [](void* match) {
                     dispatch_match_event("match.ended", match, true);
+                    g_round_handle.reset();
                 },
                 error);
             if (!installed) {
@@ -922,6 +957,17 @@ DWORD WINAPI initialize_worker(LPVOID) {
             return installed;
         },
         []() { g_match_hook.remove(); }});
+    g_hooks.add({
+        "round.lifecycle.identity",
+        true,
+        [round_lifecycle_start_target]() {
+            std::string error;
+            const bool installed =
+                g_round_hook.install(round_lifecycle_start_target, &begin_round, error);
+            if (!installed) g_logger.error("hooks", error);
+            return installed;
+        },
+        []() { g_round_hook.remove(); }});
     g_hooks.add({
         "tower.placing",
         true,
@@ -1016,14 +1062,14 @@ DWORD WINAPI initialize_worker(LPVOID) {
                     {
                         round_started_vtable_target,
                         {},
-                        [](void*) { dispatch_game_event("round.starting"); },
-                        [](void*) { dispatch_game_event("round.started"); },
+                        [](void*) { dispatch_round_event("round.starting"); },
+                        [](void*) { dispatch_round_event("round.started"); },
                     },
                     {
                         round_ended_vtable_target,
                         {},
-                        [](void*) { dispatch_game_event("round.ending"); },
-                        [](void*) { dispatch_game_event("round.ended"); },
+                        [](void*) { dispatch_round_event("round.ending"); },
+                        [](void*) { dispatch_round_event("round.ended", true); },
                     },
                     {
                         money_updated_vtable_target,
@@ -1125,7 +1171,7 @@ DWORD WINAPI initialize_worker(LPVOID) {
     }
     g_logger.info(
         "runtime",
-        "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit,event.gameplay.lifecycle,"
+        "hooks_ready=render.swap_buffers,screen.game.init,screen.game.uninit,round.lifecycle.identity,event.gameplay.lifecycle,"
         "tower.placing,tower.upgrading,tower.selling,bloon.spawning,bloon.popping,bloon.leaking,"
         "player.lives.changing,player.lives.changed");
     if (!load_active_mods(detection.build->id)) {
@@ -1194,6 +1240,7 @@ static void shutdown_runtime(const bool normal_exit) {
         g_bloon_health_verified = false;
         g_game_objects.begin_scene();
         g_match_handle.reset();
+        g_round_handle.reset();
         btd5loader::runtime::shutdown_mods(g_mods);
     }
     // An explicit request can race a native detour outside its Lua dispatch.

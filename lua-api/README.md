@@ -195,10 +195,10 @@ Every handler receives one shared event table. It always contains `name` and
 | `match.started` | `match` | After game-screen initialization | No |
 | `match.ending` | `match` | Before game-screen teardown | No |
 | `match.ended` | `match` (stale) | After game-screen teardown | No |
-| `round.starting` | none | Before native round-start observer dispatch | No |
-| `round.started` | none | After native round-start observer dispatch | No |
-| `round.ending` | none | Before native round-end observer dispatch | No |
-| `round.ended` | none | After native round-end observer dispatch | No |
+| `round.starting` | `round` | Before native round-start observer dispatch | No |
+| `round.started` | `round` | After native round-start observer dispatch | No |
+| `round.ending` | `round` | Before native round-end observer dispatch | No |
+| `round.ended` | `round` | After native round-end observer dispatch | No |
 | `cash.changing` | none | Before native money-update observer dispatch | No |
 | `cash.changed` | none | After native money-update observer dispatch | No |
 | `lives.changing` | `old_lives`, `new_lives`, `player` | At the accepted native lives write | **Yes** |

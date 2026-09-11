@@ -6,6 +6,7 @@ add_library(
         lives_hook.cpp
         lives_write_hook.cpp
         match_hook.cpp
+        round_hook.cpp
         native_event_hook.cpp
         active_profile.cpp
         launch_ticket.cpp
