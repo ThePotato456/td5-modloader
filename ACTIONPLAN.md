@@ -241,8 +241,8 @@ Initial supported build fingerprints:
   for matches, rounds, players, towers, attacks, projectiles, and bloons.
 - [~] Integrate live match, round, and player wrappers with verified lifetime boundaries.
   - [✓] Expose the fingerprinted `CGameScreen` instance as `event.match` across match start and
-    teardown, invalidating it before `match.ended` is delivered. Match entry wrapper assertions
-    passed live on 2026-09-11; the new teardown assertion still needs a live exit run.
+    teardown, invalidating it before `match.ended` is delivered. Match entry and teardown wrapper
+    assertions passed live on 2026-09-11.
   - [✓] Expose the verified lives-state object as `event.player` on `lives.changing` and
     `lives.changed`, reusing its wrapper within the current scene epoch. A live loss verified the
     same valid player identity across both boundaries on 2026-09-11.

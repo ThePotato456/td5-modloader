@@ -42,8 +42,16 @@ and is invalidated before `match.ended` runs after native teardown.
 On 2026-09-11, the updated Release lifecycle sample asserted a valid `match`
 wrapper with kind `match` at `match.starting`, retained it, and confirmed the
 same wrapper ID remained valid at `match.started`. The bounded lives-loss smoke
-scenario reported `LIVE_SMOKE_PASS`. This run validates match entry; the new
-`match.ending` and stale `match.ended` assertions still require a live exit run.
+scenario reported `LIVE_SMOKE_PASS`.
+
+The first teardown attempt exposed that generic event serialization rejected an
+already-stale handle before invoking `match.ended`. The serializer was narrowed
+to allow that terminal match payload only; all other stale event payloads remain
+rejected. An automated regression fixture passed, and a repeated Release exit
+run observed `match.starting`, `match.started`, `match.ending`, and
+`match.ended` in order at `21:02:49.463Z` through `21:02:55.414Z`. Both the
+retained and terminal match wrappers were stale in the final callback, no Lua
+error was logged, and the visible harness reported `LIVE_SMOKE_PASS`.
 
 ## Interactive copied-game acceptance
 

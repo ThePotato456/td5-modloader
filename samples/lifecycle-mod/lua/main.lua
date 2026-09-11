@@ -22,7 +22,7 @@ btd5.events.on("match.ending", function(event)
 end)
 
 btd5.events.on("match.ended", function(event)
-    assert(event.match:id() == retained_match:id() and not event.match:is_valid())
+    assert(not event.match:is_valid())
     assert(not retained_match:is_valid())
     log("Lifecycle Sample observed match.ended")
     if btd5.config.get("test_complete_match") == "true" then

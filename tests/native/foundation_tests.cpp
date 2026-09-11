@@ -615,6 +615,27 @@ TEST_CASE("Lua bloon event wrappers preserve identity and reject removal", "[lua
     REQUIRE(mod.last_error().find("event payload is invalid or stale") != std::string_view::npos);
 }
 
+TEST_CASE("Lua match ended accepts only its stale terminal wrapper", "[lua][objects]") {
+    using btd5loader::runtime::GameObjectKind;
+    btd5loader::runtime::GameObjectRegistry registry;
+    int match{};
+    const auto handle = registry.add(GameObjectKind::Match, &match);
+    btd5loader::runtime::LuaModOptions options;
+    options.mod_id = "sample.match-terminal";
+    options.object_registry = &registry;
+    btd5loader::runtime::LuaMod mod(std::move(options));
+    REQUIRE(mod.load_script(R"lua(
+        btd5.events.on("match.ended", function(event)
+            assert(not event.match:is_valid())
+        end)
+    )lua", "match-terminal.lua"));
+
+    registry.begin_scene();
+    REQUIRE(mod.dispatch_event("match.ended", {{"match", handle}}).succeeded);
+    REQUIRE_FALSE(mod.dispatch_event("match.started", {{"match", handle}}).succeeded);
+    REQUIRE(mod.last_error().find("event payload is invalid or stale") != std::string_view::npos);
+}
+
 TEST_CASE("Lua tower pop count validates writes and rejects stale objects", "[lua][objects]") {
     using btd5loader::runtime::GameObjectKind;
     btd5loader::runtime::GameObjectRegistry registry;

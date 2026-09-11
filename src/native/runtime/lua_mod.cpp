@@ -276,12 +276,17 @@ LuaEventDispatchResult LuaMod::dispatch_event_impl(
         return result;
     }
     for (const auto& [name, value] : fields) {
+        const bool terminal_match_handle =
+            event_name == "match.ended" && name == "match" &&
+            std::holds_alternative<GameObjectHandle>(value) &&
+            std::get<GameObjectHandle>(value).kind == GameObjectKind::Match;
         if (name.empty() || name == "name" || name == "cancelled" ||
             (std::holds_alternative<GameObjectHandle>(value) &&
-             (options_.object_registry == nullptr ||
+             (!terminal_match_handle &&
+              (options_.object_registry == nullptr ||
               options_.object_registry->resolve(
                   std::get<GameObjectHandle>(value),
-                  std::get<GameObjectHandle>(value).kind) == nullptr))) {
+                  std::get<GameObjectHandle>(value).kind) == nullptr)))) {
             report_error("event." + std::string(event_name), "event payload is invalid or stale");
             return result;
         }
