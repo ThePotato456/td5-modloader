@@ -1,0 +1,32 @@
+{
+  "$schema": "../../schemas/mod-manifest.schema.json",
+  "id": "sample.lifecycle",
+  "name": "Lifecycle Sample",
+  "author": "BTD5 Mod Loader contributors",
+  "version": "1.0.1",
+  "entry_point": "lua/main.lua",
+  "loader_api": 1,
+  "supported_game_builds": ["steam-win32-4.8"],
+  "dependencies": [],
+  "load_order": { "before": [], "after": [] },
+  "capabilities": ["gameplay.events", "gameplay.mutate", "storage"],
+  "configuration_defaults": {
+    "greeting": "Hello from Lua",
+    "cancel_lives_loss": false,
+    "mutate_lives_loss": false,
+    "mutate_tower_pop_count": false,
+    "cancel_tower_actions": false,
+    "cancel_bloon_leaks": false,
+    "test_native_gains": false,
+    "test_complete_match": false,
+    "mutate_direct_properties": false,
+    "observe_attacks_projectiles": false,
+    "cancel_tower_placement": false,
+    "test_mutation_match": false,
+    "test_identity_cash": false,
+    "cancel_bloon_pops": false,
+    "cancel_bloon_spawns": false
+  },
+  "localization": ["localization/en-US.json"],
+  "documentation": "README.md"
+}

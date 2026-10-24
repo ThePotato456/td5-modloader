@@ -1,0 +1,79 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-x86-base",
+      "hidden": true,
+      "generator": "Visual Studio 18 2026",
+      "architecture": {
+        "value": "Win32",
+        "strategy": "set"
+      },
+      "cacheVariables": {
+        "BTD5ML_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "windows-x86-debug",
+      "displayName": "Windows x86 Debug",
+      "inherits": "windows-x86-base",
+      "binaryDir": "${sourceDir}/out/build/windows-x86-debug"
+    },
+    {
+      "name": "windows-x86-release",
+      "displayName": "Windows x86 Release",
+      "inherits": "windows-x86-base",
+      "binaryDir": "${sourceDir}/out/build/windows-x86-release"
+    },
+    {
+      "name": "windows-x86-analyze",
+      "displayName": "Windows x86 Static Analysis",
+      "inherits": "windows-x86-base",
+      "binaryDir": "${sourceDir}/out/build/windows-x86-analyze",
+      "cacheVariables": {
+        "BTD5ML_ENABLE_ANALYSIS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-x86-debug",
+      "configurePreset": "windows-x86-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-x86-release",
+      "configurePreset": "windows-x86-release",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-x86-analyze",
+      "configurePreset": "windows-x86-analyze",
+      "configuration": "Debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-x86-debug",
+      "configurePreset": "windows-x86-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-x86-release",
+      "configurePreset": "windows-x86-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
+

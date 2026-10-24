@@ -1,0 +1,16 @@
+{
+  "$schema": "../../schemas/mod-manifest.schema.json",
+  "id": "example.resource-notes",
+  "name": "Resource Notes",
+  "author": "BTD5 Mod Loader contributors",
+  "version": "1.0.0",
+  "entry_point": "lua/main.lua",
+  "loader_api": 1,
+  "supported_game_builds": ["steam-win32-4.8"],
+  "dependencies": [],
+  "load_order": { "before": [], "after": ["example.hello-world"] },
+  "capabilities": ["storage"],
+  "configuration_defaults": { "show_note": true, "delay_frames": 60 },
+  "localization": ["localization/en-US.json"],
+  "documentation": "README.md"
+}

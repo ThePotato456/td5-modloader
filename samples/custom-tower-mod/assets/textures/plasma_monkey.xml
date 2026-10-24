@@ -1,0 +1,11 @@
+<SpriteInformation>
+<FrameInformation name="plasma_monkey" texw="858" texh="192" type="png">
+<Cell name="plasma_monkey_body" x="0" y="0" w="110" h="110" ax="0" ay="0" aw="110" ah="110"/>
+<Cell name="plasma_monkey_fire_1" x="112" y="0" w="110" h="110" ax="0" ay="0" aw="110" ah="110"/>
+<Cell name="plasma_monkey_fire_2" x="224" y="0" w="110" h="110" ax="0" ay="0" aw="110" ah="110"/>
+<Cell name="plasma_monkey_storm" x="336" y="0" w="110" h="110" ax="0" ay="0" aw="110" ah="110"/>
+<Cell name="plasma_monkey_cannon" x="448" y="0" w="110" h="110" ax="0" ay="0" aw="110" ah="110"/>
+<Cell name="plasma_monkey_icon" x="560" y="0" w="97" h="106" ax="0" ay="0" aw="97" ah="106"/>
+<Cell name="plasma_monkey_avatar" x="659" y="0" w="197" h="192" ax="0" ay="0" aw="197" ah="192"/>
+</FrameInformation>
+</SpriteInformation>

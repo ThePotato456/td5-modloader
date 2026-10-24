@@ -1,0 +1,1 @@
+BTD5 Mod Loader API Debug Console resource access is working.

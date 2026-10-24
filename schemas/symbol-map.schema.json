@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://btd5modloader.local/schemas/symbol-map.schema.json",
+  "title": "BTD5 Mod Loader symbol map",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "build", "symbols"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "const": 1 },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "executable_sha256", "assets_sha256"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "executable_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "assets_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+      }
+    },
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "module", "section", "pattern", "required"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "module": { "type": "string", "minLength": 1 },
+          "section": { "type": "string", "minLength": 1 },
+          "pattern": { "type": "string", "minLength": 1 },
+          "result_offset": { "type": "integer" },
+          "required": { "type": "boolean" },
+          "prerequisites": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "validation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["offset", "pattern"],
+            "properties": {
+              "offset": { "type": "integer" },
+              "pattern": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

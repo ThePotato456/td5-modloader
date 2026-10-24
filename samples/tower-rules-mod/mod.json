@@ -1,0 +1,22 @@
+{
+  "$schema": "../../schemas/mod-manifest.schema.json",
+  "id": "example.tower-rules",
+  "name": "Tower Rules",
+  "author": "BTD5 Mod Loader contributors",
+  "version": "1.0.0",
+  "entry_point": "lua/main.lua",
+  "loader_api": 1,
+  "supported_game_builds": ["steam-win32-4.8"],
+  "dependencies": [],
+  "load_order": { "before": [], "after": [] },
+  "capabilities": ["gameplay.events", "gameplay.mutate"],
+  "configuration_defaults": {
+    "block_first_purchase": false,
+    "block_first_upgrade": false,
+    "block_first_sale": false,
+    "override_properties": false,
+    "pop_count": 123,
+    "sell_price": 777
+  },
+  "documentation": "README.md"
+}

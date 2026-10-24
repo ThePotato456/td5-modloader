@@ -1,0 +1,1514 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using BTD5ModLoader.Manager.Core;
+using Microsoft.Win32;
+
+namespace BTD5ModLoader.Manager;
+
+internal sealed partial class MainWindow : Window
+{
+    private const string SupportedBuildId = "steam-win32-4.8";
+    private readonly string managerStateRoot = ManagerStateDirectory;
+    private IReadOnlyList<ModPackageInfo> installedPackages = [];
+    private IReadOnlyList<ModProfile> profilesSnapshot = [];
+    private ModProfile? selectedProfile;
+    private string? selectedPackagePath;
+    private LoaderHealthResult? loaderHealth;
+    private ProfileValidationResult? currentProfileValidation;
+    private ReadinessProblem? readinessProblem;
+    private bool launchReady;
+    private bool refreshingProfileSelection;
+    private bool windowLoaded;
+    private bool refreshingActivation;
+    private bool refreshingLogs;
+    private bool clearingLogs;
+    private bool runtimeLogVisible;
+    private int runtimeLogGeneration;
+    private string readinessSummary = "Preparing manager state";
+    private readonly DispatcherTimer runtimeLogTimer;
+    private static readonly JsonSerializerOptions ProfileJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+    private static string ArtifactDirectory
+    {
+        get
+        {
+            var developerOverride = Environment.GetEnvironmentVariable("BTD5ML_ARTIFACT_DIRECTORY");
+            return string.IsNullOrWhiteSpace(developerOverride)
+                ? AppContext.BaseDirectory
+                : Path.GetFullPath(developerOverride);
+        }
+    }
+    private static string ManagerStateDirectory
+    {
+        get
+        {
+            var developerOverride = Environment.GetEnvironmentVariable("BTD5ML_STATE_DIRECTORY");
+            return string.IsNullOrWhiteSpace(developerOverride)
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "BTD5ModLoader")
+                : Path.GetFullPath(developerOverride);
+        }
+    }
+    private static bool AutomaticGameDiscoveryDisabled => string.Equals(
+        Environment.GetEnvironmentVariable("BTD5ML_DISABLE_GAME_DISCOVERY"),
+        "1",
+        StringComparison.Ordinal);
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        runtimeLogTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        runtimeLogTimer.Tick += RuntimeLogTimer_Tick;
+    }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            WindowState = WindowState == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+            return;
+        }
+        DragMove();
+    }
+
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void Maximize_Click(object sender, RoutedEventArgs e) => WindowState =
+        WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private async void Options_Click(object sender, RoutedEventArgs e)
+    {
+        OptionsOverlay.Visibility = Visibility.Visible;
+        await RefreshLoaderHealthAsync().ConfigureAwait(true);
+        await RefreshReadinessAsync().ConfigureAwait(true);
+        if (runtimeLogVisible)
+        {
+            runtimeLogTimer.Start();
+            await RefreshLogsAsync().ConfigureAwait(true);
+        }
+    }
+
+    private void CloseOptions_Click(object sender, RoutedEventArgs e) => CloseOptions();
+
+    private void CloseOptions()
+    {
+        runtimeLogTimer.Stop();
+        OptionsOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || OptionsOverlay.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+        CloseOptions();
+        e.Handled = true;
+    }
+
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        VersionText.Text = $"v{ProductInfo.Version}";
+        string? migrationWarning = null;
+        try
+        {
+            var migration = await new ManagerStateMigrationService(managerStateRoot)
+                .MigrateAsync().ConfigureAwait(true);
+            migrationWarning = migration.Warning;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or
+            UnauthorizedAccessException or JsonException)
+        {
+            migrationWarning = "Existing manager state migration was not completed. " +
+                "Original files were preserved. " + exception.Message;
+        }
+        var loaded = await new ManagerSettingsService(managerStateRoot)
+            .ReconcileSelectionsAsync().ConfigureAwait(true);
+        if (!string.IsNullOrWhiteSpace(loaded.Settings.GameDirectory) &&
+            Directory.Exists(loaded.Settings.GameDirectory))
+        {
+            GameDirectoryText.Text = loaded.Settings.GameDirectory;
+        }
+        else if (loaded.Settings.GameDirectory is null && !loaded.Recovered &&
+                 !AutomaticGameDiscoveryDisabled)
+        {
+            TryDiscoverGame();
+        }
+        await RefreshManagerStateAsync(loaded.Settings.CurrentProfile).ConfigureAwait(true);
+        await RefreshLoaderHealthAsync().ConfigureAwait(true);
+        await RefreshReadinessAsync().ConfigureAwait(true);
+        if (loaded.Recovered)
+        {
+            StatusText.Text = loaded.Warning;
+        }
+        else if (!string.IsNullOrWhiteSpace(migrationWarning))
+        {
+            StatusText.Text = migrationWarning;
+        }
+        windowLoaded = true;
+    }
+
+    private async void Window_Activated(object? sender, EventArgs e)
+    {
+        if (!windowLoaded || refreshingActivation)
+        {
+            return;
+        }
+        refreshingActivation = true;
+        try
+        {
+            await RefreshManagerStateAsync(selectedProfile?.Name).ConfigureAwait(true);
+            await RefreshReadinessAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or
+            InvalidOperationException or UnauthorizedAccessException or JsonException)
+        {
+            StatusText.Text = "Could not refresh the Mods folder: " + exception.Message;
+        }
+        finally
+        {
+            refreshingActivation = false;
+        }
+    }
+
+    private async void ChooseGameDirectory_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = "Choose the BloonsTD5 game copy" };
+        if (dialog.ShowDialog(this) == true)
+        {
+            GameDirectoryText.Text = dialog.FolderName;
+            await new ManagerSettingsService(managerStateRoot)
+                .SetGameDirectoryAsync(dialog.FolderName).ConfigureAwait(true);
+            StatusText.Text = "Game copy saved.";
+            await RefreshLoaderHealthAsync().ConfigureAwait(true);
+            await RefreshReadinessAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async void LoaderPrimary_Click(object sender, RoutedEventArgs e)
+    {
+        if (loaderHealth is null)
+        {
+            await RefreshLoaderHealthAsync().ConfigureAwait(true);
+            await RefreshReadinessAsync().ConfigureAwait(true);
+            return;
+        }
+        if (loaderHealth.State == LoaderHealthState.NotInstalled)
+        {
+            await RunLoaderOperationAsync(service => service.InstallAsync(
+                GameDirectoryText.Text, ArtifactDirectory)).ConfigureAwait(true);
+        }
+        else if (loaderHealth.State == LoaderHealthState.Repairable)
+        {
+            await RunLoaderOperationAsync(service => service.RepairAsync(
+                GameDirectoryText.Text, ArtifactDirectory)).ConfigureAwait(true);
+        }
+        else if (loaderHealth.State == LoaderHealthState.VersionMismatch)
+        {
+            await ReinstallBundledLoaderAsync().ConfigureAwait(true);
+        }
+        else
+        {
+            await RefreshLoaderHealthAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async void UninstallLoader_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this,
+                "Safely uninstall the loader? Only unchanged loader-owned files will be removed.",
+                "Uninstall loader", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+        await RunLoaderOperationAsync(service => service.UninstallAsync(GameDirectoryText.Text))
+            .ConfigureAwait(true);
+    }
+
+    private async Task RunLoaderOperationAsync(
+        Func<LoaderInstallationService, Task<InstallationResult>> operation)
+    {
+        if (string.IsNullOrWhiteSpace(GameDirectoryText.Text))
+        {
+            StatusText.Text = "Choose a game copy first.";
+            return;
+        }
+        try
+        {
+            StatusText.Text = "Working…";
+            var result = await operation(new LoaderInstallationService(managerStateRoot))
+                .ConfigureAwait(true);
+            LoaderStatusText.Text = result.Message + FormatSuffix(result.Conflicts);
+            StatusText.Text = LoaderStatusText.Text;
+            await RefreshLoaderHealthAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            StatusText.Text = "Loader operation failed: " + exception.Message;
+        }
+    }
+
+    private async Task ReinstallBundledLoaderAsync()
+    {
+        if (MessageBox.Show(this,
+                $"Replace loader {loaderHealth?.InstalledVersion ?? "unknown"} with the bundled " +
+                $"version {ProductInfo.Version}? Unchanged loader-owned files will be replaced.",
+                "Update loader", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var service = new LoaderInstallationService(managerStateRoot);
+        try
+        {
+            StatusText.Text = "Updating loader…";
+            var uninstall = await service.UninstallAsync(GameDirectoryText.Text).ConfigureAwait(true);
+            if (!uninstall.Success)
+            {
+                StatusText.Text = uninstall.Message + FormatSuffix(uninstall.Conflicts);
+                await RefreshLoaderHealthAsync().ConfigureAwait(true);
+                return;
+            }
+
+            var install = await service.InstallAsync(GameDirectoryText.Text, ArtifactDirectory)
+                .ConfigureAwait(true);
+            StatusText.Text = install.Success
+                ? $"Loader updated to {ProductInfo.Version}."
+                : "The old loader was removed, but the bundled loader could not be installed. " +
+                  install.Message + FormatSuffix(install.Conflicts);
+            await RefreshLoaderHealthAsync().ConfigureAwait(true);
+            await RefreshReadinessAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+            InvalidDataException)
+        {
+            StatusText.Text = "Loader update failed safely: " + exception.Message;
+            await RefreshLoaderHealthAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async Task RefreshLoaderHealthAsync()
+    {
+        if (string.IsNullOrWhiteSpace(GameDirectoryText.Text))
+        {
+            loaderHealth = null;
+            LoaderStatusText.Text = "No game copy selected";
+            LoaderVersionText.Text = $"Bundled loader: {ProductInfo.Version}";
+            LoaderPrimaryButton.Content = "Choose game";
+            HealthIndicator.Background = Brushes.Goldenrod;
+            UpdateActionState();
+            return;
+        }
+        try
+        {
+            loaderHealth = await new LoaderInstallationService(managerStateRoot)
+                .InspectAsync(GameDirectoryText.Text, ArtifactDirectory).ConfigureAwait(true);
+            LoaderStatusText.Text = loaderHealth.State == LoaderHealthState.Healthy
+                ? "Game Detected"
+                : loaderHealth.Message;
+            LoaderVersionText.Text = loaderHealth.InstalledVersion is null
+                ? $"Bundled loader: {ProductInfo.Version} • not installed"
+                : $"Installed loader: {loaderHealth.InstalledVersion} • bundled: {ProductInfo.Version}";
+            LoaderPrimaryButton.Content = loaderHealth.State switch
+            {
+                LoaderHealthState.NotInstalled => "Install loader",
+                LoaderHealthState.Repairable => "Repair loader",
+                LoaderHealthState.VersionMismatch => "Update loader",
+                _ => "Recheck"
+            };
+            HealthIndicator.Background = loaderHealth.State switch
+            {
+                LoaderHealthState.Healthy => Brushes.LimeGreen,
+                LoaderHealthState.NotInstalled or LoaderHealthState.Repairable or
+                    LoaderHealthState.VersionMismatch => Brushes.Goldenrod,
+                _ => Brushes.IndianRed
+            };
+            UpdateActionState();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            loaderHealth = null;
+            LoaderStatusText.Text = exception.Message;
+            LoaderVersionText.Text = $"Bundled loader: {ProductInfo.Version} • check failed";
+            LoaderPrimaryButton.Content = "Recheck";
+            HealthIndicator.Background = Brushes.IndianRed;
+            UpdateActionState();
+        }
+    }
+
+    private async void ChoosePackage_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            CheckFileExists = true,
+            DefaultExt = ".btd5mod",
+            Filter = "BTD5 mod packages (*.btd5mod)|*.btd5mod",
+            Multiselect = false,
+            Title = "Choose a BTD5 mod package"
+        };
+        if (dialog.ShowDialog(this) == true)
+        {
+            await SelectPackageAsync(dialog.FileName).ConfigureAwait(true);
+            if (selectedPackagePath is not null)
+            {
+                await InstallSelectedPackageAsync().ConfigureAwait(true);
+            }
+        }
+    }
+
+    private void PackageDropArea_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = TryGetSinglePackage(e.Data, out _) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void PackageDropArea_Drop(object sender, DragEventArgs e)
+    {
+        if (TryGetSinglePackage(e.Data, out var packagePath))
+        {
+            await SelectPackageAsync(packagePath).ConfigureAwait(true);
+            if (selectedPackagePath is not null)
+            {
+                await InstallSelectedPackageAsync().ConfigureAwait(true);
+            }
+        }
+    }
+
+    private async Task SelectPackageAsync(string packagePath)
+    {
+        selectedPackagePath = null;
+        InstallPackageButton.IsEnabled = false;
+        var package = await ModPackageService.InspectAsync(packagePath, SupportedBuildId)
+            .ConfigureAwait(true);
+        if (package.Valid)
+        {
+            // Runs the Lua script as the loader would, checking custom tower art against the selected game.
+            var script = await ScriptValidationService.ValidateAsync(packagePath, GameDirectoryText.Text)
+                .ConfigureAwait(true);
+            if (!script.Valid)
+            {
+                package = package with { Valid = false, Errors = [.. package.Errors, .. script.Errors] };
+            }
+        }
+        PackageDetailsText.Text = package.Valid
+            ? $"{package.Name} {package.Version} by {package.Author}\nID: {package.Id}\n" +
+              $"Dependencies: {FormatDependencies(package)}\nCapabilities: {FormatItems(package.Capabilities)}"
+            : string.Join(Environment.NewLine, package.Errors.Select(error => "• " + error));
+        if (package.Valid)
+        {
+            selectedPackagePath = packagePath;
+            InstallPackageButton.IsEnabled = true;
+        }
+        StatusText.Text = package.Valid ? "Package is ready to install." : "Package validation failed.";
+    }
+
+    private async void InstallPackage_Click(object sender, RoutedEventArgs e)
+    {
+        await InstallSelectedPackageAsync().ConfigureAwait(true);
+    }
+
+    private async Task InstallSelectedPackageAsync()
+    {
+        if (selectedPackagePath is null)
+        {
+            return;
+        }
+        var result = await ModPackageService.InstallAsync(
+            selectedPackagePath, managerStateRoot, SupportedBuildId).ConfigureAwait(true);
+        StatusText.Text = result.Message;
+        await RefreshManagerStateAsync().ConfigureAwait(true);
+    }
+
+    private void PackageList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SelectedInstalledPackage() is not { } package)
+        {
+            SelectedModTitleText.Text = "Select a mod";
+            SelectedModAuthorText.Text = "Choose a package from the Mods panel";
+            SelectedModDescriptionText.Text = "Installed package details and profile status appear here.";
+            SelectedModIcon.Source = AssetImage("monkey_modded.png");
+            PackageDetailsText.Text = "Select a mod to see its package and profile state.";
+            UpdateActionState();
+            return;
+        }
+        var profileEntry = selectedProfile?.Mods.SingleOrDefault(mod =>
+            string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
+        var selectedVersion = profileEntry is not null && string.Equals(
+            profileEntry.Version, package.Version, StringComparison.Ordinal);
+        var profileState = FormatPackageDetailsStatus(package, profileEntry, selectedVersion);
+        SelectedModTitleText.Text = package.Name ?? package.Id ?? "Invalid package";
+        SelectedModAuthorText.Text = package.Valid ? $"by {package.Author}" : "Package validation failed";
+        SelectedModDescriptionText.Text = profileState;
+        SelectedModIcon.Source = AssetImage(IconNameForPackage(package));
+        PackageDetailsText.Text = package.Valid
+            ? $"Package version                         {package.Version}\n" +
+              $"Selected version                       {profileEntry?.Version ?? "None"}\n" +
+              $"Profile order                             " +
+              $"{(profileEntry is null ? "None" : (profileEntry.Order + 1).ToString(CultureInfo.InvariantCulture))}\n" +
+              $"Author                                       {package.Author}\n" +
+              $"Dependencies                           {FormatDependencies(package)}\n" +
+              $"Settings                                    " +
+              $"{(package.ConfigurationDefaults.Count == 0 ? "None" : package.ConfigurationDefaults.Count)}\n\n" +
+              $"ID: {package.Id}\nCapabilities: {FormatItems(package.Capabilities)}"
+            : string.Join(Environment.NewLine, package.Errors);
+        UpdateActionState();
+    }
+
+    private void ProfilePackagesList_PreviewMouseRightButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        var current = e.OriginalSource as DependencyObject;
+        while (current is not null && current is not ListBoxItem)
+        {
+            current = VisualTreeHelper.GetParent(current);
+        }
+        if (current is ListBoxItem item)
+        {
+            ProfilePackagesList.SelectedItem = item.DataContext;
+        }
+    }
+
+    private async void ModToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ModListItem item })
+        {
+            return;
+        }
+        ProfilePackagesList.SelectedItem = item;
+        if (selectedProfile is null || item.Package is not { Id: not null, Version: not null })
+        {
+            StatusText.Text = "Select or create a profile before enabling mods.";
+            return;
+        }
+        await ApplyProfileChangeAsync(new ProfileModService(managerStateRoot, SupportedBuildId)
+            .ToggleVersionAsync(selectedProfile.Name, item.Package.Id, item.Package.Version)).ConfigureAwait(true);
+    }
+
+    private void BrowseModsFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var packagesRoot = Path.Combine(managerStateRoot, "packages");
+        Directory.CreateDirectory(packagesRoot);
+        StatusText.Text = "Copy .btd5mod files into this folder, then return to the manager.";
+        Process.Start(new ProcessStartInfo(packagesRoot) { UseShellExecute = true });
+    }
+
+    private async void UninstallPackage_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedInstalledPackage() is not { Id: not null, Version: not null } package)
+        {
+            StatusText.Text = "Select an installed package first.";
+            return;
+        }
+        if (MessageBox.Show(this,
+                $"Uninstall {package.Name} {package.Version}? Profiles that still reference it will block this operation.",
+                "Uninstall mod package", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+        var result = await new ProfileModService(managerStateRoot, SupportedBuildId)
+            .UninstallPackageAsync(package.Id, package.Version).ConfigureAwait(true);
+        StatusText.Text = result.Message + FormatSuffix(result.BlockingProfiles);
+        await RefreshManagerStateAsync().ConfigureAwait(true);
+    }
+
+    private async void CreateProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var name = PromptWindow.Ask(this, "Create profile", "Profile name", "New Profile");
+        if (name is null)
+        {
+            return;
+        }
+        await CreateProfileAsync(name).ConfigureAwait(true);
+    }
+
+    private async void CreateProfileQuick_Click(object sender, RoutedEventArgs e)
+    {
+        var name = PromptWindow.Ask(this, "Create profile", "Profile name", "New Profile");
+        if (name is not null)
+        {
+            await CreateProfileAsync(name).ConfigureAwait(true);
+        }
+    }
+
+    private async Task CreateProfileAsync(string name)
+    {
+        try
+        {
+            selectedProfile = await new ProfileService(managerStateRoot)
+                .CreateAsync(name).ConfigureAwait(true);
+            await new ManagerSettingsService(managerStateRoot)
+                .SetCurrentProfileAsync(selectedProfile.Name).ConfigureAwait(true);
+            await RefreshManagerStateAsync(selectedProfile.Name).ConfigureAwait(true);
+            StatusText.Text = "Profile created.";
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            StatusText.Text = exception.Message;
+        }
+    }
+
+    private async void ProfilesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (refreshingProfileSelection)
+        {
+            return;
+        }
+        if (ProfilesList.SelectedItem is ProfileListItem item)
+        {
+            var name = item.Name;
+            selectedProfile = await new ProfileService(managerStateRoot).LoadAsync(name).ConfigureAwait(true);
+            currentProfileValidation = null;
+            await new ManagerSettingsService(managerStateRoot)
+                .SetCurrentProfileAsync(name).ConfigureAwait(true);
+            RefreshProfileMods();
+            RefreshPackageLabels();
+            RefreshProfileLabels(name);
+            await RefreshReadinessAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async void ExportProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedProfile is null)
+        {
+            StatusText.Text = "Select a profile to export.";
+            return;
+        }
+        var dialog = new SaveFileDialog
+        {
+            AddExtension = true,
+            DefaultExt = ".json",
+            Filter = "BTD5 Mod Loader profile (*.json)|*.json",
+            FileName = selectedProfile.Name + ".json",
+            Title = "Export profile"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+        await File.WriteAllTextAsync(
+            dialog.FileName,
+            JsonSerializer.Serialize(selectedProfile, ProfileJsonOptions)).ConfigureAwait(true);
+        StatusText.Text = "Profile exported.";
+    }
+
+    private async void ImportProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            CheckFileExists = true,
+            DefaultExt = ".json",
+            Filter = "BTD5 Mod Loader profile (*.json)|*.json",
+            Multiselect = false,
+            Title = "Import profile"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+        try
+        {
+            using var stream = File.OpenRead(dialog.FileName);
+            var imported = await JsonSerializer.DeserializeAsync<ModProfile>(
+                stream, ProfileJsonOptions).ConfigureAwait(true) ??
+                throw new InvalidDataException("The profile file is empty.");
+            var name = PromptWindow.Ask(this, "Import profile", "Profile name", imported.Name);
+            if (name is null)
+            {
+                return;
+            }
+            var profiles = new ProfileService(managerStateRoot);
+            await profiles.CreateAsync(name).ConfigureAwait(true);
+            selectedProfile = await profiles.SaveModsAsync(name, imported.Mods).ConfigureAwait(true);
+            await new ManagerSettingsService(managerStateRoot)
+                .SetCurrentProfileAsync(name).ConfigureAwait(true);
+            await RefreshManagerStateAsync(name).ConfigureAwait(true);
+            StatusText.Text = "Profile imported and selected.";
+        }
+        catch (Exception exception) when (exception is JsonException or IOException or
+                                            InvalidDataException or ArgumentException or InvalidOperationException)
+        {
+            StatusText.Text = "Profile import failed: " + exception.Message;
+        }
+    }
+
+    private async void ConfigureMod_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedProfile is null || SelectedInstalledPackage() is not { Id: not null } package)
+        {
+            StatusText.Text = "Select a current profile and mod first.";
+            return;
+        }
+        var entry = selectedProfile.Mods.SingleOrDefault(mod =>
+            string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
+        if (entry is null)
+        {
+            StatusText.Text = "Add the mod to the current profile before configuring it.";
+            return;
+        }
+        if (!string.Equals(entry.Version, package.Version, StringComparison.Ordinal))
+        {
+            StatusText.Text = $"The current profile uses {entry.Version}. Select that version to configure it.";
+            return;
+        }
+        if (package.ConfigurationDefaults.Count == 0)
+        {
+            StatusText.Text = "This mod does not define any configurable settings.";
+            return;
+        }
+        var editor = new ModConfigurationWindow(
+            package.Name ?? package.Id, entry.Configuration, package.ConfigurationDefaults)
+        {
+            Owner = this
+        };
+        if (editor.ShowDialog() == true)
+        {
+            await ApplyProfileChangeAsync(new ProfileModService(managerStateRoot, SupportedBuildId)
+                .UpdateConfigurationAsync(selectedProfile.Name, entry.Id, editor.Configuration))
+                .ConfigureAwait(true);
+        }
+    }
+
+    private async void RenameProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedProfile is null)
+        {
+            StatusText.Text = "Select a profile first.";
+            return;
+        }
+        var newName = PromptWindow.Ask(this, "Rename profile", "New profile name", selectedProfile.Name);
+        if (newName is null || string.Equals(newName, selectedProfile.Name, StringComparison.Ordinal))
+        {
+            return;
+        }
+        try
+        {
+            selectedProfile = await new ProfileService(managerStateRoot)
+                .RenameAsync(selectedProfile.Name, newName).ConfigureAwait(true);
+            await new ManagerSettingsService(managerStateRoot)
+                .SetCurrentProfileAsync(newName).ConfigureAwait(true);
+            await RefreshManagerStateAsync(newName).ConfigureAwait(true);
+            StatusText.Text = "Profile renamed.";
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            StatusText.Text = exception.Message;
+        }
+    }
+
+    private async void DuplicateProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedProfile is null)
+        {
+            StatusText.Text = "Select a profile first.";
+            return;
+        }
+        var copyName = PromptWindow.Ask(
+            this, "Duplicate profile", "Name for the copy", selectedProfile.Name + " Copy");
+        if (copyName is null)
+        {
+            return;
+        }
+        try
+        {
+            selectedProfile = await new ProfileService(managerStateRoot)
+                .DuplicateAsync(selectedProfile.Name, copyName).ConfigureAwait(true);
+            await new ManagerSettingsService(managerStateRoot)
+                .SetCurrentProfileAsync(copyName).ConfigureAwait(true);
+            await RefreshManagerStateAsync(copyName).ConfigureAwait(true);
+            StatusText.Text = "Profile duplicated and selected.";
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            StatusText.Text = exception.Message;
+        }
+    }
+
+    private async void DeleteProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedProfile is null)
+        {
+            StatusText.Text = "Select a profile first.";
+            return;
+        }
+        if (MessageBox.Show(this, $"Delete profile '{selectedProfile.Name}'? Installed mod packages are kept.",
+                "Delete profile", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+        await new ProfileService(managerStateRoot).DeleteAsync(selectedProfile.Name).ConfigureAwait(true);
+        selectedProfile = null;
+        await new ManagerSettingsService(managerStateRoot).SetCurrentProfileAsync(null).ConfigureAwait(true);
+        await RefreshManagerStateAsync().ConfigureAwait(true);
+        await RefreshReadinessAsync().ConfigureAwait(true);
+        StatusText.Text = "Profile deleted. Choose another profile explicitly.";
+    }
+
+    private async void MoveSelectedPackageEarlier_Click(object sender, RoutedEventArgs e) =>
+        await MoveSelectedPackageAsync(-1).ConfigureAwait(true);
+
+    private async void MoveSelectedPackageLater_Click(object sender, RoutedEventArgs e) =>
+        await MoveSelectedPackageAsync(1).ConfigureAwait(true);
+
+    private async Task MoveSelectedPackageAsync(int offset)
+    {
+        if (selectedProfile is null || SelectedInstalledPackage() is not { Id: not null } package)
+        {
+            StatusText.Text = "Select a profile mod first.";
+            return;
+        }
+        var ordered = selectedProfile.Mods.OrderBy(mod => mod.Order).ThenBy(mod => mod.Id, StringComparer.Ordinal)
+            .ToArray();
+        var index = Array.FindIndex(ordered, mod => string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
+        if (index < 0)
+        {
+            StatusText.Text = "Add the mod to the current profile before changing its order.";
+            return;
+        }
+        if (!string.Equals(ordered[index].Version, package.Version, StringComparison.Ordinal))
+        {
+            StatusText.Text = $"The current profile uses {ordered[index].Version}. " +
+                "Select that version to change its order.";
+            return;
+        }
+        var target = Math.Clamp(index + offset, 0, ordered.Length - 1);
+        if (target == index)
+        {
+            StatusText.Text = offset < 0
+                ? "The mod is already first in profile order."
+                : "The mod is already last in profile order.";
+            return;
+        }
+        await ApplyProfileChangeAsync(new ProfileModService(managerStateRoot, SupportedBuildId)
+            .MoveAsync(selectedProfile.Name, package.Id, target)).ConfigureAwait(true);
+    }
+
+    private async void RemoveSelectedPackageFromProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedProfile is null || SelectedInstalledPackage() is not { Id: not null } package)
+        {
+            StatusText.Text = "Select a profile and mod first.";
+            return;
+        }
+        await ApplyProfileChangeAsync(new ProfileModService(managerStateRoot, SupportedBuildId)
+            .RemoveAsync(selectedProfile.Name, package.Id)).ConfigureAwait(true);
+    }
+
+    private async Task ApplyProfileChangeAsync(Task<ProfileChangeResult> operation)
+    {
+        var result = await operation.ConfigureAwait(true);
+        selectedProfile = result.Profile;
+        currentProfileValidation = result.Success ? result.Validation : null;
+        StatusText.Text = result.Success ? result.Message :
+            result.Message + " " + string.Join(" ", result.Validation.Errors);
+        RefreshProfileMods();
+        RefreshPackageLabels();
+        if (selectedProfile is not null)
+        {
+            profilesSnapshot = profilesSnapshot.Select(profile =>
+                string.Equals(profile.Name, selectedProfile.Name, StringComparison.OrdinalIgnoreCase)
+                    ? selectedProfile
+                    : profile).ToArray();
+            RefreshProfileLabels(selectedProfile.Name);
+        }
+        await RefreshReadinessAsync().ConfigureAwait(true);
+    }
+
+    private async void RefreshStatus_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshLoaderHealthAsync().ConfigureAwait(true);
+        await RefreshReadinessAsync(true).ConfigureAwait(true);
+    }
+
+    private void OfflineRiskCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (IsInitialized)
+        {
+            StatusText.Text = OfflineRiskCheck.IsChecked == true
+                ? "Steam Offline Mode acknowledged. Modded launch is available when all checks pass."
+                : "Modded launch is blocked until Steam Offline Mode is acknowledged.";
+            UpdateActionState();
+        }
+    }
+
+    private async void LaunchModded_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetLaunchInputs(out var gameDirectory, out var profileName))
+        {
+            return;
+        }
+        await RefreshLoaderHealthAsync().ConfigureAwait(true);
+        await RefreshReadinessAsync(true).ConfigureAwait(true);
+        if (!launchReady)
+        {
+            return;
+        }
+        if (OfflineRiskCheck.IsChecked != true)
+        {
+            OptionsOverlay.Visibility = Visibility.Visible;
+            if (runtimeLogVisible)
+            {
+                runtimeLogTimer.Start();
+            }
+            OfflineRiskCheck.Focus();
+            StatusText.Text = "Modded launch is blocked: acknowledge Steam Offline Mode above.";
+            return;
+        }
+        var result = await new GameLaunchService(managerStateRoot).LaunchModdedAsync(
+            gameDirectory, profileName, OfflineRiskCheck.IsChecked == true).ConfigureAwait(true);
+        StatusText.Text = result.Message + FormatSuffix(result.Errors);
+    }
+
+    private async void LaunchVanilla_Click(object sender, RoutedEventArgs e)
+    {
+        var result = await new GameLaunchService(managerStateRoot)
+            .LaunchVanillaAsync(selectedProfile?.Name).ConfigureAwait(true);
+        StatusText.Text = result.Message + FormatSuffix(result.Errors);
+    }
+
+    private async void RefreshLogs_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshLogsAsync().ConfigureAwait(true);
+    }
+
+    private async void ToggleRuntimeLog_Click(object sender, RoutedEventArgs e)
+    {
+        runtimeLogGeneration++;
+        runtimeLogVisible = !runtimeLogVisible;
+        RuntimeLogText.Visibility = runtimeLogVisible ? Visibility.Visible : Visibility.Collapsed;
+        RuntimeLogStatePanel.Visibility = runtimeLogVisible ? Visibility.Visible : Visibility.Collapsed;
+        RuntimeLogRow.Height = runtimeLogVisible ? new GridLength(1, GridUnitType.Star) : new GridLength(58);
+        ToggleRuntimeLogButton.Content = runtimeLogVisible ? "Hide console" : "Show console";
+        RefreshRuntimeLogButton.IsEnabled = runtimeLogVisible;
+
+        if (!runtimeLogVisible)
+        {
+            runtimeLogTimer.Stop();
+            return;
+        }
+
+        runtimeLogTimer.Start();
+        await RefreshLogsAsync().ConfigureAwait(true);
+    }
+
+    private async void ClearRuntimeLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this,
+                "Clear the runtime log? Export diagnostics first if you need to preserve it.",
+                "Clear runtime log", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            clearingLogs = true;
+            runtimeLogGeneration++;
+            await new GameLaunchService(managerStateRoot).ClearRuntimeLogAsync().ConfigureAwait(true);
+            RuntimeLogText.Text = "Waiting for runtime output…";
+            StatusText.Text = "Runtime log cleared.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            StatusText.Text = "The runtime log could not be cleared: " + exception.Message;
+        }
+        finally
+        {
+            clearingLogs = false;
+        }
+    }
+
+    private async Task RefreshLogsAsync()
+    {
+        if (refreshingLogs || clearingLogs || !runtimeLogVisible)
+        {
+            return;
+        }
+        refreshingLogs = true;
+        var generation = runtimeLogGeneration;
+        try
+        {
+            var lines = await new GameLaunchService(managerStateRoot).ReadRuntimeLogAsync()
+                .ConfigureAwait(true);
+            if (generation != runtimeLogGeneration || !runtimeLogVisible) return;
+            var updatedText = lines.Count == 0
+                ? "Waiting for runtime output…"
+                : string.Join(Environment.NewLine, lines.Select(FormatRuntimeLogLine));
+            if (!string.Equals(RuntimeLogText.Text, updatedText, StringComparison.Ordinal))
+            {
+                var followTail = RuntimeLogText.Text.Length == 0 ||
+                    RuntimeLogText.VerticalOffset >=
+                    RuntimeLogText.ExtentHeight - RuntimeLogText.ViewportHeight - 8;
+                RuntimeLogText.Text = updatedText;
+                if (followTail)
+                {
+                    RuntimeLogText.ScrollToEnd();
+                }
+            }
+            RuntimeLogLiveIndicator.Fill = new SolidColorBrush(Color.FromRgb(55, 201, 47));
+            RuntimeLogLiveText.Foreground = new SolidColorBrush(Color.FromRgb(125, 222, 121));
+            RuntimeLogLiveText.Text = "LIVE";
+        }
+        catch (IOException)
+        {
+            if (generation != runtimeLogGeneration || !runtimeLogVisible) return;
+            RuntimeLogLiveIndicator.Fill = Brushes.Goldenrod;
+            RuntimeLogLiveText.Foreground = Brushes.Goldenrod;
+            RuntimeLogLiveText.Text = "WAITING";
+        }
+        finally
+        {
+            refreshingLogs = false;
+        }
+    }
+
+    private async void RuntimeLogTimer_Tick(object? sender, EventArgs e) =>
+        await RefreshLogsAsync().ConfigureAwait(true);
+
+    private static string FormatRuntimeLogLine(string line)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(line);
+            var root = document.RootElement;
+            var timestamp = root.TryGetProperty("timestamp", out var timestampElement) &&
+                DateTimeOffset.TryParse(timestampElement.GetString(), out var parsedTimestamp)
+                    ? parsedTimestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture)
+                    : "--:--:--";
+            var level = root.TryGetProperty("level", out var levelElement)
+                ? levelElement.GetString()?.ToUpperInvariant() ?? "LOG"
+                : "LOG";
+            var component = root.TryGetProperty("component", out var componentElement)
+                ? componentElement.GetString() ?? "runtime"
+                : "runtime";
+            var message = root.TryGetProperty("message", out var messageElement)
+                ? messageElement.GetString() ?? string.Empty
+                : line;
+            return $"[{timestamp}] [{level}] {component}  {message}";
+        }
+        catch (JsonException)
+        {
+            return line;
+        }
+    }
+
+    private async void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(GameDirectoryText.Text))
+        {
+            StatusText.Text = "Choose a game copy first.";
+            return;
+        }
+        var dialog = new SaveFileDialog
+        {
+            AddExtension = true,
+            DefaultExt = ".zip",
+            Filter = "ZIP archive (*.zip)|*.zip",
+            FileName = "BTD5ModLoader-diagnostics.zip",
+            Title = "Export loader diagnostics"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+        var result = await new DiagnosticsService(managerStateRoot).ExportAsync(
+            dialog.FileName, GameDirectoryText.Text, selectedProfile?.Name).ConfigureAwait(true);
+        StatusText.Text = result.Message;
+    }
+
+    private async Task RefreshManagerStateAsync(string? selectProfile = null)
+    {
+        currentProfileValidation = null;
+        installedPackages = await ModPackageService.ListInstalledAsync(
+            managerStateRoot, SupportedBuildId).ConfigureAwait(true);
+        profilesSnapshot = await new ProfileService(managerStateRoot).ListAsync().ConfigureAwait(true);
+        var desired = selectProfile ?? selectedProfile?.Name;
+        var desiredProfile = profilesSnapshot.SingleOrDefault(profile =>
+            string.Equals(profile.Name, desired, StringComparison.OrdinalIgnoreCase));
+        if (desiredProfile is not null)
+        {
+            selectedProfile = desiredProfile;
+        }
+        RefreshProfileLabels(desired);
+        var desiredItem = ProfilesList.Items.Cast<ProfileListItem>().SingleOrDefault(item =>
+            string.Equals(item.Name, desired, StringComparison.OrdinalIgnoreCase));
+        if (desiredItem is not null)
+        {
+            ProfilesList.SelectedItem = desiredItem;
+            RefreshProfileMods();
+        }
+        else
+        {
+            selectedProfile = null;
+            ProfilesList.SelectedIndex = -1;
+            if (desired is not null)
+            {
+                await new ManagerSettingsService(managerStateRoot)
+                    .SetCurrentProfileAsync(null).ConfigureAwait(true);
+                StatusText.Text = "The saved current profile no longer exists. Choose a profile explicitly.";
+            }
+            RefreshProfileMods();
+        }
+        RefreshPackageLabels();
+        UpdateActionState();
+    }
+
+    private void RefreshProfileLabels(string? currentName)
+    {
+        var items = profilesSnapshot.Select(profile => new ProfileListItem(
+            profile.Name,
+            profile.Mods.Count(mod => mod.Enabled),
+            profile.Mods.Count,
+            string.Equals(profile.Name, currentName, StringComparison.OrdinalIgnoreCase))).ToArray();
+        refreshingProfileSelection = true;
+        try
+        {
+            ProfilesList.ItemsSource = items;
+            ProfilesList.SelectedItem = items.SingleOrDefault(item => item.Current);
+        }
+        finally
+        {
+            refreshingProfileSelection = false;
+        }
+    }
+
+    private void RefreshProfileMods()
+    {
+        UpdateActionState();
+    }
+
+    private void RefreshPackageLabels()
+    {
+        var selected = SelectedInstalledPackage();
+        var items = installedPackages.Select(package =>
+        {
+            var entry = package.Id is null ? null : selectedProfile?.Mods.SingleOrDefault(mod =>
+                string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
+            var selectedVersion = entry is not null && string.Equals(
+                entry.Version, package.Version, StringComparison.Ordinal);
+            var enabled = selectedVersion && entry!.Enabled;
+            return new ModListItem(
+                package,
+                package.Name ?? package.Id ?? "Invalid package",
+                FormatPackageProfileStatus(package, entry, selectedVersion),
+                AssetUri(IconNameForPackage(package)),
+                AssetUri(enabled ? "switchon.png" : "switchoff.png"),
+                enabled,
+                ToggleHint(package, entry, selectedVersion));
+        }).ToArray();
+        ProfilePackagesList.ItemsSource = items;
+        ProfilePackagesList.SelectedItem = items.SingleOrDefault(item => selected is not null &&
+            string.Equals(item.Package.Id, selected.Id, StringComparison.Ordinal) &&
+            string.Equals(item.Package.Version, selected.Version, StringComparison.Ordinal)) ??
+            items.FirstOrDefault(item => item.Package.Valid);
+        var validPackages = installedPackages.Count(package => package.Valid);
+        var enabledMods = selectedProfile?.Mods.Count(mod => mod.Enabled) ?? 0;
+        ModsSummaryText.Text = validPackages == 0
+            ? "No packages installed"
+            : selectedProfile is null
+                ? $"{validPackages} installed"
+                : $"{enabledMods} enabled";
+        UpdateActionState();
+    }
+
+    private async Task RefreshReadinessAsync(bool reportToStatusBar = false)
+    {
+        launchReady = false;
+        currentProfileValidation = null;
+        readinessProblem = null;
+        if (selectedProfile is null)
+        {
+            readinessProblem = new(
+                "profile.not_selected",
+                "No current profile is selected.",
+                "Choose or create a profile.",
+                ReadinessAction.SelectProfile);
+            readinessSummary = readinessProblem.Message + " • " + readinessProblem.Correction;
+            if (reportToStatusBar)
+            {
+                RouteReadinessProblem(readinessProblem);
+            }
+            UpdateActionState();
+            return;
+        }
+        try
+        {
+            currentProfileValidation = await new ProfileModService(managerStateRoot, SupportedBuildId)
+                .ValidateAsync(selectedProfile.Name).ConfigureAwait(true);
+            RefreshPackageLabels();
+            if (string.IsNullOrWhiteSpace(GameDirectoryText.Text))
+            {
+                readinessProblem = new(
+                    "game.not_selected",
+                    "No game copy is selected.",
+                    "Choose the supported Steam Win32 game folder in Options.",
+                    ReadinessAction.ChooseGame);
+                readinessSummary = readinessProblem.Message + " • " + readinessProblem.Correction;
+                if (reportToStatusBar)
+                {
+                    RouteReadinessProblem(readinessProblem);
+                }
+                UpdateActionState();
+                return;
+            }
+            var status = await new GameLaunchService(managerStateRoot)
+                .GetStatusAsync(GameDirectoryText.Text, selectedProfile.Name).ConfigureAwait(true);
+            launchReady = status.Issues.Count == 0;
+            readinessProblem = launchReady ? null : status.Issues[0];
+            readinessSummary = launchReady
+                ? $"Ready • {selectedProfile.Mods.Count(mod => mod.Enabled)} mods • {status.BuildId}"
+                : readinessProblem!.Message + " • " + readinessProblem.Correction;
+            if (reportToStatusBar)
+            {
+                if (launchReady)
+                {
+                    StatusText.Text = "Launch validation passed.";
+                }
+                else
+                {
+                    RouteReadinessProblem(readinessProblem!);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            readinessSummary = "Launch readiness could not be checked.";
+            readinessProblem = new(
+                "readiness.check_failed",
+                exception.Message,
+                "Open Options, recheck the loader, and export diagnostics if the problem continues.",
+                ReadinessAction.RecoverLoader);
+            if (reportToStatusBar)
+            {
+                RouteReadinessProblem(readinessProblem);
+            }
+        }
+        UpdateActionState();
+    }
+
+    private void UpdateActionState()
+    {
+        var package = SelectedInstalledPackage();
+        var entry = package?.Id is null ? null : selectedProfile?.Mods.SingleOrDefault(mod =>
+            string.Equals(mod.Id, package.Id, StringComparison.Ordinal));
+        var selectedVersion = entry is not null && string.Equals(
+            entry.Version, package?.Version, StringComparison.Ordinal);
+        var hasPackage = package is { Valid: true, Id: not null, Version: not null };
+        var hasProfile = selectedProfile is not null;
+        ConfigureModButton.IsEnabled = selectedVersion && package!.ConfigurationDefaults.Count != 0;
+        ConfigureModButton.Visibility = selectedVersion ? Visibility.Visible : Visibility.Collapsed;
+        UninstallPackageButton.IsEnabled = hasPackage;
+        UninstallPackageButton.Visibility = hasPackage ? Visibility.Visible : Visibility.Collapsed;
+
+        RemoveFromProfileButton.IsEnabled = entry is not null;
+        RemoveFromProfileButton.Visibility = entry is not null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RenameProfileButton.IsEnabled = hasProfile;
+        DuplicateProfileButton.IsEnabled = hasProfile;
+        DeleteProfileButton.IsEnabled = hasProfile;
+
+        ExportProfileButton.IsEnabled = hasProfile;
+        var offlineAcknowledged = OfflineRiskCheck.IsChecked == true;
+        var offlineBlocksLaunch = launchReady && !offlineAcknowledged;
+        LaunchModdedButton.IsEnabled = launchReady;
+        LaunchModdedText.Text = offlineBlocksLaunch ? "Offline Mode Required" : "Launch BTD5";
+        LaunchModdedButton.Background = offlineBlocksLaunch
+            ? new SolidColorBrush(Color.FromRgb(190, 116, 20))
+            : new SolidColorBrush(Color.FromRgb(49, 194, 28));
+        LaunchModdedButton.BorderBrush = offlineBlocksLaunch
+            ? new SolidColorBrush(Color.FromRgb(229, 151, 44))
+            : new SolidColorBrush(Color.FromRgb(67, 215, 46));
+        ReadinessText.Text = offlineBlocksLaunch
+            ? "Launch blocked • acknowledge Steam Offline Mode in Options"
+            : readinessSummary;
+        OfflineRequirementBorder.Background = !offlineAcknowledged
+            ? new SolidColorBrush(Color.FromRgb(51, 37, 25))
+            : new SolidColorBrush(Color.FromRgb(23, 42, 32));
+        OfflineRequirementBorder.BorderBrush = !offlineAcknowledged
+            ? new SolidColorBrush(Color.FromRgb(139, 89, 35))
+            : new SolidColorBrush(Color.FromRgb(48, 105, 60));
+        OfflineRequirementHint.Foreground = !offlineAcknowledged
+            ? new SolidColorBrush(Color.FromRgb(255, 190, 112))
+            : new SolidColorBrush(Color.FromRgb(111, 210, 123));
+        OfflineRequirementHint.Text = !offlineAcknowledged
+            ? "Required before launching with mods."
+            : "Acknowledged — modded launch safety check passed.";
+        LaunchModdedButton.ToolTip = !launchReady
+            ? readinessProblem?.Correction ?? "Resolve the readiness message before launching."
+            : offlineBlocksLaunch
+                ? "Open Options and acknowledge Steam Offline Mode before launching."
+                : "Launch the current profile.";
+    }
+
+    private void RouteReadinessProblem(ReadinessProblem problem)
+    {
+        StatusText.Text = "Launch blocked: " + problem.Message + " " + problem.Correction;
+        switch (problem.Action)
+        {
+            case ReadinessAction.ChooseGame:
+                ShowOptionsForCorrection();
+                GameDirectoryText.Focus();
+                break;
+            case ReadinessAction.InstallLoader:
+            case ReadinessAction.RepairLoader:
+            case ReadinessAction.UpdateLoader:
+            case ReadinessAction.RecoverLoader:
+            case ReadinessAction.RestoreReleaseFiles:
+                ShowOptionsForCorrection();
+                LoaderPrimaryButton.Focus();
+                break;
+            case ReadinessAction.SelectProfile:
+                ProfilesList.Focus();
+                break;
+            case ReadinessAction.InstallMod:
+                SelectReadinessPackage(problem.ModId);
+                BrowseModsFolderButton.Focus();
+                break;
+            case ReadinessAction.ConfigureMod:
+                SelectReadinessPackage(problem.ModId);
+                ConfigureModButton.Focus();
+                break;
+            case ReadinessAction.ResolveDependencies:
+            case ReadinessAction.ReviewProfile:
+                SelectReadinessPackage(problem.ModId);
+                ProfilePackagesList.Focus();
+                break;
+        }
+    }
+
+    private void ShowOptionsForCorrection()
+    {
+        OptionsOverlay.Visibility = Visibility.Visible;
+        if (runtimeLogVisible)
+        {
+            runtimeLogTimer.Start();
+        }
+    }
+
+    private void SelectReadinessPackage(string? modId)
+    {
+        if (string.IsNullOrWhiteSpace(modId))
+        {
+            return;
+        }
+        var entry = selectedProfile?.Mods.SingleOrDefault(mod =>
+            string.Equals(mod.Id, modId, StringComparison.Ordinal));
+        var item = ProfilePackagesList.Items.Cast<ModListItem>().FirstOrDefault(candidate =>
+            string.Equals(candidate.Package.Id, modId, StringComparison.Ordinal) &&
+            (entry is null || string.Equals(candidate.Package.Version, entry.Version, StringComparison.Ordinal)));
+        if (item is not null)
+        {
+            ProfilePackagesList.SelectedItem = item;
+            ProfilePackagesList.ScrollIntoView(item);
+        }
+    }
+
+    private void TryDiscoverGame()
+    {
+        var steamPath = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam")
+            ?.GetValue("SteamPath") as string;
+        if (string.IsNullOrWhiteSpace(steamPath))
+        {
+            return;
+        }
+        GameDirectoryText.Text = GameDiscovery.DiscoverGameDirectories(steamPath).FirstOrDefault() ?? string.Empty;
+    }
+
+    private ModPackageInfo? SelectedInstalledPackage()
+    {
+        return (ProfilePackagesList.SelectedItem as ModListItem)?.Package;
+    }
+
+    private bool TryGetLaunchInputs(out string gameDirectory, out string profileName)
+    {
+        gameDirectory = GameDirectoryText.Text;
+        profileName = selectedProfile?.Name ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(gameDirectory) || string.IsNullOrWhiteSpace(profileName))
+        {
+            StatusText.Text = "Choose a game copy and profile first.";
+            return false;
+        }
+        return true;
+    }
+
+    private static bool TryGetSinglePackage(IDataObject data, out string packagePath)
+    {
+        packagePath = string.Empty;
+        if (!data.GetDataPresent(DataFormats.FileDrop) ||
+            data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files ||
+            !string.Equals(Path.GetExtension(files[0]), ".btd5mod", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        packagePath = files[0];
+        return true;
+    }
+
+    private static string FormatDependencies(ModPackageInfo package) => package.Dependencies.Count == 0
+        ? "None"
+        : string.Join(", ", package.Dependencies.Select(value => $"{value.Id} {value.Version}"));
+
+    private string FormatPackageProfileStatus(
+        ModPackageInfo package,
+        ProfileModEntry? entry,
+        bool selectedVersion)
+    {
+        var version = package.Version ?? "Invalid";
+        if (!package.Valid)
+        {
+            return version + " • Invalid package";
+        }
+        if (selectedProfile is null)
+        {
+            return version + " • Installed";
+        }
+        if (entry is null)
+        {
+            return version + " • Not in profile";
+        }
+        if (!selectedVersion)
+        {
+            return $"{version} • Available • Uses {entry.Version}";
+        }
+        if (!entry.Enabled)
+        {
+            return $"{version} • Disabled • Profile #{entry.Order + 1}";
+        }
+        if (currentProfileValidation is null)
+        {
+            return $"{version} • Enabled • Profile #{entry.Order + 1}";
+        }
+        if (currentProfileValidation is not { Valid: true } validation)
+        {
+            return version + " • Enabled • Needs attention";
+        }
+        var loadOrder = validation.OrderedPackages
+            .Select((value, index) => (value, index))
+            .Single(value =>
+                string.Equals(value.value.Id, package.Id, StringComparison.Ordinal) &&
+                string.Equals(value.value.Version, package.Version, StringComparison.Ordinal)).index + 1;
+        return $"{version} • Load #{loadOrder} • Ready";
+    }
+
+    private string FormatPackageDetailsStatus(
+        ModPackageInfo package,
+        ProfileModEntry? entry,
+        bool selectedVersion)
+    {
+        if (selectedProfile is null)
+        {
+            return "Select a profile to configure this package";
+        }
+        if (entry is null)
+        {
+            return "Not in current profile";
+        }
+        if (!selectedVersion)
+        {
+            return $"Available version • current profile uses {entry.Version}";
+        }
+        if (!entry.Enabled)
+        {
+            return $"Disabled in current profile • profile order #{entry.Order + 1}";
+        }
+        if (currentProfileValidation is null)
+        {
+            return $"Enabled in current profile • profile order #{entry.Order + 1}";
+        }
+        if (currentProfileValidation is not { Valid: true } validation)
+        {
+            var problem = currentProfileValidation.Errors.FirstOrDefault(error =>
+                package.Id is not null && error.Contains(package.Id, StringComparison.Ordinal));
+            return "Enabled • dependencies need attention" +
+                (problem is null ? string.Empty : ": " + problem);
+        }
+        var loadOrder = validation.OrderedPackages
+            .Select((value, index) => (value, index))
+            .Single(value => string.Equals(value.value.Id, package.Id, StringComparison.Ordinal)).index + 1;
+        return $"Enabled in current profile • load order #{loadOrder} • dependencies ready";
+    }
+
+    private string ToggleHint(
+        ModPackageInfo package,
+        ProfileModEntry? entry,
+        bool selectedVersion)
+    {
+        if (selectedProfile is null)
+        {
+            return "Select a profile first";
+        }
+        if (entry is null or { Enabled: false })
+        {
+            return $"Enable version {package.Version} in the current profile";
+        }
+        return selectedVersion
+            ? "Disable in the current profile"
+            : $"Switch the current profile from {entry.Version} to {package.Version}";
+    }
+
+    private static string FormatItems(IReadOnlyList<string> items) => items.Count == 0
+        ? "None"
+        : string.Join(", ", items);
+
+    private static string FormatSuffix(IReadOnlyList<string> items) => items.Count == 0
+        ? string.Empty
+        : " (" + string.Join(", ", items) + ")";
+
+    private static BitmapImage AssetImage(string name) => new(new Uri(AssetUri(name), UriKind.Relative));
+
+    private static string AssetUri(string name) => $"/BTD5ModLoader.Manager;component/Assets/{name}";
+
+    private static string IconNameForPackage(ModPackageInfo package)
+    {
+        if (package.Capabilities.Contains("content.towers", StringComparer.Ordinal))
+        {
+            return "tower.png";
+        }
+        if (package.Id?.Contains("lives", StringComparison.OrdinalIgnoreCase) == true ||
+            package.Id?.Contains("bloon", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return "baloon.png";
+        }
+        if (package.Id?.Contains("event", StringComparison.OrdinalIgnoreCase) == true ||
+            package.Id?.Contains("ui", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return "computer.png";
+        }
+        return "monkey_modded.png";
+    }
+
+    private sealed record ModListItem(
+        ModPackageInfo Package,
+        string Name,
+        string Version,
+        string Icon,
+        string ToggleIcon,
+        bool Enabled,
+        string ToggleHint);
+
+    private sealed record ProfileListItem(string Name, int EnabledMods, int TotalMods, bool Current)
+    {
+        public string Summary => TotalMods == 1 ? "1 mod" : $"{TotalMods} mods";
+    }
+}

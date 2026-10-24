@@ -1,0 +1,4 @@
+LIBRARY wininet
+EXPORTS
+    InternetGetConnectedState=_InternetGetConnectedState@8 @171
+

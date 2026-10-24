@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "dependencies": [
+    {
+      "name": "Lua",
+      "version": "5.4.9",
+      "source": "https://www.lua.org/ftp/lua-5.4.9.tar.gz",
+      "revision": "sha256:2335b6c582a52654f94612bf10d2f4672805d05329aa6568b1d8cd9e5c6fb8e6",
+      "license": "MIT"
+    },
+    {
+      "name": "MinHook",
+      "version": "1.3.4",
+      "source": "https://github.com/TsudaKageyu/minhook.git",
+      "revision": "c3fcafdc10146beb5919319d0683e44e3c30d537",
+      "license": "BSD-2-Clause"
+    },
+    {
+      "name": "JSON for Modern C++",
+      "version": "3.12.0",
+      "source": "https://github.com/nlohmann/json.git",
+      "revision": "65ee68451d8eb2b5f3a30b410476ab83deb3289b",
+      "license": "MIT"
+    },
+    {
+      "name": "miniz",
+      "version": "3.1.2",
+      "source": "https://github.com/richgel999/miniz.git",
+      "revision": "77d0dce8627735138c51770d1799a1ef48f2117d",
+      "license": "MIT OR Unlicense"
+    },
+    {
+      "name": "Catch2",
+      "version": "3.15.3",
+      "source": "https://github.com/catchorg/Catch2.git",
+      "revision": "95d8a61b089317bec800c7cc4c64064cbcb3802d",
+      "license": "BSL-1.0"
+    }
+  ]
+}
+

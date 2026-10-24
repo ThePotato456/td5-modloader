@@ -1,0 +1,42 @@
+# Native and managed build output
+/out/
+/artifacts/
+/src/manager/**/bin/
+/src/manager/**/obj/
+/src/discovery/**/bin/
+/src/discovery/**/obj/
+/tests/managed/**/bin/
+/tests/managed/**/obj/
+
+# Project-local tools and caches
+/.tools/
+/.vs/
+/.cache/
+/.nuget/
+/.vscode/
+
+# Local integration settings and game-owned data
+/.local/
+/config/local.json
+/config/*.local.json
+/installed-mods/
+/extracted-mods/
+/logs/
+/backups/
+
+# Private development notes and reports
+/ACTIONPLAN.md
+/FIXUP.md
+/CLAUDE.md
+/MODDING_PLAN.md
+/MODLOG.md
+/docs/validation*
+/docs/actionplan-audit*
+
+# IDE and operating-system state
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
+.DS_Store
+Thumbs.db

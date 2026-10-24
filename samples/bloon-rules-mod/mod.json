@@ -1,0 +1,21 @@
+{
+  "$schema": "../../schemas/mod-manifest.schema.json",
+  "id": "example.bloon-rules",
+  "name": "Bloon Rules",
+  "author": "BTD5 Mod Loader contributors",
+  "version": "1.0.0",
+  "entry_point": "lua/main.lua",
+  "loader_api": 1,
+  "supported_game_builds": ["steam-win32-4.8"],
+  "dependencies": [],
+  "load_order": { "before": [], "after": [] },
+  "capabilities": ["gameplay.events", "gameplay.mutate"],
+  "configuration_defaults": {
+    "cancel_first_spawn": false,
+    "cancel_first_pop": false,
+    "cancel_first_leak": false,
+    "boost_first_health": false,
+    "health_bonus": 1
+  },
+  "documentation": "README.md"
+}

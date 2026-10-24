@@ -1,0 +1,14 @@
+{
+  "$schema": "../../schemas/mod-manifest.schema.json",
+  "id": "example.custom-towers",
+  "name": "Custom Towers",
+  "author": "BTD5 Mod Loader contributors",
+  "version": "0.1.1",
+  "entry_point": "lua/main.lua",
+  "loader_api": 1,
+  "supported_game_builds": ["steam-win32-4.8"],
+  "dependencies": [],
+  "load_order": { "before": [], "after": [] },
+  "capabilities": ["gameplay.events", "content.towers", "content.assets"],
+  "documentation": "README.md"
+}
